@@ -106,6 +106,9 @@ mod_graph_server <- function(id, data_state) {
         return()
       }
 
+      res$feature.columns <- colnames(x_df)
+      res$label.column <- if (nzchar(label_col)) label_col else NULL
+
       rv$graph <- res
       rv$status <- paste(
         sprintf("Selected k: %s", res$selected.k),

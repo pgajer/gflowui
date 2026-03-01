@@ -101,15 +101,96 @@ gflow_build_graph <- function(X, kmin, kmax, method = "edit", labels = NULL, ver
   )
 }
 
-gflow_fit_condexp_stub <- function(graph_obj, y) {
+gflow_fit_condexp <- function(graph_obj,
+                              X,
+                              y,
+                              feature.matrix = NULL,
+                              fit.args = list(),
+                              refit.args = list(),
+                              verbose = FALSE) {
   require_gflow()
+  f_fit <- .get_gflow_function("fit.rdgraph.regression")
+  f_refit <- .get_gflow_function("refit.rdgraph.regression")
 
-  # TODO: replace with fit/refit rdgraph pipeline over selected graph.
-  mu <- stats::median(y, na.rm = TRUE)
-  list(
-    fitted.values = rep(mu, length(y)),
-    graph = graph_obj
+  if (!is.list(graph_obj)) {
+    stop("graph_obj must be a list from gflow_build_graph().", call. = FALSE)
+  }
+  selected.k <- as.integer(graph_obj$selected.k %||% NA_integer_)
+  if (!is.finite(selected.k)) {
+    stop("graph_obj$selected.k is missing or invalid.", call. = FALSE)
+  }
+
+  adj.list <- graph_obj$adj.list
+  weight.list <- graph_obj$weight.list
+  if (!is.list(adj.list) || !is.list(weight.list)) {
+    stop("graph_obj must contain adjacency and weight lists.", call. = FALSE)
+  }
+
+  X <- .as_numeric_matrix(X)
+  n <- nrow(X)
+  if (length(y) != n) {
+    stop(sprintf("length(y) (%d) must equal nrow(X) (%d).", length(y), n), call. = FALSE)
+  }
+  y <- as.double(y)
+  if (anyNA(y) || any(!is.finite(y))) {
+    stop("y cannot contain NA/Inf.", call. = FALSE)
+  }
+
+  fit.extra <- fit.args
+  fit.extra <- .drop_call_args(
+    fit.extra,
+    c("X", "y", "k", "adj.list", "weight.list", "verbose.level")
   )
+  fit.call <- c(
+    list(
+      X = X,
+      y = y,
+      k = selected.k,
+      adj.list = adj.list,
+      weight.list = weight.list,
+      verbose.level = if (isTRUE(verbose)) 1L else 0L
+    ),
+    fit.extra
+  )
+  fit <- do.call(f_fit, fit.call)
+
+  out <- list(
+    fit = fit,
+    fitted.values = as.double(fit$fitted.values),
+    graph = graph_obj,
+    refit = NULL,
+    feature.fitted.values = NULL
+  )
+
+  if (is.null(feature.matrix)) {
+    return(out)
+  }
+
+  Z <- .as_numeric_matrix(feature.matrix)
+  if (nrow(Z) != n) {
+    stop(
+      sprintf("feature.matrix row count (%d) must equal nrow(X) (%d).", nrow(Z), n),
+      call. = FALSE
+    )
+  }
+
+  refit.extra <- refit.args
+  refit.extra <- .drop_call_args(
+    refit.extra,
+    c("fitted.model", "y.new", "verbose")
+  )
+  refit.call <- c(
+    list(
+      fitted.model = fit,
+      y.new = Z,
+      verbose = isTRUE(verbose)
+    ),
+    refit.extra
+  )
+  refit <- do.call(f_refit, refit.call)
+  out$refit <- refit
+  out$feature.fitted.values <- refit$fitted.values
+  out
 }
 
 gflow_detect_endpoints_stub <- function(graph_obj) {
@@ -218,4 +299,11 @@ gflow_detect_endpoints_stub <- function(graph_obj) {
     ),
     call. = FALSE
   )
+}
+
+.drop_call_args <- function(x, drop.names) {
+  if (!is.list(x) || length(x) == 0L) {
+    return(list())
+  }
+  x[setdiff(names(x), drop.names)]
 }
