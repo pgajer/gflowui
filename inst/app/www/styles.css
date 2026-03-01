@@ -1,1 +1,225 @@
-/* Reserved for custom styles after UI design pass. */
+:root {
+  --gf-ink: #1a2f33;
+  --gf-teal: #0f8b77;
+  --gf-saffron: #d97706;
+  --gf-paper: #f8f5ef;
+  --gf-line: #d6ded7;
+  --gf-shadow: 0 12px 30px rgba(16, 42, 45, 0.08);
+}
+
+body {
+  background:
+    radial-gradient(circle at 8% 10%, rgba(15, 139, 119, 0.12), transparent 35%),
+    radial-gradient(circle at 86% 8%, rgba(217, 119, 6, 0.12), transparent 38%),
+    var(--gf-paper);
+  color: var(--gf-ink);
+}
+
+.gf-root {
+  min-height: 100vh;
+}
+
+.gf-brand {
+  display: flex;
+  align-items: baseline;
+  gap: 0.55rem;
+}
+
+.gf-brand-mark {
+  font-size: 1.45rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.gf-brand-sub {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: rgba(26, 47, 51, 0.65);
+}
+
+.gf-sidebar {
+  background: rgba(255, 255, 255, 0.78);
+  border-right: 1px solid var(--gf-line);
+  backdrop-filter: blur(2px);
+}
+
+.gf-sidebar-panel,
+.gf-sidebar-note {
+  border: 1px solid var(--gf-line);
+  border-radius: 0.95rem;
+  background: rgba(255, 255, 255, 0.88);
+  padding: 0.9rem 1rem;
+  box-shadow: var(--gf-shadow);
+}
+
+.gf-sidebar-note {
+  margin-top: 1rem;
+  font-size: 0.9rem;
+}
+
+.gf-sidebar-note p {
+  margin: 0.45rem 0 0;
+  color: rgba(26, 47, 51, 0.82);
+}
+
+.gf-step-list {
+  margin: 0.6rem 0 0;
+  padding-left: 1rem;
+}
+
+.gf-step-list li {
+  margin-bottom: 0.4rem;
+  line-height: 1.35;
+}
+
+.gf-topband {
+  border: 1px solid var(--gf-line);
+  border-radius: 1.15rem;
+  background: linear-gradient(135deg, rgba(250, 252, 250, 0.92), rgba(246, 250, 247, 0.92));
+  padding: 1rem 1.15rem;
+  margin-bottom: 0.95rem;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1rem;
+  align-items: center;
+  box-shadow: var(--gf-shadow);
+  animation: gf-fadein 350ms ease-out;
+}
+
+.gf-topband-copy h2 {
+  margin: 0;
+  font-size: 1.28rem;
+}
+
+.gf-topband-copy p {
+  margin: 0.32rem 0 0;
+  color: rgba(26, 47, 51, 0.78);
+  font-size: 0.95rem;
+}
+
+.gf-topband-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  justify-content: flex-end;
+}
+
+.gf-chip {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid rgba(15, 139, 119, 0.33);
+  background: rgba(15, 139, 119, 0.1);
+  color: #0e5f53;
+  border-radius: 999px;
+  padding: 0.28rem 0.72rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.gf-tabs {
+  border-radius: 1rem;
+  box-shadow: var(--gf-shadow);
+}
+
+.gf-module-head {
+  margin-bottom: 0.85rem;
+  animation: gf-fadein 320ms ease-out;
+}
+
+.gf-module-head h3 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.gf-module-head p {
+  margin: 0.32rem 0 0;
+  color: rgba(26, 47, 51, 0.76);
+  font-size: 0.94rem;
+}
+
+.gf-panel {
+  border: 1px solid var(--gf-line);
+  box-shadow: var(--gf-shadow);
+  animation: gf-fadein 320ms ease-out;
+}
+
+.gf-panel .card-header {
+  background: linear-gradient(180deg, rgba(15, 139, 119, 0.11), rgba(15, 139, 119, 0.04));
+  border-bottom: 1px solid var(--gf-line);
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.gf-btn-wide {
+  width: 100%;
+  margin-top: 0.5rem;
+}
+
+.gf-hint {
+  margin: 0.65rem 0 0;
+  font-size: 0.84rem;
+  color: rgba(26, 47, 51, 0.72);
+}
+
+.gf-status-block pre {
+  margin: 0;
+  min-height: 220px;
+  max-height: 52vh;
+  overflow: auto;
+  white-space: pre-wrap;
+  border-radius: 0.85rem;
+  border: 1px solid rgba(12, 54, 60, 0.52);
+  background: linear-gradient(180deg, #12343b, #162f35);
+  color: #e9f5f2;
+  padding: 0.8rem 0.9rem;
+  font-size: 0.84rem;
+  line-height: 1.38;
+}
+
+.form-label {
+  font-weight: 600;
+}
+
+.btn-primary {
+  background: linear-gradient(180deg, #0f8b77, #0d725f);
+  border-color: #0d725f;
+}
+
+.btn-secondary {
+  background: linear-gradient(180deg, #d97706, #b25f03);
+  border-color: #b25f03;
+  color: #fff;
+}
+
+.btn-secondary:hover,
+.btn-secondary:focus {
+  color: #fff;
+}
+
+@keyframes gf-fadein {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 992px) {
+  .gf-topband {
+    grid-template-columns: 1fr;
+  }
+
+  .gf-topband-chips {
+    justify-content: flex-start;
+  }
+
+  .gf-status-block pre {
+    min-height: 170px;
+    max-height: 45vh;
+  }
+}

@@ -1,14 +1,41 @@
 mod_data_ui <- function(id) {
   ns <- shiny::NS(id)
   shiny::tagList(
-    shiny::h4("Data Input"),
-    shiny::fileInput(ns("file"), "Upload CSV", accept = c(".csv", "text/csv")),
-    shiny::checkboxInput(ns("header"), "Header", TRUE),
-    shiny::selectInput(ns("sep"), "Separator", choices = c("," = ",", ";" = ";", "Tab" = "\t"
-    )),
-    shiny::actionButton(ns("load_example"), "Load example matrix"),
-    shiny::hr(),
-    shiny::verbatimTextOutput(ns("summary"))
+    shiny::div(
+      class = "gf-module-head",
+      shiny::h3("Data Intake"),
+      shiny::p("Upload a matrix-style CSV or load an example dataset to bootstrap graph exploration.")
+    ),
+    bslib::layout_columns(
+      col_widths = c(5, 7),
+      bslib::card(
+        class = "gf-panel",
+        bslib::card_header("Source"),
+        shiny::fileInput(ns("file"), "Upload CSV", accept = c(".csv", "text/csv")),
+        bslib::layout_columns(
+          col_widths = c(6, 6),
+          shiny::checkboxInput(ns("header"), "Header", TRUE),
+          shiny::selectInput(
+            ns("sep"),
+            "Separator",
+            choices = c("Comma" = ",", "Semicolon" = ";", "Tab" = "\t")
+          )
+        ),
+        shiny::actionButton(
+          ns("load_example"),
+          "Load Example Matrix",
+          class = "btn-primary gf-btn-wide"
+        )
+      ),
+      bslib::card(
+        class = "gf-panel",
+        bslib::card_header("Data Snapshot"),
+        shiny::div(
+          class = "gf-status-block",
+          shiny::verbatimTextOutput(ns("summary"))
+        )
+      )
+    )
   )
 }
 

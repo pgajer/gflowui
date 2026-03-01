@@ -1,23 +1,44 @@
 mod_condexp_ui <- function(id) {
   ns <- shiny::NS(id)
   shiny::tagList(
-    shiny::h4("Conditional Expectations"),
-    shiny::selectInput(
-      ns("outcome_col"),
-      "Outcome column",
-      choices = c("Select column" = ""),
-      selected = ""
+    shiny::div(
+      class = "gf-module-head",
+      shiny::h3("Conditional Expectations"),
+      shiny::p("Fit the selected outcome over the chosen graph, then optionally smooth additional feature columns.")
     ),
-    shiny::selectizeInput(
-      ns("feature_cols"),
-      "Additional feature columns to smooth (optional)",
-      choices = NULL,
-      selected = NULL,
-      multiple = TRUE
-    ),
-    shiny::actionButton(ns("fit"), "Fit conditional expectation"),
-    shiny::hr(),
-    shiny::verbatimTextOutput(ns("status"))
+    bslib::layout_columns(
+      col_widths = c(6, 6),
+      bslib::card(
+        class = "gf-panel",
+        bslib::card_header("Model Inputs"),
+        shiny::selectInput(
+          ns("outcome_col"),
+          "Outcome column",
+          choices = c("Select column" = ""),
+          selected = ""
+        ),
+        shiny::selectizeInput(
+          ns("feature_cols"),
+          "Additional feature columns to smooth (optional)",
+          choices = NULL,
+          selected = NULL,
+          multiple = TRUE
+        ),
+        shiny::actionButton(
+          ns("fit"),
+          "Fit Conditional Expectation",
+          class = "btn-primary gf-btn-wide"
+        )
+      ),
+      bslib::card(
+        class = "gf-panel",
+        bslib::card_header("Fit Status"),
+        shiny::div(
+          class = "gf-status-block",
+          shiny::verbatimTextOutput(ns("status"))
+        )
+      )
+    )
   )
 }
 
