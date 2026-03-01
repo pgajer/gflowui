@@ -1,0 +1,12 @@
+.Rhistory
+.RData
+.Ruserdata
+.Rproj.user/
+.Rproj
+.Rcheck/
+*.Rcheck/
+*.tar.gz
+.Rproj.user
+renv/library/
+renv/staging/
+renv/python/

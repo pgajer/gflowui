@@ -1,0 +1,25 @@
+Package: gflowui
+Title: Interactive User Interface for gflow Workflows
+Version: 0.0.0.9000
+Authors@R:
+    person(given = "Pawel",
+           family = "Gajer",
+           email = "pgajer@gmail.com",
+           role = c("aut", "cre"))
+Description: Companion UI package for gflow that provides an interactive
+    Shiny workflow for loading data, building/selecting graphs, fitting
+    conditional expectations, visualizing 3D embeddings, and identifying
+    graph endpoints.
+License: GPL (>= 3)
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.3
+Depends:
+    R (>= 4.1.0)
+Imports:
+    shiny,
+    bslib,
+    gflow
+Suggests:
+    testthat (>= 3.0.0)
+Config/testthat/edition: 3
