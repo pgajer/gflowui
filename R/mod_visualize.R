@@ -1,11 +1,36 @@
 mod_visualize_ui <- function(id) {
   ns <- shiny::NS(id)
   shiny::tagList(
-    shiny::h4("Visualization and Endpoints"),
-    shiny::actionButton(ns("detect_endpoints"), "Detect endpoints"),
-    shiny::actionButton(ns("render"), "Render placeholder view"),
-    shiny::hr(),
-    shiny::verbatimTextOutput(ns("status"))
+    shiny::div(
+      class = "gf-module-head",
+      shiny::h3("Visualization and Endpoints"),
+      shiny::p("Run endpoint detection and render summary outputs before exporting final interactive views.")
+    ),
+    bslib::layout_columns(
+      col_widths = c(5, 7),
+      bslib::card(
+        class = "gf-panel",
+        bslib::card_header("Actions"),
+        shiny::actionButton(
+          ns("detect_endpoints"),
+          "Detect Endpoints",
+          class = "btn-secondary gf-btn-wide"
+        ),
+        shiny::actionButton(
+          ns("render"),
+          "Render View Summary",
+          class = "btn-primary gf-btn-wide"
+        )
+      ),
+      bslib::card(
+        class = "gf-panel",
+        bslib::card_header("Visualization Status"),
+        shiny::div(
+          class = "gf-status-block",
+          shiny::verbatimTextOutput(ns("status"))
+        )
+      )
+    )
   )
 }
 

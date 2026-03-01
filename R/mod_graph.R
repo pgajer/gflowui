@@ -1,25 +1,52 @@
 mod_graph_ui <- function(id) {
   ns <- shiny::NS(id)
   shiny::tagList(
-    shiny::h4("Graph Construction and Selection"),
-    shiny::numericInput(ns("kmin"), "k min", value = 5, min = 1, step = 1),
-    shiny::numericInput(ns("kmax"), "k max", value = 25, min = 2, step = 1),
-    shiny::selectInput(
-      ns("method"),
-      "Selection method",
-      choices = c("both", "edit", "mixing", "none"),
-      selected = "edit"
+    shiny::div(
+      class = "gf-module-head",
+      shiny::h3("Graph Construction"),
+      shiny::p("Choose a neighborhood scale range and selection strategy to identify a reference graph.")
     ),
-    shiny::selectInput(
-      ns("label_col"),
-      "Label column (required for mixing/both)",
-      choices = c("None" = ""),
-      selected = ""
-    ),
-    shiny::actionButton(ns("build"), "Build/select graph"),
-    shiny::hr(),
-    shiny::helpText("For mixing-based selection, choose a categorical label column."),
-    shiny::verbatimTextOutput(ns("status"))
+    bslib::layout_columns(
+      col_widths = c(6, 6),
+      bslib::card(
+        class = "gf-panel",
+        bslib::card_header("Scale and Method"),
+        bslib::layout_columns(
+          col_widths = c(6, 6),
+          shiny::numericInput(ns("kmin"), "k min", value = 5, min = 1, step = 1),
+          shiny::numericInput(ns("kmax"), "k max", value = 25, min = 2, step = 1)
+        ),
+        shiny::selectInput(
+          ns("method"),
+          "Selection method",
+          choices = c("both", "edit", "mixing", "none"),
+          selected = "edit"
+        ),
+        shiny::selectInput(
+          ns("label_col"),
+          "Label column (required for mixing/both)",
+          choices = c("None" = ""),
+          selected = ""
+        ),
+        shiny::actionButton(
+          ns("build"),
+          "Build and Select Graph",
+          class = "btn-primary gf-btn-wide"
+        ),
+        shiny::p(
+          class = "gf-hint",
+          "For mixing-based selection, choose a categorical label column."
+        )
+      ),
+      bslib::card(
+        class = "gf-panel",
+        bslib::card_header("Selection Status"),
+        shiny::div(
+          class = "gf-status-block",
+          shiny::verbatimTextOutput(ns("status"))
+        )
+      )
+    )
   )
 }
 
