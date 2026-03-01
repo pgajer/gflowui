@@ -24,8 +24,10 @@ run_gflowui <- function(
   port = getOption("shiny.port"),
   launch.browser = interactive()
 ) {
+  # Use positional first argument for broad Shiny compatibility:
+  # older Shiny uses `appDir`, newer accepts app objects too.
   shiny::runApp(
-    appObj = gflowui_app(),
+    gflowui_app(),
     host = host,
     port = port,
     launch.browser = launch.browser
