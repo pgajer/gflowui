@@ -193,14 +193,83 @@ gflow_fit_condexp <- function(graph_obj,
   out
 }
 
-gflow_detect_endpoints_stub <- function(graph_obj) {
+gflow_detect_endpoints <- function(graph_obj,
+                                   core.quantile = 0.10,
+                                   endpoint.quantile = 0.90,
+                                   use.approx.eccentricity = TRUE,
+                                   n.landmarks = 64L,
+                                   max.endpoints = NULL,
+                                   seed = 1L,
+                                   verbose = FALSE) {
   require_gflow()
+  f_endpoints <- .get_gflow_function("geodesic.core.endpoints")
 
-  # TODO: replace with gflow::geodesic.core.endpoints() when graph object
-  # contains adjacency and edge-length structures.
-  n <- graph_obj$n.vertices %||% 0
-  endpoints <- if (n >= 2) c(1L, n) else integer(0)
-  list(endpoints = endpoints)
+  if (!is.list(graph_obj)) {
+    stop("graph_obj must be a list from gflow_build_graph().", call. = FALSE)
+  }
+  adj.list <- graph_obj$adj.list
+  weight.list <- graph_obj$weight.list
+  if (!is.list(adj.list) || !is.list(weight.list)) {
+    stop("graph_obj must contain adjacency and weight lists.", call. = FALSE)
+  }
+  if (length(adj.list) != length(weight.list)) {
+    stop("adj.list and weight.list must have the same length.", call. = FALSE)
+  }
+
+  if (!is.numeric(core.quantile) || length(core.quantile) != 1L ||
+      !is.finite(core.quantile) || core.quantile <= 0 || core.quantile >= 1) {
+    stop("core.quantile must be a finite scalar in (0, 1).", call. = FALSE)
+  }
+  if (!is.numeric(endpoint.quantile) || length(endpoint.quantile) != 1L ||
+      !is.finite(endpoint.quantile) || endpoint.quantile < 0 || endpoint.quantile > 1) {
+    stop("endpoint.quantile must be a finite scalar in [0, 1].", call. = FALSE)
+  }
+
+  n.landmarks <- as.integer(n.landmarks)
+  if (!is.finite(n.landmarks) || n.landmarks < 1L) {
+    stop("n.landmarks must be >= 1.", call. = FALSE)
+  }
+  if (!is.null(max.endpoints)) {
+    max.endpoints <- as.integer(max.endpoints)
+    if (!is.finite(max.endpoints) || max.endpoints < 1L) {
+      stop("max.endpoints must be NULL or >= 1.", call. = FALSE)
+    }
+  }
+  seed <- as.integer(seed)
+  if (!is.finite(seed)) {
+    stop("seed must be a finite integer.", call. = FALSE)
+  }
+
+  res <- do.call(
+    f_endpoints,
+    list(
+      adj.list = adj.list,
+      weight.list = weight.list,
+      core.quantile = as.double(core.quantile),
+      endpoint.quantile = as.double(endpoint.quantile),
+      use.approx.eccentricity = isTRUE(use.approx.eccentricity),
+      n.landmarks = n.landmarks,
+      max.endpoints = max.endpoints,
+      seed = seed,
+      verbose = isTRUE(verbose)
+    )
+  )
+
+  endpoints <- sort(unique(as.integer(res$endpoints %||% integer(0))))
+  core.vertices <- sort(unique(as.integer(res$core.vertices %||% integer(0))))
+  summary.df <- res$summary %||% NULL
+  if (!is.null(summary.df) && !is.data.frame(summary.df)) {
+    summary.df <- as.data.frame(summary.df)
+  }
+
+  list(
+    endpoints = endpoints,
+    core.vertices = core.vertices,
+    summary = summary.df,
+    distance.to.core = res$distance.to.core %||% NULL,
+    eccentricity = res$eccentricity %||% NULL,
+    raw = res
+  )
 }
 
 `%||%` <- function(x, y) {

@@ -22,7 +22,12 @@ test_that("graph adapter returns expected shape", {
     envir = asNamespace("gflow"),
     inherits = FALSE
   )
-  skip_if_not(has_fit && has_refit)
+  has_endpoints <- exists(
+    "geodesic.core.endpoints",
+    envir = asNamespace("gflow"),
+    inherits = FALSE
+  )
+  skip_if_not(has_fit && has_refit && has_endpoints)
 
   x <- matrix(rnorm(60), nrow = 20, ncol = 3)
   g <- gflowui:::gflow_build_graph(x, kmin = 5, kmax = 9, method = "edit")
@@ -44,6 +49,16 @@ test_that("graph adapter returns expected shape", {
   expect_equal(nrow(fit$feature.fitted.values), nrow(x))
   expect_equal(ncol(fit$feature.fitted.values), 2L)
 
-  ep <- gflowui:::gflow_detect_endpoints_stub(g)
+  ep <- gflowui:::gflow_detect_endpoints(
+    graph_obj = g,
+    core.quantile = 0.10,
+    endpoint.quantile = 0.90,
+    use.approx.eccentricity = TRUE,
+    n.landmarks = 16L,
+    max.endpoints = 4L,
+    seed = 1L
+  )
   expect_true("endpoints" %in% names(ep))
+  expect_true("core.vertices" %in% names(ep))
+  expect_true(is.integer(ep$endpoints) || is.numeric(ep$endpoints))
 })
