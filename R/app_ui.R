@@ -39,49 +39,22 @@ app_ui <- function() {
       width = 470,
       shiny::div(
         class = "gf-sidebar-panel",
-        shiny::h5("Project"),
+        shiny::h5("Projects"),
         shiny::selectInput(
-          "project_mode",
-          "Start with",
-          choices = c(
-            "Open existing project (graphs ready)" = "existing_graphs",
-            "New project from scratch" = "scratch",
-            "New project from template" = "template",
-            "Clone existing project" = "clone"
-          ),
-          selected = "existing_graphs"
+          "project_select",
+          label = NULL,
+          choices = c("Choose a project..." = ""),
+          selected = ""
         ),
-        shiny::conditionalPanel(
-          condition = "input.project_mode == 'existing_graphs' || input.project_mode == 'clone'",
-          shiny::selectInput(
-            "project_existing",
-            "Existing project",
-            choices = c(
-              "ZAPPS/PreSSMat (placeholder)" = "zapps_pressmat",
-              "VMRC Demo Cohort (placeholder)" = "vmrc_demo"
-            ),
-            selected = "zapps_pressmat"
-          )
-        ),
-        shiny::conditionalPanel(
-          condition = "input.project_mode == 'template'",
-          shiny::selectInput(
-            "project_template",
-            "Template",
-            choices = c(
-              "ZAPPS/PreSSMat (placeholder)" = "zapps_pressmat",
-              "Empty template" = "empty"
-            ),
-            selected = "zapps_pressmat"
-          )
-        ),
-        shiny::textInput("project_name", "Project name", value = "Untitled Project"),
         shiny::actionButton(
-          "project_start",
-          "Enter Workspace",
-          class = "btn-primary gf-btn-wide"
+          "project_new",
+          "New",
+          class = "btn-secondary gf-btn-wide"
         ),
-        shiny::div(class = "gf-inline-status", shiny::textOutput("project_status"))
+        shiny::div(
+          class = "gf-inline-status",
+          shiny::textOutput("project_status")
+        )
       ),
       shiny::uiOutput("workflow_controls")
     ),
