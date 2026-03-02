@@ -1,85 +1,63 @@
 mod_visualize_ui <- function(id) {
   ns <- shiny::NS(id)
   shiny::tagList(
-    shiny::div(
-      class = "gf-module-head",
-      shiny::h3("Visualization and Endpoints"),
-      shiny::p("Run endpoint detection and render summary outputs before exporting final interactive views.")
+    bslib::layout_columns(
+      col_widths = c(6, 6),
+      shiny::numericInput(
+        ns("core_quantile"),
+        "Core quantile",
+        value = 0.10,
+        min = 0.01,
+        max = 0.99,
+        step = 0.01
+      ),
+      shiny::numericInput(
+        ns("endpoint_quantile"),
+        "Endpoint quantile",
+        value = 0.90,
+        min = 0.00,
+        max = 1.00,
+        step = 0.01
+      )
+    ),
+    shiny::checkboxInput(
+      ns("use_approx_ecc"),
+      "Use approximate eccentricity",
+      value = TRUE
     ),
     bslib::layout_columns(
-      col_widths = c(5, 7),
-      bslib::card(
-        class = "gf-panel",
-        bslib::card_header("Endpoint Settings"),
-        bslib::layout_columns(
-          col_widths = c(6, 6),
-          shiny::numericInput(
-            ns("core_quantile"),
-            "Core quantile",
-            value = 0.10,
-            min = 0.01,
-            max = 0.99,
-            step = 0.01
-          ),
-          shiny::numericInput(
-            ns("endpoint_quantile"),
-            "Endpoint quantile",
-            value = 0.90,
-            min = 0.00,
-            max = 1.00,
-            step = 0.01
-          )
-        ),
-        shiny::checkboxInput(
-          ns("use_approx_ecc"),
-          "Use approximate eccentricity",
-          value = TRUE
-        ),
-        bslib::layout_columns(
-          col_widths = c(6, 6),
-          shiny::numericInput(
-            ns("n_landmarks"),
-            "Landmarks",
-            value = 64,
-            min = 1,
-            step = 1
-          ),
-          shiny::numericInput(
-            ns("max_endpoints"),
-            "Max endpoints (0 = no cap)",
-            value = 0,
-            min = 0,
-            step = 1
-          )
-        ),
-        shiny::numericInput(
-          ns("seed"),
-          "Seed",
-          value = 1,
-          min = 1,
-          step = 1
-        ),
-        bslib::card_header("Actions"),
-        shiny::actionButton(
-          ns("detect_endpoints"),
-          "Detect Endpoints",
-          class = "btn-secondary gf-btn-wide"
-        ),
-        shiny::actionButton(
-          ns("render"),
-          "Render View Summary",
-          class = "btn-primary gf-btn-wide"
-        )
+      col_widths = c(6, 6),
+      shiny::numericInput(
+        ns("n_landmarks"),
+        "Landmarks",
+        value = 64,
+        min = 1,
+        step = 1
       ),
-      bslib::card(
-        class = "gf-panel",
-        bslib::card_header("Visualization Status"),
-        shiny::div(
-          class = "gf-status-block",
-          shiny::verbatimTextOutput(ns("status"))
-        ),
-        shiny::tableOutput(ns("endpoint_table"))
+      shiny::numericInput(
+        ns("max_endpoints"),
+        "Max endpoints (0 = no cap)",
+        value = 0,
+        min = 0,
+        step = 1
       )
+    ),
+    shiny::numericInput(
+      ns("seed"),
+      "Seed",
+      value = 1,
+      min = 1,
+      step = 1
+    ),
+    shiny::actionButton(
+      ns("detect_endpoints"),
+      "Detect Endpoints",
+      class = "btn-secondary gf-btn-wide"
+    ),
+    shiny::actionButton(
+      ns("render"),
+      "Refresh Workspace View",
+      class = "btn-primary gf-btn-wide"
     )
   )
 }
@@ -170,47 +148,9 @@ mod_visualize_server <- function(id, data_state, graph_state, condexp_state) {
       )
     })
 
-    output$status <- shiny::renderText(rv$status)
-
-    output$endpoint_table <- shiny::renderTable({
-      ep <- rv$endpoint.result
-      if (is.null(ep) || length(ep$endpoints) == 0L) {
-        return(NULL)
-      }
-
-      s <- ep$summary
-      if (!is.null(s) && is.data.frame(s) && nrow(s) > 0L) {
-        keep <- c(
-          "vertex",
-          "eccentricity",
-          "distance.to.core",
-          "distance_to_core",
-          "endpoint.rank",
-          "endpoint_rank",
-          "is.endpoint",
-          "is_endpoint"
-        )
-        cols <- intersect(keep, colnames(s))
-        out <- s[, cols, drop = FALSE]
-
-        endpoint.col <- if ("is.endpoint" %in% colnames(out)) {
-          "is.endpoint"
-        } else if ("is_endpoint" %in% colnames(out)) {
-          "is_endpoint"
-        } else {
-          NULL
-        }
-        if (!is.null(endpoint.col)) {
-          out <- out[which(as.logical(out[[endpoint.col]])), , drop = FALSE]
-        } else if ("vertex" %in% colnames(out)) {
-          out <- out[out$vertex %in% ep$endpoints, , drop = FALSE]
-        }
-        if (nrow(out) > 0L) {
-          return(utils::head(out, 20L))
-        }
-      }
-
-      data.frame(endpoint = ep$endpoints, stringsAsFactors = FALSE)
-    }, striped = TRUE, bordered = TRUE, spacing = "s")
+    shiny::reactive(list(
+      status = rv$status,
+      endpoint.result = rv$endpoint.result
+    ))
   })
 }
