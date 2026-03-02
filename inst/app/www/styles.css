@@ -31,13 +31,6 @@ body {
   letter-spacing: 0.02em;
 }
 
-.gf-brand-sub {
-  font-size: 0.78rem;
-  text-transform: uppercase;
-  letter-spacing: 0.09em;
-  color: rgba(26, 47, 51, 0.65);
-}
-
 .gf-sidebar {
   background: rgba(255, 255, 255, 0.78);
   border-right: 1px solid var(--gf-line);
@@ -56,6 +49,24 @@ body {
 .gf-sidebar-note {
   margin-top: 1rem;
   font-size: 0.9rem;
+}
+
+.gf-accordion-wrap {
+  margin-top: 1rem;
+}
+
+.accordion-button {
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.accordion-button:not(.collapsed) {
+  background-color: rgba(15, 139, 119, 0.12);
+  color: #0e5f53;
+}
+
+.accordion-item {
+  border-color: var(--gf-line);
 }
 
 .gf-sidebar-note p {
@@ -98,6 +109,12 @@ body {
   font-size: 0.95rem;
 }
 
+.gf-inline-status {
+  margin-top: 0.45rem;
+  font-size: 0.82rem;
+  color: rgba(26, 47, 51, 0.78);
+}
+
 .gf-topband-chips {
   display: flex;
   flex-wrap: wrap;
@@ -121,6 +138,11 @@ body {
 .gf-tabs {
   border-radius: 1rem;
   box-shadow: var(--gf-shadow);
+}
+
+.gf-workspace {
+  display: grid;
+  gap: 1rem;
 }
 
 .gf-module-head {
@@ -176,6 +198,19 @@ body {
   padding: 0.8rem 0.9rem;
   font-size: 0.84rem;
   line-height: 1.38;
+}
+
+.gf-workspace-panel table {
+  font-size: 0.86rem;
+}
+
+.gf-workspace-panel th {
+  background: rgba(15, 139, 119, 0.1);
+}
+
+.gf-analysis-placeholder p {
+  margin-bottom: 0.45rem;
+  color: rgba(26, 47, 51, 0.78);
 }
 
 .form-label {

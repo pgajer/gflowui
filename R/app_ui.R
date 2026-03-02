@@ -21,30 +21,50 @@ app_ui <- function() {
   bslib::page_sidebar(
     title = shiny::div(
       class = "gf-brand",
-      shiny::span(class = "gf-brand-mark", "gflowui"),
-      shiny::span(class = "gf-brand-sub", "vmrc research workbench")
+      shiny::span(class = "gf-brand-mark", "gflowui")
     ),
     class = "gf-root",
     theme = theme,
     sidebar = bslib::sidebar(
       class = "gf-sidebar",
+      width = 470,
       shiny::div(
         class = "gf-sidebar-panel",
-        shiny::h5("Workflow"),
-        shiny::tags$ol(
-          class = "gf-step-list",
-          shiny::tags$li("Load and inspect data"),
-          shiny::tags$li("Build/select graph scale"),
-          shiny::tags$li("Fit outcome and feature smoothers"),
-          shiny::tags$li("Inspect visualization and endpoints")
-        )
+        shiny::h5("Project"),
+        shiny::textInput("project_name", "Project name", value = "Untitled Project"),
+        shiny::selectInput(
+          "project_template",
+          "Template",
+          choices = c(
+            "Empty project" = "empty",
+            "ZAPPS/PreSSMat (placeholder)" = "zapps_pressmat"
+          ),
+          selected = "empty"
+        ),
+        bslib::layout_columns(
+          col_widths = c(6, 6),
+          shiny::actionButton("project_new", "New", class = "btn-light gf-btn-wide"),
+          shiny::actionButton("project_clone", "Clone", class = "btn-light gf-btn-wide")
+        ),
+        shiny::div(class = "gf-inline-status", shiny::textOutput("project_status"))
       ),
       shiny::div(
-        class = "gf-sidebar-note",
-        shiny::strong("Development mode"),
-        shiny::p(
-          "Run from R with gflowui::run_gflowui().",
-          "This interface is optimized for iterative method testing."
+        class = "gf-sidebar-panel gf-accordion-wrap",
+        bslib::accordion(
+          id = "workflow_accordion",
+          open = c("workflow_data"),
+          bslib::accordion_panel("Data", value = "workflow_data", mod_data_ui("data")),
+          bslib::accordion_panel("Graph(s) Construction", value = "workflow_graph", shiny::tagList(
+            mod_graph_ui("graph"),
+            shiny::hr(),
+            mod_visualize_ui("viz")
+          )),
+          bslib::accordion_panel("Conditional Expectation Estimation", value = "workflow_condexp", mod_condexp_ui("condexp")),
+          bslib::accordion_panel("Analysis", value = "workflow_analysis", shiny::div(
+            class = "gf-analysis-placeholder",
+            shiny::p("Analysis tools section placeholder."),
+            shiny::p("Future versions will expose downstream comparison, trajectory summaries, and reporting workflows.")
+          ))
         )
       )
     ),
@@ -54,23 +74,40 @@ app_ui <- function() {
       shiny::div(
         class = "gf-topband-copy",
         shiny::h2("Graph Flow Analysis Studio"),
-        shiny::p("Biologist-friendly controls for graph selection, conditional expectation fitting, and endpoint diagnostics.")
+        shiny::p("Project-centered workspace for graph construction, endpoint detection, and conditional expectation estimation.")
       ),
       shiny::div(
         class = "gf-topband-chips",
-        shiny::span(class = "gf-chip", "R + gflow backend"),
-        shiny::span(class = "gf-chip", "3D-ready outputs"),
-        shiny::span(class = "gf-chip", "VMRC-friendly workflow")
+        shiny::uiOutput("chip_backend"),
+        shiny::uiOutput("chip_renderer"),
+        shiny::uiOutput("chip_project")
       )
     ),
     shiny::div(
-      class = "gf-tabs",
-      bslib::navset_card_tab(
-        id = "main_tabs",
-        bslib::nav_panel("Data", mod_data_ui("data")),
-        bslib::nav_panel("Graph", mod_graph_ui("graph")),
-        bslib::nav_panel("CondExp", mod_condexp_ui("condexp")),
-        bslib::nav_panel("Visualize", mod_visualize_ui("viz"))
+      class = "gf-workspace",
+      bslib::layout_columns(
+        col_widths = c(7, 5),
+        bslib::card(
+          class = "gf-panel gf-workspace-panel",
+          bslib::card_header("Run Monitor"),
+          shiny::div(
+            class = "gf-status-block",
+            shiny::verbatimTextOutput("workspace_status")
+          )
+        ),
+        bslib::card(
+          class = "gf-panel gf-workspace-panel",
+          bslib::card_header("Endpoint Preview"),
+          shiny::tableOutput("workspace_endpoint_table")
+        )
+      ),
+      bslib::layout_columns(
+        col_widths = c(12),
+        bslib::card(
+          class = "gf-panel gf-workspace-panel",
+          bslib::card_header("Data Preview"),
+          shiny::tableOutput("workspace_data_table")
+        )
       )
     )
   )
