@@ -17,35 +17,220 @@ app_server <- function(input, output, session) {
     if (is.null(x) || (is.character(x) && !nzchar(x))) y else x
   }
 
+  default_projects <- data.frame(
+    id = c("zapps_pressmat", "vmrc_demo"),
+    label = c("ZAPPS/PreSSMat", "VMRC Demo Cohort"),
+    origin = c("existing", "existing"),
+    has_graphs = c(TRUE, TRUE),
+    stringsAsFactors = FALSE
+  )
+
+  template_catalog <- data.frame(
+    id = c("zapps_pressmat_template", "empty_template"),
+    label = c("ZAPPS/PreSSMat", "Empty template"),
+    has_graphs = c(TRUE, FALSE),
+    stringsAsFactors = FALSE
+  )
+
+  project_registry <- shiny::reactiveVal(default_projects)
+
   rv <- shiny::reactiveValues(
     project.active = FALSE,
-    project.mode = "existing_graphs",
+    project.id = NULL,
+    project.origin = NULL,
     project.name = "Untitled Project",
+    project.has.graphs = FALSE,
     project.show.data = FALSE
   )
 
-  shiny::observeEvent(input$project_mode, {
-    mode <- input$project_mode %||% "existing_graphs"
-    if (!isTRUE(rv$project.active)) {
-      default.name <- switch(
-        mode,
-        existing_graphs = "ZAPPS PreSSMat",
-        clone = "ZAPPS PreSSMat Copy",
-        template = "Template Project",
-        scratch = "Untitled Project",
-        "Untitled Project"
-      )
-      shiny::updateTextInput(session, "project_name", value = default.name)
+  make_project_id <- function(label, existing_ids) {
+    base <- tolower(gsub("[^a-zA-Z0-9]+", "_", label %||% "project"))
+    base <- gsub("^_+|_+$", "", base)
+    if (!nzchar(base)) {
+      base <- "project"
     }
+
+    candidate <- base
+    suffix <- 2L
+    while (candidate %in% existing_ids) {
+      candidate <- sprintf("%s_%d", base, suffix)
+      suffix <- suffix + 1L
+    }
+    candidate
+  }
+
+  open_project <- function(project_id) {
+    if (!nzchar(project_id %||% "")) {
+      return(invisible(NULL))
+    }
+
+    reg <- project_registry()
+    idx <- match(project_id, reg$id)
+    if (is.na(idx)) {
+      return(invisible(NULL))
+    }
+
+    row <- reg[idx, , drop = FALSE]
+    rv$project.active <- TRUE
+    rv$project.id <- row$id[[1]]
+    rv$project.origin <- row$origin[[1]]
+    rv$project.name <- row$label[[1]]
+    rv$project.has.graphs <- isTRUE(row$has_graphs[[1]])
+    rv$project.show.data <- !isTRUE(row$has_graphs[[1]])
+
+    invisible(NULL)
+  }
+
+  populate_project_select <- function(selected = "") {
+    reg <- project_registry()
+    choices <- c("Choose a project..." = "")
+    if (nrow(reg) > 0) {
+      choices <- c(choices, stats::setNames(reg$id, reg$label))
+    }
+
+    shiny::updateSelectInput(
+      session,
+      "project_select",
+      choices = choices,
+      selected = selected %||% ""
+    )
+  }
+
+  shiny::observeEvent(project_registry(), {
+    reg <- project_registry()
+    selected <- input$project_select %||% ""
+    if (!selected %in% reg$id) {
+      selected <- ""
+    }
+    populate_project_select(selected = selected)
+  }, ignoreInit = FALSE)
+
+  shiny::observeEvent(input$project_select, {
+    project_id <- input$project_select %||% ""
+    if (!nzchar(project_id)) {
+      return()
+    }
+    open_project(project_id)
   }, ignoreInit = TRUE)
 
-  shiny::observeEvent(input$project_start, {
-    mode <- input$project_mode %||% "scratch"
-    nm <- input$project_name %||% "Untitled Project"
-    rv$project.active <- TRUE
-    rv$project.mode <- mode
-    rv$project.name <- nm
-    rv$project.show.data <- !identical(mode, "existing_graphs")
+  shiny::observeEvent(input$project_new, {
+    reg <- project_registry()
+
+    template_choices <- if (nrow(template_catalog) > 0) {
+      stats::setNames(template_catalog$id, template_catalog$label)
+    } else {
+      c("No templates available" = "")
+    }
+
+    clone_choices <- if (nrow(reg) > 0) {
+      stats::setNames(reg$id, reg$label)
+    } else {
+      c("No projects available" = "")
+    }
+
+    shiny::showModal(
+      shiny::modalDialog(
+        title = "New Project",
+        easyClose = TRUE,
+        shiny::radioButtons(
+          "new_project_type",
+          label = NULL,
+          choices = c(
+            "New project from scratch" = "scratch",
+            "New project from template" = "template",
+            "Clone existing project" = "clone"
+          ),
+          selected = "scratch"
+        ),
+        shiny::conditionalPanel(
+          condition = "input.new_project_type == 'template'",
+          shiny::selectInput(
+            "new_project_template",
+            "Template",
+            choices = template_choices,
+            selected = unname(template_choices[[1]])
+          )
+        ),
+        shiny::conditionalPanel(
+          condition = "input.new_project_type == 'clone'",
+          shiny::selectInput(
+            "new_project_clone_source",
+            "Project to clone",
+            choices = clone_choices,
+            selected = unname(clone_choices[[1]])
+          )
+        ),
+        shiny::textInput("new_project_name", "Project name", value = ""),
+        footer = shiny::tagList(
+          shiny::modalButton("Cancel"),
+          shiny::actionButton("confirm_new_project", "Create Project", class = "btn-primary")
+        )
+      )
+    )
+  })
+
+  shiny::observeEvent(input$confirm_new_project, {
+    kind <- input$new_project_type %||% "scratch"
+    reg <- project_registry()
+
+    project_name <- trimws(input$new_project_name %||% "")
+    has_graphs <- FALSE
+
+    if (identical(kind, "scratch")) {
+      if (!nzchar(project_name)) {
+        project_name <- "Untitled Project"
+      }
+      has_graphs <- FALSE
+    }
+
+    if (identical(kind, "template")) {
+      template_id <- input$new_project_template %||% ""
+      template_idx <- match(template_id, template_catalog$id)
+      if (!is.na(template_idx)) {
+        has_graphs <- isTRUE(template_catalog$has_graphs[[template_idx]])
+        if (!nzchar(project_name)) {
+          project_name <- sprintf("%s Project", template_catalog$label[[template_idx]])
+        }
+      }
+      if (!nzchar(project_name)) {
+        project_name <- "Template Project"
+      }
+    }
+
+    if (identical(kind, "clone")) {
+      source_id <- input$new_project_clone_source %||% ""
+      source_idx <- match(source_id, reg$id)
+      if (is.na(source_idx)) {
+        shiny::showNotification(
+          "No clone source selected.",
+          type = "error"
+        )
+        return()
+      }
+
+      has_graphs <- isTRUE(reg$has_graphs[[source_idx]])
+      if (!nzchar(project_name)) {
+        project_name <- sprintf("%s Copy", reg$label[[source_idx]])
+      }
+    }
+
+    project_id <- make_project_id(project_name, reg$id)
+
+    updated_registry <- rbind(
+      reg,
+      data.frame(
+        id = project_id,
+        label = project_name,
+        origin = kind,
+        has_graphs = has_graphs,
+        stringsAsFactors = FALSE
+      )
+    )
+
+    project_registry(updated_registry)
+    shiny::removeModal()
+    populate_project_select(selected = project_id)
+    open_project(project_id)
   })
 
   shiny::observeEvent(input$add_data_section, {
@@ -58,17 +243,26 @@ app_server <- function(input, output, session) {
 
   output$project_status <- shiny::renderText({
     if (!isTRUE(rv$project.active)) {
-      return("Project hub active. Choose mode and click 'Enter Workspace'.")
+      return("Select an existing project or click 'New'.")
     }
-    mode.txt <- switch(
-      rv$project.mode,
-      existing_graphs = sprintf("Existing: %s", input$project_existing %||% "unknown"),
-      clone = sprintf("Clone of: %s", input$project_existing %||% "unknown"),
-      template = sprintf("Template: %s", input$project_template %||% "unknown"),
-      scratch = "From scratch",
-      "Unknown mode"
+
+    origin_txt <- switch(
+      rv$project.origin,
+      existing = "existing project",
+      template = "new project from template",
+      clone = "cloned project",
+      scratch = "new project from scratch",
+      "project"
     )
-    sprintf("Workspace: %s | %s", rv$project.name %||% "Untitled Project", mode.txt)
+
+    graph_txt <- if (isTRUE(rv$project.has.graphs)) "graphs ready" else "graphs not built yet"
+
+    sprintf(
+      "Workspace: %s | %s | %s",
+      rv$project.name %||% "Untitled Project",
+      origin_txt,
+      graph_txt
+    )
   })
 
   output$workflow_controls <- shiny::renderUI({
@@ -77,19 +271,19 @@ app_server <- function(input, output, session) {
         shiny::div(
           class = "gf-sidebar-note",
           shiny::strong("Workspace Locked"),
-          shiny::p("Select a project mode and click 'Enter Workspace' to reveal workflow controls.")
+          shiny::p("Select a project from the dropdown or click 'New' to reveal workflow controls.")
         )
       )
     }
 
     actions <- NULL
-    if (identical(rv$project.mode, "existing_graphs") && !isTRUE(rv$project.show.data)) {
+    if (isTRUE(rv$project.has.graphs) && !isTRUE(rv$project.show.data)) {
       actions <- shiny::actionButton(
         "add_data_section",
         "Add Data",
         class = "btn-light gf-btn-wide"
       )
-    } else if (identical(rv$project.mode, "existing_graphs") && isTRUE(rv$project.show.data)) {
+    } else if (isTRUE(rv$project.has.graphs) && isTRUE(rv$project.show.data)) {
       actions <- shiny::actionButton(
         "hide_data_section",
         "Hide Data Section",
@@ -175,7 +369,12 @@ app_server <- function(input, output, session) {
     proj.msg <- if (!isTRUE(rv$project.active)) {
       "Project: not started"
     } else {
-      sprintf("Project: %s | Mode: %s", rv$project.name %||% "Untitled Project", rv$project.mode %||% "unknown")
+      sprintf(
+        "Project: %s | Origin: %s | Graph-ready: %s",
+        rv$project.name %||% "Untitled Project",
+        rv$project.origin %||% "unknown",
+        if (isTRUE(rv$project.has.graphs)) "yes" else "no"
+      )
     }
 
     data.msg <- if (is.null(dat$data)) {
