@@ -32,7 +32,84 @@ app_server <- function(input, output, session) {
     stringsAsFactors = FALSE
   )
 
-  project_registry <- shiny::reactiveVal(default_projects)
+  registry_columns <- c("id", "label", "origin", "has_graphs")
+  registry_path <- file.path(
+    tools::R_user_dir("gflowui", which = "data"),
+    "projects",
+    "registry.rds"
+  )
+
+  sanitize_registry <- function(x) {
+    if (!is.data.frame(x) || nrow(x) < 1L) {
+      return(default_projects)
+    }
+
+    missing_cols <- setdiff(registry_columns, names(x))
+    if (length(missing_cols) > 0L) {
+      return(default_projects)
+    }
+
+    out <- x[, registry_columns, drop = FALSE]
+    out$id <- as.character(out$id)
+    out$label <- as.character(out$label)
+    out$origin <- as.character(out$origin)
+    out$has_graphs <- as.logical(out$has_graphs)
+    out <- out[stats::complete.cases(out[, c("id", "label", "origin")]), , drop = FALSE]
+    out <- out[nzchar(out$id) & nzchar(out$label), , drop = FALSE]
+    out <- out[!duplicated(out$id), , drop = FALSE]
+
+    if (nrow(out) < 1L) {
+      return(default_projects)
+    }
+    rownames(out) <- NULL
+    out
+  }
+
+  load_registry <- function() {
+    if (!file.exists(registry_path)) {
+      return(default_projects)
+    }
+
+    loaded <- tryCatch(readRDS(registry_path), error = function(e) NULL)
+    sanitize_registry(loaded)
+  }
+
+  save_registry <- function(registry_df) {
+    dir.create(dirname(registry_path), recursive = TRUE, showWarnings = FALSE)
+    tmp <- tempfile(
+      pattern = "registry-",
+      tmpdir = dirname(registry_path),
+      fileext = ".rds"
+    )
+
+    tryCatch(
+      {
+        saveRDS(registry_df, file = tmp)
+
+        moved <- file.rename(tmp, registry_path)
+        if (!moved) {
+          moved <- file.copy(tmp, registry_path, overwrite = TRUE)
+        }
+        if (!moved) {
+          stop("Could not write registry file.")
+        }
+      },
+      error = function(e) {
+        warning(
+          sprintf("gflowui: failed to persist project registry: %s", conditionMessage(e)),
+          call. = FALSE
+        )
+      },
+      finally = {
+        if (file.exists(tmp)) {
+          unlink(tmp, force = TRUE)
+        }
+      }
+    )
+    invisible(NULL)
+  }
+
+  project_registry <- shiny::reactiveVal(load_registry())
 
   rv <- shiny::reactiveValues(
     project.active = FALSE,
@@ -104,6 +181,11 @@ app_server <- function(input, output, session) {
     }
     populate_project_select(selected = selected)
   }, ignoreInit = FALSE)
+
+  shiny::observeEvent(project_registry(), {
+    reg <- sanitize_registry(project_registry())
+    save_registry(reg)
+  }, ignoreInit = TRUE)
 
   shiny::observeEvent(input$project_select, {
     project_id <- input$project_select %||% ""
