@@ -30,6 +30,18 @@ if (requireNamespace("pkgload", quietly = TRUE)) {
 gflowui::run_gflowui()
 ```
 
+## 3D renderers
+
+`gflowui` supports three 3D renderer modes:
+
+1. `RGL (live)` (default): on-the-fly WebGL rendering from in-memory graph layout
+   data, with interactive sphere/point parameter updates.
+2. `HTML`: prebuilt HTML artifact rendering (iframe).
+3. `Plotly`: reactive Plotly-based 3D rendering.
+
+The app now defaults to `RGL (live)` and falls back to `HTML`/`Plotly` when
+`rgl` is unavailable.
+
 ## Next implementation targets
 
 - Replace adapter stubs with real `gflow` calls.
