@@ -37,26 +37,11 @@ app_ui <- function() {
     sidebar = bslib::sidebar(
       class = "gf-sidebar",
       width = 470,
-      shiny::div(
-        class = "gf-sidebar-panel",
-        shiny::h5("Projects"),
-        shiny::selectInput(
-          "project_select",
-          label = NULL,
-          choices = c("Choose a project..." = ""),
-          selected = ""
-        ),
-        shiny::actionButton(
-          "project_new",
-          "New",
-          class = "btn-secondary gf-btn-wide"
-        ),
-        shiny::div(
-          class = "gf-inline-status",
-          shiny::textOutput("project_status")
-        )
-      ),
-      shiny::uiOutput("workflow_controls")
+      shiny::uiOutput("project_controls"),
+      shiny::uiOutput("workflow_controls"),
+      shiny::uiOutput("project_middle_actions"),
+      shiny::uiOutput("workspace_actions"),
+      shiny::uiOutput("run_monitor_panel")
     ),
     if (nzchar(css.path)) shiny::tags$head(shiny::includeCSS(css.path)),
     shiny::div(
