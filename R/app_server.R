@@ -25,6 +25,16 @@ app_server <- function(input, output, session) {
   graph_helpers <- gflowui_make_server_graph_helpers(rv = rv)
   list2env(graph_helpers, envir = environment())
 
+  # Prefer off-screen/null rgl device in Shiny; avoids noisy init warnings
+  # and brittle native OpenGL paths on some macOS/XQuartz setups.
+  old_rgl_use_null <- getOption("rgl.useNULL")
+  if (requireNamespace("rgl", quietly = TRUE) && !isTRUE(old_rgl_use_null)) {
+    options(rgl.useNULL = TRUE)
+    session$onSessionEnded(function() {
+      options(rgl.useNULL = old_rgl_use_null)
+    })
+  }
+
   shiny::observeEvent(project_registry(), {
     reg <- project_registry()
     selected <- input$project_select %||% ""
@@ -1294,7 +1304,7 @@ app_server <- function(input, output, session) {
             X = coords,
             cltr = vv,
             show.cltr.labels = FALSE,
-            show.legend = TRUE,
+            show.legend = FALSE,
             legend.title = as.character(src$label %||% src_key),
             radius = if (identical(vertex_mode, "sphere")) sphere_radius else NA_real_,
             widget.width = 1700L,
@@ -1319,7 +1329,7 @@ app_server <- function(input, output, session) {
               point.size = point_size,
               radius = if (identical(vertex_mode, "sphere")) sphere_radius else NULL,
               legend.title = as.character(src$label %||% src_key),
-              legend.show = TRUE,
+              legend.show = FALSE,
               widget.width = 1700L,
               widget.height = 1000L,
               background.color = "white",
