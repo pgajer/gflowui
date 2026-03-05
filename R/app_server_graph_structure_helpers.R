@@ -418,6 +418,64 @@ gflowui_make_server_graph_structure_helpers <- function(rv) {
     NA_integer_
   }
 
+  infer_graph_dims_from_project_metadata <- function(project_root, set_id = "", graph_set = NULL) {
+    root <- as.character(project_root %||% "")
+    if (!nzchar(root) || identical(root, "NA")) {
+      return(list(n_samples = NA_integer_, n_features = NA_integer_))
+    }
+
+    root <- tryCatch(normalizePath(path.expand(root), mustWork = TRUE), error = function(e) "")
+    if (!nzchar(root)) {
+      return(list(n_samples = NA_integer_, n_features = NA_integer_))
+    }
+
+    sid <- tolower(trimws(as.character(set_id %||% graph_set$id %||% "")))
+    out <- list(n_samples = NA_integer_, n_features = NA_integer_)
+
+    read_csv <- function(path) {
+      if (!file.exists(path)) {
+        return(NULL)
+      }
+      tryCatch(utils::read.csv(path, stringsAsFactors = FALSE), error = function(e) NULL)
+    }
+    first_pos_int <- function(x) {
+      vals <- suppressWarnings(as.integer(x))
+      vals <- vals[is.finite(vals) & vals > 0L]
+      if (length(vals) < 1L) {
+        return(NA_integer_)
+      }
+      vals[[1]]
+    }
+
+    hv_summary <- read_csv(file.path(root, "results", "asv_hv_k_gcv_sweep", "summary.across.feature.sets.csv"))
+    if (is.data.frame(hv_summary) && nrow(hv_summary) > 0L && sid %in% tolower(as.character(hv_summary$set.tag %||% character(0)))) {
+      row <- hv_summary[tolower(as.character(hv_summary$set.tag)) == sid, , drop = FALSE]
+      out$n_samples <- first_pos_int(row$n.samples)
+      out$n_features <- first_pos_int(row$n.features)
+      return(out)
+    }
+
+    full_summary <- read_csv(file.path(root, "results", "asv_full_graph_hv_criteria_k_selection", "summary.across.criteria.csv"))
+    if (is.data.frame(full_summary) && nrow(full_summary) > 0L && sid %in% c("all", "asv", "shared_all_asv")) {
+      out$n_samples <- first_pos_int(full_summary$n.samples)
+      out$n_features <- first_pos_int(full_summary$graph.features %||% full_summary$n.features.in.criterion)
+      if (is.finite(out$n_samples) || is.finite(out$n_features)) {
+        return(out)
+      }
+    }
+
+    run_meta <- tryCatch(
+      readRDS(file.path(root, "results", "asv_full_graph_hv_criteria_k_selection", "run.metadata.rds")),
+      error = function(e) NULL
+    )
+    if (is.list(run_meta)) {
+      out$n_samples <- if (is.finite(out$n_samples)) out$n_samples else first_pos_int(run_meta$asv.samples)
+      out$n_features <- if (is.finite(out$n_features)) out$n_features else first_pos_int(run_meta$asv.features)
+    }
+
+    out
+  }
+
   graph_data_type_choices <- function(graph_sets) {
     if (!is.list(graph_sets) || length(graph_sets) < 1L) {
       return(c())
@@ -689,6 +747,7 @@ gflowui_make_server_graph_structure_helpers <- function(rv) {
     infer_data_type_label = infer_data_type_label,
     infer_feature_count = infer_feature_count,
     infer_sample_count = infer_sample_count,
+    infer_graph_dims_from_project_metadata = infer_graph_dims_from_project_metadata,
     graph_data_type_choices = graph_data_type_choices,
     graph_alias_tokens = graph_alias_tokens,
     infer_optimal_method_id = infer_optimal_method_id,

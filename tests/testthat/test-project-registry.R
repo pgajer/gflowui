@@ -50,6 +50,8 @@ test_that("discover_project_artifacts finds symptoms_restart outputs", {
 
   dir.create(file.path(results_root, "asv_hv_k_gcv_sweep", "top20"), recursive = TRUE, showWarnings = FALSE)
   saveRDS(list(dummy = TRUE), file.path(results_root, "asv_hv_k_gcv_sweep", "top20", "iknn.selection.rds"))
+  dir.create(file.path(results_root, "asv_hv_k_gcv_sweep", "top20", "layouts_3d_rds"), recursive = TRUE, showWarnings = FALSE)
+  saveRDS(matrix(seq_len(12), nrow = 4, ncol = 3), file.path(results_root, "asv_hv_k_gcv_sweep", "top20", "layouts_3d_rds", "top20_k05_layout3d.rds"))
 
   dir.create(file.path(results_root, "asv_full_graph_hv_criteria_k_selection"), recursive = TRUE, showWarnings = FALSE)
   saveRDS(list(dummy = TRUE), file.path(results_root, "asv_full_graph_hv_criteria_k_selection", "asv.full.iknn.selection.rds"))
@@ -85,6 +87,9 @@ test_that("discover_project_artifacts finds symptoms_restart outputs", {
   expect_true(is.list(top20$optimal_k_artifacts))
   expect_true("response_gcv" %in% names(top20$optimal_k_artifacts))
   expect_true(is.list(top20$layout_assets$presets))
+  expect_true(is.list(top20$layout_assets$grip_layouts))
+  expect_true(length(top20$layout_assets$grip_layouts) >= 1L)
+  expect_true(any(vapply(top20$layout_assets$grip_layouts, function(x) identical(as.integer(x$k), 5L), logical(1))))
 
   expect_equal(length(discovered$condexp_sets), 1L)
   expect_equal(discovered$condexp_sets[[1]]$id, "vag_odor_binary")
@@ -163,6 +168,8 @@ test_that("register_project normalizes graph-set metadata and infers layout vari
   saveRDS(list(dummy = TRUE), graph_file)
   html_file <- file.path(project_root, "graph_point_1.5x_color_degree_k07.html")
   writeLines("<html><body>variant</body></html>", html_file)
+  layout_file <- file.path(project_root, "set_a_k07_layout3d.rds")
+  saveRDS(matrix(seq_len(15), nrow = 5, ncol = 3), layout_file)
 
   gflowui::register_project(
     project_root = project_root,
@@ -190,6 +197,9 @@ test_that("register_project normalizes graph-set metadata and infers layout vari
   expect_equal(gs$layout_assets$presets$renderer, "rglwidget")
   expect_true(is.list(gs$layout_assets$variants))
   expect_true(length(gs$layout_assets$variants) >= 1L)
+  expect_true(is.list(gs$layout_assets$grip_layouts))
+  expect_true(length(gs$layout_assets$grip_layouts) >= 1L)
+  expect_true(any(vapply(gs$layout_assets$grip_layouts, function(x) identical(as.integer(x$k), 7L), logical(1))))
 
   vv <- gs$layout_assets$variants[[1]]
   expect_equal(vv$renderer, "html")
