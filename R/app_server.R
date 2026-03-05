@@ -427,6 +427,114 @@ app_server <- function(input, output, session) {
     gflowui_infer_layout_variants(html_files)
   }
 
+  default_grip_layout_params <- function() {
+    list(
+      dim = 3L,
+      rounds = 200L,
+      final_rounds = 200L,
+      num_init = 10L,
+      num_nbrs = 30L,
+      r = 0.1,
+      s = 1.0,
+      tinit_factor = 6,
+      seed = 6L
+    )
+  }
+
+  build_grip_layout_assets_for_graph <- function(graph_obj, set_id, output_dir, k_values_hint = integer(0)) {
+    out <- list(
+      layouts = list(),
+      params = default_grip_layout_params(),
+      generated = FALSE,
+      message = NULL
+    )
+
+    if (!requireNamespace("grip", quietly = TRUE)) {
+      out$message <- "Package `grip` is unavailable; skipped grip.layout generation."
+      return(out)
+    }
+
+    collection <- extract_graph_collection(graph_obj)
+    if (is.null(collection) || !is.list(collection$graphs) || length(collection$graphs) < 1L) {
+      out$message <- "Could not extract graph collection for grip.layout generation."
+      return(out)
+    }
+
+    graphs <- collection$graphs
+    k_vals <- suppressWarnings(as.integer(collection$k_values))
+    if (length(k_vals) != length(graphs)) {
+      k_hint <- suppressWarnings(as.integer(k_values_hint))
+      k_hint <- k_hint[is.finite(k_hint)]
+      if (length(k_hint) == length(graphs)) {
+        k_vals <- k_hint
+      } else {
+        k_vals <- seq_along(graphs)
+      }
+    }
+
+    dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+    params <- out$params
+
+    for (ii in seq_along(graphs)) {
+      one <- graphs[[ii]]
+      if (!is.list(one) || is.null(one$adj_list)) {
+        next
+      }
+
+      adj_list <- one$adj_list
+      weight_list <- one$weight_list
+      if (!is.list(weight_list) || length(weight_list) != length(adj_list)) {
+        weight_list <- lapply(adj_list, function(nb) {
+          nn <- suppressWarnings(as.integer(nb %||% integer(0)))
+          rep(1, length(nn))
+        })
+      }
+
+      layout_res <- tryCatch(
+        do.call(
+          grip::grip.layout,
+          c(list(adj_list = adj_list, weight_list = weight_list), params)
+        ),
+        error = function(e) e
+      )
+      if (inherits(layout_res, "error")) {
+        next
+      }
+
+      coords <- suppressWarnings(as.matrix(layout_res))
+      if (!is.matrix(coords) || nrow(coords) < 1L || ncol(coords) < 3L) {
+        next
+      }
+      coords <- suppressWarnings(matrix(as.numeric(coords), nrow = nrow(coords), ncol = ncol(coords)))
+      if (!is.matrix(coords) || ncol(coords) < 3L) {
+        next
+      }
+      coords <- coords[, seq_len(3L), drop = FALSE]
+      coords[!is.finite(coords)] <- 0
+
+      k_use <- suppressWarnings(as.integer(k_vals[[ii]]))
+      if (!is.finite(k_use) || k_use < 1L) {
+        next
+      }
+      file_name <- sprintf("%s_k%02d_layout3d.rds", set_id, as.integer(k_use))
+      file_path <- file.path(output_dir, file_name)
+      saveRDS(coords, file_path)
+
+      key <- sprintf("k%02d", as.integer(k_use))
+      out$layouts[[key]] <- list(
+        k = as.integer(k_use),
+        path = normalizePath(file_path, mustWork = FALSE),
+        source = "grip.layout"
+      )
+    }
+
+    out$generated <- length(out$layouts) > 0L
+    if (!isTRUE(out$generated)) {
+      out$message <- "No grip.layout files were generated from the graph object."
+    }
+    out
+  }
+
   shiny::observeEvent(input$graph_update_placeholder, {
     if (!isTRUE(rv$project.active)) {
       return()
@@ -640,6 +748,13 @@ app_server <- function(input, output, session) {
         set_id = set_id,
         k_values = k_vals
       )
+      grip_layout_dir <- file.path(graph_asset_dir, sprintf("%s_layouts_3d_rds", set_id))
+      grip_assets <- build_grip_layout_assets_for_graph(
+        graph_obj = res,
+        set_id = set_id,
+        output_dir = grip_layout_dir,
+        k_values_hint = k_vals
+      )
       graph_set <- list(
         id = set_id,
         label = set_label,
@@ -650,12 +765,20 @@ app_server <- function(input, output, session) {
         n_samples = nrow(x_df),
         n_features = ncol(x_df),
         optimal_k_artifacts = optimal_artifacts,
-        layout_assets = list(presets = layout_presets, variants = layout_variants),
+        layout_assets = list(
+          presets = layout_presets,
+          variants = layout_variants,
+          grip_layouts = grip_assets$layouts,
+          grip_layout_params = grip_assets$params
+        ),
         selected_k = suppressWarnings(as.integer(res$selected.k)),
         selection_method = method,
         source = "gflowui_build",
         updated_at = .gflowui_now()
       )
+      if (!isTRUE(grip_assets$generated) && nzchar(as.character(grip_assets$message %||% ""))) {
+        set_run_monitor_note(as.character(grip_assets$message))
+      }
     } else {
       path_raw <- trimws(as.character(input$graph_update_register_path %||% ""))
       if (!nzchar(path_raw)) {
@@ -823,6 +946,20 @@ app_server <- function(input, output, session) {
       return(list(error = "Reference graph has no vertices."))
     }
 
+    manifest_layout_coords <- grip_layout_matrix_for_graph_set(
+      graph_set = spec$graph_set,
+      k_ref = picked$k_actual
+    )
+    if (!is.matrix(manifest_layout_coords)) {
+      manifest_layout_coords <- project_layout_manifest_matrix(
+        project_root = manifest$project_root %||% "",
+        spec = spec
+      )
+    }
+    if (!is.matrix(manifest_layout_coords) || nrow(manifest_layout_coords) != n_vertices || ncol(manifest_layout_coords) < 3L) {
+      manifest_layout_coords <- NULL
+    }
+
     condexp <- collect_reference_condexp_sources(
       manifest = manifest,
       set_id = spec$set_id,
@@ -837,11 +974,15 @@ app_server <- function(input, output, session) {
       picked$k_actual %||% "k",
       n_vertices
     )
-    coords <- compute_reference_layout(
-      adj_list = adj_list,
-      cache_key = cache_key,
-      spectral_coords = condexp$spectral_coords
-    )
+    coords <- if (is.matrix(manifest_layout_coords)) {
+      normalize_coord_matrix(manifest_layout_coords)
+    } else {
+      compute_reference_layout(
+        adj_list = adj_list,
+        cache_key = cache_key,
+        spectral_coords = condexp$spectral_coords
+      )
+    }
 
     sources <- condexp$sources
     add_source <- function(key, label, values, type = c("numeric", "categorical")) {
@@ -1407,10 +1548,45 @@ app_server <- function(input, output, session) {
     if (is.list(st) && is.null(st$error) && identical(as.character(st$set_id), as.character(set_id))) {
       st_use <- st
     }
+    dat <- data_state()
     gs <- graph_set_by_id(graph_sets, set_id)
     layout_presets <- if (is.list(gs$layout_assets$presets)) gs$layout_assets$presets else list()
     n_samples <- infer_sample_count(gs, st = st_use)
     n_features <- infer_feature_count(gs)
+
+    if (!is.finite(n_samples) || !is.finite(n_features)) {
+      dims_meta <- infer_graph_dims_from_project_metadata(
+        project_root = manifest$project_root %||% "",
+        set_id = set_id,
+        graph_set = gs
+      )
+      if (!is.finite(n_samples) && is.finite(suppressWarnings(as.integer(dims_meta$n_samples)))) {
+        n_samples <- suppressWarnings(as.integer(dims_meta$n_samples))
+      }
+      if (!is.finite(n_features) && is.finite(suppressWarnings(as.integer(dims_meta$n_features)))) {
+        n_features <- suppressWarnings(as.integer(dims_meta$n_features))
+      }
+    }
+
+    if (!is.finite(n_samples) && !is.null(dat$data)) {
+      n_samples <- as.integer(nrow(dat$data))
+    }
+    if (!is.finite(n_features) && !is.null(dat$data)) {
+      sample_hint <- n_samples
+      if (!is.finite(sample_hint) && is.list(st_use) && is.finite(suppressWarnings(as.integer(st_use$n_vertices)))) {
+        sample_hint <- suppressWarnings(as.integer(st_use$n_vertices))
+      }
+
+      if (!is.finite(sample_hint) || identical(nrow(dat$data), as.integer(sample_hint))) {
+        numeric_cols <- sum(vapply(dat$data, is.numeric, logical(1)))
+        if (is.finite(numeric_cols) && numeric_cols > 0L) {
+          n_features <- as.integer(numeric_cols)
+        } else {
+          n_features <- as.integer(ncol(dat$data))
+        }
+      }
+    }
+
     dims_text <- sprintf(
       "(%s x %s)",
       if (is.finite(n_samples)) format(as.integer(n_samples), big.mark = ",") else "?",
@@ -1622,7 +1798,6 @@ app_server <- function(input, output, session) {
     graph_sets <- if (is.list(manifest$graph_sets)) manifest$graph_sets else list()
     condexp_sets <- if (is.list(manifest$condexp_sets)) manifest$condexp_sets else list()
     endpoint_runs <- if (is.list(manifest$endpoint_runs)) manifest$endpoint_runs else list()
-    ref_info <- current_reference_info(manifest)
     graph_ui <- graph_structure_state()
 
     graph_tbl <- summarize_graph_assets(
@@ -1661,53 +1836,47 @@ app_server <- function(input, output, session) {
 
         shiny::tagList(
           shiny::div(
-            class = "gf-reference-summary",
-            shiny::p(sprintf("Current reference: %s", ref_info$summary)),
-            shiny::p(sprintf("Outcome overrides: %s", ref_info$by_outcome_text)),
-            if (nzchar(ref_info$reason)) shiny::p(sprintf("Reference reason: %s", ref_info$reason))
-          ),
-          shiny::div(
-            class = "gf-graph-row",
+            class = "gf-graph-row gf-graph-row-tight",
             shiny::span(class = "gf-graph-row-label", "Data Type:"),
             shiny::selectInput(
               "graph_data_type",
               label = NULL,
               choices = graph_ui$data_type_choices,
               selected = graph_ui$set_id,
-              width = "245px"
+              width = "160px"
             ),
             shiny::span(class = "gf-graph-dims", graph_ui$dims_text)
           ),
           shiny::div(
-            class = "gf-graph-row",
+            class = "gf-graph-row gf-graph-row-tight",
             shiny::span(class = "gf-graph-row-label", "k:"),
             shiny::selectInput(
               "graph_k",
               label = NULL,
               choices = graph_ui$k_choices,
               selected = if (is.finite(graph_ui$k_selected)) as.character(graph_ui$k_selected) else "",
-              width = "140px"
+              width = "105px"
             ),
             shiny::actionButton(
               "set_reference_graph_inline",
-              "Set As Reference Graph",
-              class = "btn-secondary"
+              "Set Reference",
+              class = "btn-light btn-sm gf-btn-inline"
             )
           ),
           shiny::div(
-            class = "gf-graph-row",
+            class = "gf-graph-row gf-graph-row-tight",
             shiny::span(class = "gf-graph-row-label", "Optimal k:"),
             shiny::selectInput(
               "graph_optimal_method",
               label = NULL,
               choices = graph_ui$optimal_choices,
               selected = graph_ui$optimal_selected,
-              width = "250px"
+              width = "170px"
             ),
             shiny::actionButton(
               "graph_optimal_show",
               "Show",
-              class = "btn-light"
+              class = "btn-light btn-sm gf-btn-inline"
             )
           ),
           shiny::actionButton(
@@ -1768,30 +1937,30 @@ app_server <- function(input, output, session) {
         panels,
         list(
           bslib::accordion_panel(
-            "Graph(s) Structure",
+            "Graphs",
             value = "workflow_graph_structure",
             graph_panel
           ),
           bslib::accordion_panel(
-            "Conditional Expectation Structure",
-            value = "workflow_condexp_structure",
-            shiny::tagList(
-              build_html_table(condexp_tbl, empty_text = "No conditional expectation assets found."),
-              shiny::actionButton(
-                "condexp_update_placeholder",
-                "Update / Refit CondExp...",
-                class = "btn-light gf-btn-wide"
-              )
-            )
-          ),
-          bslib::accordion_panel(
-            "Endpoints Structure",
+            "Endpoints",
             value = "workflow_endpoint_structure",
             shiny::tagList(
               build_html_table(endpoint_tbl, empty_text = "No endpoint runs found."),
               shiny::actionButton(
                 "endpoint_update_placeholder",
                 "Update / Recompute Endpoints...",
+                class = "btn-light gf-btn-wide"
+              )
+            )
+          ),
+          bslib::accordion_panel(
+            "Conditional Expectations",
+            value = "workflow_condexp_structure",
+            shiny::tagList(
+              build_html_table(condexp_tbl, empty_text = "No conditional expectation assets found."),
+              shiny::actionButton(
+                "condexp_update_placeholder",
+                "Update / Refit CondExp...",
                 class = "btn-light gf-btn-wide"
               )
             )

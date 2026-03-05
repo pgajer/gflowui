@@ -381,6 +381,247 @@ gflowui_write_manifest <- function(manifest, path) {
   NA_integer_
 }
 
+.normalize_grip_layout_entry <- function(layout, fallback_id = "grip_layout") {
+  one <- layout
+  if (is.character(one)) {
+    one <- list(path = one[[1]])
+  }
+  if (!is.list(one)) {
+    return(NULL)
+  }
+
+  path_norm <- .normalize_path_or_url(one$path %||% one$layout_file %||% one$rds_file %||% "")
+  if (!nzchar(path_norm)) {
+    return(NULL)
+  }
+
+  k_val <- .as_scalar_pos_int(one$k %||% one$k_value %||% .infer_variant_k(path_norm))
+  if (!is.finite(k_val)) {
+    return(NULL)
+  }
+
+  id <- .sanitize_variant_id(one$id %||% sprintf("k%02d", k_val), fallback = fallback_id)
+  label <- .as_scalar_chr(one$label, default = sprintf("k=%d grip.layout", k_val))
+  source <- .as_scalar_chr(one$source, default = "grip.layout")
+
+  list(
+    id = id,
+    label = label,
+    k = k_val,
+    path = path_norm,
+    source = source
+  )
+}
+
+.normalize_grip_layout_entries <- function(layouts) {
+  raw <- layouts
+  if (is.data.frame(raw) && nrow(raw) > 0L) {
+    rows <- vector("list", nrow(raw))
+    for (ii in seq_len(nrow(raw))) {
+      rows[[ii]] <- as.list(raw[ii, , drop = FALSE])
+    }
+    raw <- rows
+  } else if (is.character(raw)) {
+    raw <- as.list(raw)
+  } else if (!is.list(raw)) {
+    raw <- list()
+  }
+
+  out <- list()
+  seen_ids <- character(0)
+  seen_path <- character(0)
+  seen_k <- integer(0)
+
+  if (length(raw) > 0L) {
+    for (ii in seq_along(raw)) {
+      one <- .normalize_grip_layout_entry(raw[[ii]], fallback_id = sprintf("grip_layout_%d", ii))
+      if (is.null(one)) {
+        next
+      }
+      if (one$path %in% seen_path || one$k %in% seen_k) {
+        next
+      }
+      while (one$id %in% seen_ids) {
+        one$id <- sprintf("%s_%d", one$id, length(out) + 1L)
+      }
+      seen_ids <- c(seen_ids, one$id)
+      seen_path <- c(seen_path, one$path)
+      seen_k <- c(seen_k, one$k)
+      out[[one$id]] <- one
+    }
+  }
+
+  out
+}
+
+.discover_grip_layout_entries <- function(graph_file, set_id = "", k_values = integer(0), max_files = 4000L) {
+  gp <- .normalize_path_or_url(graph_file)
+  if (!nzchar(gp) || .is_url_path(gp) || !file.exists(gp)) {
+    return(list())
+  }
+
+  sid <- tolower(.as_scalar_chr(set_id, default = ""))
+  alias <- unique(c(
+    sid,
+    sub("^top", "hv", sid),
+    sub("^hv", "top", sid),
+    sub("^asv[_-]?", "", sid),
+    sub("^shared_", "", sid)
+  ))
+  if (sid %in% c("all", "asv", "shared_all_asv", "full", "asvfull")) {
+    alias <- unique(c(alias, "all", "asv", "asvfull", "shared_all_asv", "full"))
+  }
+  alias <- alias[nzchar(alias)]
+
+  base_dir <- dirname(gp)
+  search_dirs <- unique(c(
+    base_dir,
+    file.path(base_dir, "layouts_3d_rds"),
+    file.path(base_dir, "layouts_3d"),
+    file.path(base_dir, "layout_3d_rds"),
+    file.path(dirname(base_dir), sid, "layouts_3d_rds"),
+    file.path(dirname(base_dir), sid, "layouts_3d")
+  ))
+  search_dirs <- search_dirs[file.exists(search_dirs) & dir.exists(search_dirs)]
+  if (length(search_dirs) < 1L) {
+    return(list())
+  }
+
+  files <- character(0)
+  for (dd in search_dirs) {
+    ff <- list.files(
+      dd,
+      recursive = TRUE,
+      full.names = TRUE,
+      pattern = "layout3d\\.rds$",
+      ignore.case = TRUE
+    )
+    if (length(ff) > 0L) {
+      files <- c(files, ff)
+    }
+  }
+  files <- unique(files[file.exists(files)])
+  if (length(files) < 1L) {
+    return(list())
+  }
+  if (length(files) > max_files) {
+    files <- files[seq_len(max_files)]
+  }
+
+  k_use <- suppressWarnings(as.integer(k_values))
+  k_use <- k_use[is.finite(k_use)]
+
+  score_one <- function(path) {
+    low <- tolower(path)
+    base <- tolower(basename(path))
+    sc <- 0
+    for (tok in alias) {
+      if (!nzchar(tok)) {
+        next
+      }
+      if (grepl(tok, base, fixed = TRUE)) {
+        sc <- sc + 4
+      } else if (grepl(tok, low, fixed = TRUE)) {
+        sc <- sc + 2
+      }
+    }
+    if (grepl("layout3d", base, fixed = TRUE)) {
+      sc <- sc + 2
+    }
+    if (grepl("layouts_3d", low, fixed = TRUE)) {
+      sc <- sc + 1
+    }
+    sc
+  }
+
+  k_for_file <- rep.int(NA_integer_, length(files))
+  mm <- regexec("k0*([0-9]+)", basename(files), perl = TRUE)
+  rr <- regmatches(basename(files), mm)
+  for (ii in seq_along(rr)) {
+    if (length(rr[[ii]]) >= 2L) {
+      val <- suppressWarnings(as.integer(rr[[ii]][2]))
+      if (is.finite(val) && val > 0L) {
+        k_for_file[[ii]] <- val
+      }
+    }
+  }
+
+  keep <- is.finite(k_for_file)
+  if (!any(keep)) {
+    return(list())
+  }
+
+  tbl <- data.frame(
+    path = files[keep],
+    k = as.integer(k_for_file[keep]),
+    score = vapply(files[keep], score_one, numeric(1)),
+    stringsAsFactors = FALSE
+  )
+  if (length(k_use) > 0L && any(tbl$k %in% k_use)) {
+    tbl <- tbl[tbl$k %in% k_use, , drop = FALSE]
+  }
+  if (nrow(tbl) < 1L) {
+    return(list())
+  }
+
+  ord <- order(tbl$k, -tbl$score, nchar(tbl$path), tbl$path)
+  tbl <- tbl[ord, , drop = FALSE]
+  tbl <- tbl[!duplicated(tbl$k), , drop = FALSE]
+
+  .normalize_grip_layout_entries(lapply(seq_len(nrow(tbl)), function(ii) {
+    list(
+      k = tbl$k[[ii]],
+      path = tbl$path[[ii]],
+      source = "grip.layout"
+    )
+  }))
+}
+
+.normalize_grip_layout_params <- function(params) {
+  pp <- if (is.list(params)) params else list()
+  if (length(pp) < 1L) {
+    return(list())
+  }
+
+  as_int <- function(x) {
+    val <- suppressWarnings(as.integer(x))
+    val <- val[is.finite(val)]
+    if (length(val) < 1L) return(NULL)
+    val[[1]]
+  }
+  as_num <- function(x) {
+    val <- suppressWarnings(as.numeric(x))
+    val <- val[is.finite(val)]
+    if (length(val) < 1L) return(NULL)
+    val[[1]]
+  }
+
+  out <- list()
+
+  dim_v <- as_int(pp$dim)
+  if (!is.null(dim_v) && dim_v >= 2L) out$dim <- dim_v
+  rounds_v <- as_int(pp$rounds)
+  if (!is.null(rounds_v) && rounds_v > 0L) out$rounds <- rounds_v
+  final_rounds_v <- as_int(pp$final_rounds)
+  if (!is.null(final_rounds_v) && final_rounds_v > 0L) out$final_rounds <- final_rounds_v
+  num_init_v <- as_int(pp$num_init)
+  if (!is.null(num_init_v) && num_init_v > 0L) out$num_init <- num_init_v
+  num_nbrs_v <- as_int(pp$num_nbrs)
+  if (!is.null(num_nbrs_v) && num_nbrs_v > 0L) out$num_nbrs <- num_nbrs_v
+
+  r_v <- as_num(pp$r)
+  if (!is.null(r_v) && r_v > 0) out$r <- r_v
+  s_v <- as_num(pp$s)
+  if (!is.null(s_v) && s_v > 0) out$s <- s_v
+  tinit_v <- as_num(pp$tinit_factor)
+  if (!is.null(tinit_v) && tinit_v > 0) out$tinit_factor <- tinit_v
+
+  seed_v <- as_int(pp$seed)
+  if (!is.null(seed_v)) out$seed <- seed_v
+
+  out
+}
+
 .normalize_layout_variant_entry <- function(variant, fallback_id = "variant") {
   vv <- variant
   if (is.character(vv)) {
@@ -510,8 +751,14 @@ gflowui_infer_layout_variants <- function(paths) {
     }
   }
 
+  grip_raw <- la$grip_layouts %||% la$layout3d_files %||% la$layout_files %||% list()
+  grip_layouts <- .normalize_grip_layout_entries(grip_raw)
+  grip_params <- .normalize_grip_layout_params(la$grip_layout_params %||% la$grip_layout_args %||% list())
+
   la$presets <- presets
   la$variants <- variants
+  la$grip_layouts <- grip_layouts
+  la$grip_layout_params <- grip_params
   la
 }
 
@@ -587,6 +834,63 @@ gflowui_normalize_graph_set_manifest <- function(graph_set) {
     }
     out$layout_assets$variants <- existing
   }
+
+  existing_grip <- if (is.list(out$layout_assets$grip_layouts)) out$layout_assets$grip_layouts else list()
+  existing_grip <- .normalize_grip_layout_entries(existing_grip)
+  existing_k <- if (length(existing_grip) > 0L) {
+    suppressWarnings(as.integer(vapply(existing_grip, function(x) x$k, integer(1))))
+  } else {
+    integer(0)
+  }
+  existing_path <- if (length(existing_grip) > 0L) {
+    vapply(existing_grip, function(x) .as_scalar_chr(x$path, default = ""), character(1))
+  } else {
+    character(0)
+  }
+
+  legacy_grip_paths <- c(
+    out$layout3d_file,
+    out$layout3d_files,
+    out$layout_file,
+    out$layout_files,
+    out$layout_assets$layout3d_file,
+    out$layout_assets$layout3d_files,
+    out$layout_assets$layout_file,
+    out$layout_assets$layout_files
+  )
+  inferred_grip <- .normalize_grip_layout_entries(legacy_grip_paths)
+  discovered_grip <- .discover_grip_layout_entries(
+    graph_file = out$graph_file,
+    set_id = out$id,
+    k_values = out$k_values
+  )
+
+  for (one in c(inferred_grip, discovered_grip)) {
+    if (!is.list(one) || is.null(one$k) || is.null(one$path)) {
+      next
+    }
+    k_one <- suppressWarnings(as.integer(one$k))
+    path_one <- .as_scalar_chr(one$path, default = "")
+    if (!is.finite(k_one) || !nzchar(path_one)) {
+      next
+    }
+    if (k_one %in% existing_k || path_one %in% existing_path) {
+      next
+    }
+    id_use <- one$id
+    while (id_use %in% names(existing_grip)) {
+      id_use <- sprintf("%s_%d", one$id, length(existing_grip) + 1L)
+    }
+    one$id <- id_use
+    existing_grip[[id_use]] <- one
+    existing_k <- c(existing_k, k_one)
+    existing_path <- c(existing_path, path_one)
+  }
+
+  out$layout_assets$grip_layouts <- existing_grip
+
+  params_use <- .normalize_grip_layout_params(out$layout_assets$grip_layout_params %||% out$grip_layout_params %||% list())
+  out$layout_assets$grip_layout_params <- params_use
   out
 }
 
@@ -619,6 +923,17 @@ gflowui_normalize_graph_sets_manifest <- function(graph_sets) {
 
 .discover_symptoms_artifacts <- function(project_root) {
   results_root <- file.path(project_root, "results")
+  hv_summary_file <- file.path(results_root, "asv_hv_k_gcv_sweep", "summary.across.feature.sets.csv")
+  full_summary_file <- file.path(results_root, "asv_full_graph_hv_criteria_k_selection", "summary.across.criteria.csv")
+  full_meta_file <- file.path(results_root, "asv_full_graph_hv_criteria_k_selection", "run.metadata.rds")
+
+  hv_summary_tbl <- .read_csv_if_exists(hv_summary_file)
+  full_summary_tbl <- .read_csv_if_exists(full_summary_file)
+  full_meta <- if (file.exists(full_meta_file)) {
+    tryCatch(readRDS(full_meta_file), error = function(e) NULL)
+  } else {
+    NULL
+  }
 
   graph_specs <- list(
     list(
@@ -657,6 +972,56 @@ gflowui_normalize_graph_sets_manifest <- function(graph_sets) {
     if (!is.finite(n_features)) {
       n_features <- NA_integer_
     }
+    n_samples <- NA_integer_
+
+    if (is.data.frame(hv_summary_tbl) && nrow(hv_summary_tbl) > 0L && "set.tag" %in% names(hv_summary_tbl)) {
+      row <- hv_summary_tbl[tolower(as.character(hv_summary_tbl$set.tag)) == tolower(sp$id), , drop = FALSE]
+      if (nrow(row) > 0L) {
+        s <- suppressWarnings(as.integer(row$n.samples))
+        s <- s[is.finite(s) & s > 0L]
+        if (length(s) > 0L) {
+          n_samples <- s[[1]]
+        }
+
+        f <- suppressWarnings(as.integer(row$n.features))
+        f <- f[is.finite(f) & f > 0L]
+        if (length(f) > 0L) {
+          n_features <- f[[1]]
+        }
+      }
+    }
+
+    if (identical(sp$id, "all") && is.data.frame(full_summary_tbl) && nrow(full_summary_tbl) > 0L) {
+      s <- suppressWarnings(as.integer(full_summary_tbl$n.samples))
+      s <- s[is.finite(s) & s > 0L]
+      if (length(s) > 0L) {
+        n_samples <- s[[1]]
+      }
+
+      gf <- suppressWarnings(as.integer(full_summary_tbl$graph.features))
+      gf <- gf[is.finite(gf) & gf > 0L]
+      if (length(gf) > 0L) {
+        n_features <- gf[[1]]
+      }
+    }
+
+    if (is.list(full_meta)) {
+      if (!is.finite(n_samples)) {
+        s <- suppressWarnings(as.integer(full_meta$asv.samples))
+        s <- s[is.finite(s) & s > 0L]
+        if (length(s) > 0L) {
+          n_samples <- s[[1]]
+        }
+      }
+      if (!is.finite(n_features)) {
+        f <- suppressWarnings(as.integer(full_meta$asv.features))
+        f <- f[is.finite(f) & f > 0L]
+        if (length(f) > 0L) {
+          n_features <- f[[1]]
+        }
+      }
+    }
+
     optimal_artifacts <- list()
     if (file.exists(sp$k_source)) {
       optimal_artifacts$response_gcv <- normalizePath(sp$k_source, mustWork = TRUE)
@@ -669,6 +1034,7 @@ gflowui_normalize_graph_sets_manifest <- function(graph_sets) {
       data_type_label = if (identical(sp$id, "all")) "ASV" else sprintf("ASV-top%d", n_features),
       graph_file = normalizePath(sp$graph_file, mustWork = TRUE),
       k_values = k_vals,
+      n_samples = n_samples,
       n_features = n_features,
       optimal_k_artifacts = optimal_artifacts
     ))

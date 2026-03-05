@@ -257,6 +257,9 @@ gflowui_make_server_renderer_helpers <- function(rv, current_reference_info) {
   collect_reference_condexp_sources <- function(manifest, set_id, k_use, n_vertices) {
     sources <- list()
     spectral_coords <- NULL
+    spectral_best <- NULL
+    spectral_best_score <- -Inf
+    spectral_fallback <- NULL
 
     add_source <- function(key, label, values, type = c("numeric", "categorical")) {
       type <- match.arg(type)
@@ -281,11 +284,18 @@ gflowui_make_server_renderer_helpers <- function(rv, current_reference_info) {
     }
 
     condexp_sets <- if (is.list(manifest$condexp_sets)) manifest$condexp_sets else list()
+    set_id_chr <- tolower(as.character(set_id %||% ""))
     alias <- unique(c(
-      as.character(set_id %||% ""),
-      sub("^top", "hv", as.character(set_id %||% "")),
-      sub("^shared_", "", as.character(set_id %||% ""))
+      set_id_chr,
+      sub("^top", "hv", set_id_chr),
+      sub("^hv", "top", set_id_chr),
+      sub("^asv[_-]?", "", set_id_chr),
+      sub("^shared_", "", set_id_chr)
     ))
+    if (set_id_chr %in% c("all", "asv", "shared_all_asv", "full", "asvfull")) {
+      alias <- unique(c(alias, "all", "asv", "shared_all_asv", "full", "asvfull"))
+    }
+    alias <- alias[nzchar(alias)]
 
     for (cs in condexp_sets) {
       cs_id <- as.character(cs$id %||% "condexp")
@@ -293,6 +303,19 @@ gflowui_make_server_renderer_helpers <- function(rv, current_reference_info) {
       if (is.list(cs$family_runs) && length(cs$family_runs) > 0L) {
         for (fr in cs$family_runs) {
           fam <- as.character(fr$family %||% "family")
+          fam_key <- tolower(fam)
+          fam_alias <- unique(c(
+            fam_key,
+            sub("^top", "hv", fam_key),
+            sub("^hv", "top", fam_key),
+            sub("^asv[_-]?", "", fam_key),
+            sub("^shared_", "", fam_key)
+          ))
+          if (fam_key %in% c("all", "asv", "shared_all_asv", "full", "asvfull")) {
+            fam_alias <- unique(c(fam_alias, "all", "asv", "shared_all_asv", "full", "asvfull"))
+          }
+          fam_alias <- fam_alias[nzchar(fam_alias)]
+
           cand <- find_fit_file_for_k(fr$fit_files, k_use = k_use)
           if (length(cand) < 1L) {
             next
@@ -328,11 +351,26 @@ gflowui_make_server_renderer_helpers <- function(rv, current_reference_info) {
             )
           }
 
-          if (is.null(spectral_coords) && is.list(fit$spectral) && is.matrix(fit$spectral$eigenvectors)) {
+          if (is.list(fit$spectral) && is.matrix(fit$spectral$eigenvectors)) {
             ev <- fit$spectral$eigenvectors
             if (nrow(ev) == n_vertices && ncol(ev) >= 3L) {
               cols <- if (ncol(ev) >= 4L) 2:4 else 1:3
-              spectral_coords <- ev[, cols, drop = FALSE]
+              cand_coords <- ev[, cols, drop = FALSE]
+              if (is.null(spectral_fallback)) {
+                spectral_fallback <- cand_coords
+              }
+
+              score <- 0
+              if (length(alias) > 0L && length(fam_alias) > 0L) {
+                score <- score + 5L * length(intersect(alias, fam_alias))
+              }
+              if (fam_key %in% alias) {
+                score <- score + 10L
+              }
+              if (score > spectral_best_score) {
+                spectral_best <- cand_coords
+                spectral_best_score <- score
+              }
             }
           }
         }
@@ -368,6 +406,12 @@ gflowui_make_server_renderer_helpers <- function(rv, current_reference_info) {
           }
         }
       }
+    }
+
+    if (!is.null(spectral_best)) {
+      spectral_coords <- spectral_best
+    } else if (!is.null(spectral_fallback)) {
+      spectral_coords <- spectral_fallback
     }
 
     list(
@@ -502,6 +546,20 @@ gflowui_make_server_renderer_helpers <- function(rv, current_reference_info) {
     "1x"
   }
 
+  parse_size_numeric <- function(x, default = 1) {
+    val <- suppressWarnings(as.numeric(gsub("[^0-9.]+", "", as.character(x %||% ""))))
+    if (!is.finite(val) || val <= 0) {
+      return(as.numeric(default))
+    }
+    val
+  }
+
+  size_label_to_manifest_tag <- function(size_label) {
+    num <- parse_size_numeric(size_label, default = 1)
+    tag <- sprintf("s%0.2f", num)
+    gsub("\\.", "p", tag)
+  }
+
   layout_variant_paths <- function(
       graph_set,
       requested_renderer = "html",
@@ -586,6 +644,295 @@ gflowui_make_server_renderer_helpers <- function(rv, current_reference_info) {
     unique(paths[ord])
   }
 
+  project_layout_manifest_candidates <- function(project_root, spec, size_label = "1x") {
+    root <- as.character(project_root %||% "")
+    if (!nzchar(root) || identical(root, "NA")) {
+      return(character(0))
+    }
+    root <- tryCatch(normalizePath(path.expand(root), mustWork = TRUE), error = function(e) "")
+    if (!nzchar(root)) {
+      return(character(0))
+    }
+
+    set_id <- tolower(as.character(spec$set_id %||% ""))
+    k_ref <- suppressWarnings(as.integer(spec$k_ref))
+    req_size <- parse_size_numeric(size_label, default = 1)
+    req_size_tag <- tolower(size_label_to_manifest_tag(size_label))
+
+    set_alias <- unique(c(
+      set_id,
+      sub("^asv[_-]?", "", set_id),
+      sub("^shared_", "", set_id),
+      if (set_id %in% c("shared_all_asv", "asv")) "all" else character(0)
+    ))
+    set_alias <- set_alias[nzchar(set_alias)]
+
+    read_one_manifest <- function(path) {
+      if (!file.exists(path)) {
+        return(character(0))
+      }
+      tbl <- tryCatch(utils::read.csv(path, stringsAsFactors = FALSE), error = function(e) NULL)
+      if (!is.data.frame(tbl) || nrow(tbl) < 1L) {
+        return(character(0))
+      }
+      if ("status" %in% names(tbl)) {
+        tbl <- tbl[tolower(as.character(tbl$status)) %in% c("written", "ok", ""), , drop = FALSE]
+      }
+      if (nrow(tbl) < 1L) {
+        return(character(0))
+      }
+
+      if ("set.tag" %in% names(tbl) && length(set_alias) > 0L) {
+        set_col <- tolower(as.character(tbl$set.tag))
+        tbl <- tbl[set_col %in% set_alias, , drop = FALSE]
+      }
+      if (nrow(tbl) < 1L) {
+        return(character(0))
+      }
+
+      if (is.finite(k_ref) && "k" %in% names(tbl)) {
+        k_col <- suppressWarnings(as.integer(tbl$k))
+        tbl_k <- tbl[k_col == k_ref, , drop = FALSE]
+        if (nrow(tbl_k) > 0L) {
+          tbl <- tbl_k
+        }
+      }
+
+      if ("size.tag" %in% names(tbl)) {
+        tag_col <- tolower(as.character(tbl$size.tag))
+        tbl_tag <- tbl[tag_col == req_size_tag, , drop = FALSE]
+        if (nrow(tbl_tag) > 0L) {
+          tbl <- tbl_tag
+        }
+      } else if ("sphere.scale" %in% names(tbl)) {
+        ss <- suppressWarnings(as.numeric(tbl$sphere.scale))
+        if (any(is.finite(ss))) {
+          idx <- which.min(abs(ss - req_size))
+          if (length(idx) > 0L && is.finite(idx[[1]])) {
+            target <- ss[[idx[[1]]]]
+            tbl <- tbl[abs(ss - target) < 1e-9, , drop = FALSE]
+          }
+        }
+      }
+
+      file_col <- if ("file.no.gray" %in% names(tbl)) "file.no.gray" else "file"
+      ff <- as.character(tbl[[file_col]] %||% character(0))
+      ff <- ff[!is.na(ff) & nzchar(ff)]
+      ff <- ff[file.exists(ff)]
+      if (length(ff) < 1L) {
+        return(character(0))
+      }
+      unique(normalizePath(ff, mustWork = TRUE))
+    }
+
+    files <- c(
+      read_one_manifest(file.path(root, "results", "asv_hv_k_gcv_sweep", "asv_layouts_html_manifest.csv")),
+      read_one_manifest(file.path(root, "results", "asv_full_graph_hv_criteria_k_selection", "asvfull_layouts_html_manifest.csv"))
+    )
+    unique(files)
+  }
+
+  project_layout_manifest_matrix <- function(project_root, spec, size_label = "1x") {
+    root <- as.character(project_root %||% "")
+    if (!nzchar(root) || identical(root, "NA")) {
+      return(NULL)
+    }
+    root <- tryCatch(normalizePath(path.expand(root), mustWork = TRUE), error = function(e) "")
+    if (!nzchar(root)) {
+      return(NULL)
+    }
+
+    set_id <- tolower(as.character(spec$set_id %||% ""))
+    k_ref <- suppressWarnings(as.integer(spec$k_ref))
+    req_size <- parse_size_numeric(size_label, default = 1)
+    req_size_tag <- tolower(size_label_to_manifest_tag(size_label))
+
+    set_alias <- unique(c(
+      set_id,
+      sub("^asv[_-]?", "", set_id),
+      sub("^shared_", "", set_id),
+      if (set_id %in% c("shared_all_asv", "asv")) "all" else character(0)
+    ))
+    set_alias <- set_alias[nzchar(set_alias)]
+
+    read_one_manifest <- function(path) {
+      if (!file.exists(path)) {
+        return(NULL)
+      }
+      tbl <- tryCatch(utils::read.csv(path, stringsAsFactors = FALSE), error = function(e) NULL)
+      if (!is.data.frame(tbl) || nrow(tbl) < 1L) {
+        return(NULL)
+      }
+      if ("status" %in% names(tbl)) {
+        tbl <- tbl[tolower(as.character(tbl$status)) %in% c("written", "ok", ""), , drop = FALSE]
+      }
+      if (nrow(tbl) < 1L) {
+        return(NULL)
+      }
+
+      if ("set.tag" %in% names(tbl) && length(set_alias) > 0L) {
+        set_col <- tolower(as.character(tbl$set.tag))
+        tbl <- tbl[set_col %in% set_alias, , drop = FALSE]
+      }
+      if (nrow(tbl) < 1L) {
+        return(NULL)
+      }
+
+      if (is.finite(k_ref) && "k" %in% names(tbl)) {
+        k_col <- suppressWarnings(as.integer(tbl$k))
+        tbl_k <- tbl[k_col == k_ref, , drop = FALSE]
+        if (nrow(tbl_k) > 0L) {
+          tbl <- tbl_k
+        }
+      }
+
+      if ("size.tag" %in% names(tbl)) {
+        tag_col <- tolower(as.character(tbl$size.tag))
+        tbl_tag <- tbl[tag_col == req_size_tag, , drop = FALSE]
+        if (nrow(tbl_tag) > 0L) {
+          tbl <- tbl_tag
+        }
+      } else if ("sphere.scale" %in% names(tbl)) {
+        ss <- suppressWarnings(as.numeric(tbl$sphere.scale))
+        if (any(is.finite(ss))) {
+          idx <- which.min(abs(ss - req_size))
+          if (length(idx) > 0L && is.finite(idx[[1]])) {
+            target <- ss[[idx[[1]]]]
+            tbl <- tbl[abs(ss - target) < 1e-9, , drop = FALSE]
+          }
+        }
+      }
+
+      layout_col <- if ("layout.file" %in% names(tbl)) {
+        "layout.file"
+      } else if ("layout_file" %in% names(tbl)) {
+        "layout_file"
+      } else {
+        ""
+      }
+      if (!nzchar(layout_col)) {
+        return(NULL)
+      }
+
+      lf <- as.character(tbl[[layout_col]] %||% character(0))
+      lf <- lf[!is.na(lf) & nzchar(lf)]
+      lf <- lf[file.exists(lf)]
+      if (length(lf) < 1L) {
+        return(NULL)
+      }
+
+      for (path_one in unique(lf)) {
+        mat <- tryCatch(readRDS(path_one), error = function(e) NULL)
+        if (is.data.frame(mat)) {
+          mat <- as.matrix(mat)
+        } else {
+          mat <- suppressWarnings(as.matrix(mat))
+        }
+        if (!is.matrix(mat) || nrow(mat) < 1L || ncol(mat) < 3L) {
+          next
+        }
+        num <- suppressWarnings(matrix(
+          as.numeric(mat),
+          nrow = nrow(mat),
+          ncol = ncol(mat)
+        ))
+        if (!is.matrix(num) || nrow(num) < 1L || ncol(num) < 3L) {
+          next
+        }
+        if (!any(is.finite(num))) {
+          next
+        }
+        num[!is.finite(num)] <- 0
+        return(num[, seq_len(3L), drop = FALSE])
+      }
+
+      NULL
+    }
+
+    manifest_paths <- c(
+      file.path(root, "results", "asv_hv_k_gcv_sweep", "asv_layouts_html_manifest.csv"),
+      file.path(root, "results", "asv_full_graph_hv_criteria_k_selection", "asvfull_layouts_html_manifest.csv")
+    )
+
+    for (mp in manifest_paths) {
+      out <- read_one_manifest(mp)
+      if (is.matrix(out) && nrow(out) > 0L && ncol(out) >= 3L) {
+        return(out)
+      }
+    }
+
+    NULL
+  }
+
+  grip_layout_matrix_for_graph_set <- function(graph_set, k_ref = NA_integer_) {
+    if (!is.list(graph_set)) {
+      return(NULL)
+    }
+
+    raw <- graph_set$layout_assets$grip_layouts
+    if (!is.list(raw) || length(raw) < 1L) {
+      return(NULL)
+    }
+
+    entries <- lapply(raw, function(one) {
+      if (!is.list(one)) {
+        return(NULL)
+      }
+      path <- as.character(one$path %||% "")
+      if (!nzchar(path) || !file.exists(path)) {
+        return(NULL)
+      }
+      kk <- suppressWarnings(as.integer(one$k))
+      if (!is.finite(kk)) {
+        return(NULL)
+      }
+      list(path = normalizePath(path, mustWork = TRUE), k = kk)
+    })
+    entries <- Filter(Negate(is.null), entries)
+    if (length(entries) < 1L) {
+      return(NULL)
+    }
+
+    k_use <- suppressWarnings(as.integer(k_ref))
+    idx_order <- seq_along(entries)
+    if (is.finite(k_use)) {
+      kvals <- vapply(entries, function(one) suppressWarnings(as.integer(one$k)), integer(1))
+      if (any(kvals == k_use, na.rm = TRUE)) {
+        idx_order <- which(kvals == k_use)
+      } else {
+        idx_order <- order(abs(kvals - k_use), kvals)
+      }
+    }
+
+    for (ii in idx_order) {
+      mat <- tryCatch(readRDS(entries[[ii]]$path), error = function(e) NULL)
+      if (is.data.frame(mat)) {
+        mat <- as.matrix(mat)
+      } else {
+        mat <- suppressWarnings(as.matrix(mat))
+      }
+      if (!is.matrix(mat) || nrow(mat) < 1L || ncol(mat) < 3L) {
+        next
+      }
+
+      num <- suppressWarnings(matrix(
+        as.numeric(mat),
+        nrow = nrow(mat),
+        ncol = ncol(mat)
+      ))
+      if (!is.matrix(num) || nrow(num) < 1L || ncol(num) < 3L) {
+        next
+      }
+      if (!any(is.finite(num))) {
+        next
+      }
+      num[!is.finite(num)] <- 0
+      return(num[, seq_len(3L), drop = FALSE])
+    }
+
+    NULL
+  }
+
   discover_reference_html_candidates <- function(
       manifest,
       spec,
@@ -638,8 +985,8 @@ gflowui_make_server_renderer_helpers <- function(rv, current_reference_info) {
     gs <- spec$graph_set
     k_ref <- suppressWarnings(as.integer(spec$k_ref))
 
-    candidates <- add_paths(
-      candidates,
+    explicit_from_variants <- add_paths(
+      character(0),
       layout_variant_paths(
         graph_set = gs,
         requested_renderer = requested_renderer,
@@ -649,6 +996,24 @@ gflowui_make_server_renderer_helpers <- function(rv, current_reference_info) {
         k_ref = k_ref
       )
     )
+    if (length(explicit_from_variants) > 0L) {
+      cache[[key]] <- explicit_from_variants
+      rv$reference.html.cache <- cache
+      return(explicit_from_variants)
+    }
+
+    explicit_from_project_manifest <- project_layout_manifest_candidates(
+      project_root = manifest$project_root %||% "",
+      spec = spec,
+      size_label = size_label
+    )
+    if (length(explicit_from_project_manifest) > 0L) {
+      cache[[key]] <- explicit_from_project_manifest
+      rv$reference.html.cache <- cache
+      return(explicit_from_project_manifest)
+    }
+
+    candidates <- add_paths(candidates, explicit_from_variants)
     candidates <- add_paths(candidates, c(gs$html_file, gs$html_files, gs$html_candidates))
     if (nzchar(as.character(gs$graph_file %||% "")) && file.exists(gs$graph_file)) {
       dirs <- add_dirs(dirs, dirname(gs$graph_file))
@@ -742,7 +1107,7 @@ gflowui_make_server_renderer_helpers <- function(rv, current_reference_info) {
         sc <- sc + 1
       }
       if (grepl("no_gray", base, fixed = TRUE)) {
-        sc <- sc + 1
+        sc <- sc - 1
       }
       sc
     }
@@ -807,6 +1172,8 @@ gflowui_make_server_renderer_helpers <- function(rv, current_reference_info) {
     string_hash_token = string_hash_token,
     local_html_resource_url = local_html_resource_url,
     discover_reference_html_candidates = discover_reference_html_candidates,
-    html_candidate_choices = html_candidate_choices
+    html_candidate_choices = html_candidate_choices,
+    project_layout_manifest_matrix = project_layout_manifest_matrix,
+    grip_layout_matrix_for_graph_set = grip_layout_matrix_for_graph_set
   )
 }
