@@ -482,6 +482,55 @@ gflowui_make_server_renderer_helpers <- function(rv, current_reference_info) {
       paste(toupper(substr(txt, 1L, 1L)), substr(txt, 2L, nchar(txt)), sep = "")
     }
 
+    as_numeric_vector <- function(x) {
+      xx <- x
+      if (is.logical(xx)) {
+        xx <- as.numeric(xx)
+      } else if (is.factor(xx)) {
+        xx <- as.character(xx)
+      }
+      suppressWarnings(as.numeric(xx))
+    }
+
+    binary_outcome_rate <- function(y) {
+      yy <- as_numeric_vector(y)
+      yy <- yy[is.finite(yy)]
+      if (length(yy) < 1L) {
+        return(NA_real_)
+      }
+      uniq <- sort(unique(yy))
+      if (length(uniq) < 1L || length(uniq) > 2L) {
+        return(NA_real_)
+      }
+      if (!all(uniq %in% c(0, 1))) {
+        return(NA_real_)
+      }
+      mu <- mean(yy, na.rm = TRUE)
+      if (!is.finite(mu) || mu <= 0) {
+        return(NA_real_)
+      }
+      mu
+    }
+
+    add_relative_condexp_source <- function(key_base, outcome_label, yhat, yobs) {
+      yhat_num <- as_numeric_vector(yhat)
+      yobs_num <- as_numeric_vector(yobs)
+      if (length(yhat_num) != n_vertices || length(yobs_num) != n_vertices) {
+        return(invisible(NULL))
+      }
+      mu <- binary_outcome_rate(yobs_num)
+      if (!is.finite(mu) || mu <= 0) {
+        return(invisible(NULL))
+      }
+      add_source(
+        key = sprintf("%s_rel_yhat", key_base),
+        label = sprintf("%s rel.y.hat", as.character(outcome_label)),
+        values = yhat_num / mu,
+        type = "numeric"
+      )
+      invisible(NULL)
+    }
+
     for (cs in condexp_sets) {
       cs_id <- as.character(cs$id %||% "condexp")
       cs_outcomes <- as.character(cs$outcomes %||% character(0))
@@ -531,28 +580,34 @@ gflowui_make_server_renderer_helpers <- function(rv, current_reference_info) {
             reference_adj_list = reference_adj_list,
             n_vertices = n_vertices
           )
-          if (length(yhat) == n_vertices) {
-            add_source(
-              key = sprintf("condexp_%s_%s_yhat", cs_id, fam),
-              label = sprintf("%s CondExp", cs_outcome_label),
-              values = yhat,
-              type = "numeric"
-            )
-          }
-
           yobs <- expand_lcc_to_full(
             values = fit$y %||% numeric(0),
             reference_adj_list = reference_adj_list,
             n_vertices = n_vertices
           )
+          src_base_key <- sprintf("condexp_%s_%s", cs_id, fam)
+          if (length(yhat) == n_vertices) {
+            add_source(
+              key = sprintf("%s_yhat", src_base_key),
+              label = sprintf("%s CondExp", cs_outcome_label),
+              values = yhat,
+              type = "numeric"
+            )
+          }
           if (length(yobs) == n_vertices) {
             add_source(
-              key = sprintf("condexp_%s_%s_yobs", cs_id, fam),
+              key = sprintf("%s_yobs", src_base_key),
               label = sprintf("Observed %s", cs_outcome_label),
               values = yobs,
               type = "numeric"
             )
           }
+          add_relative_condexp_source(
+            key_base = src_base_key,
+            outcome_label = cs_outcome_label,
+            yhat = yhat,
+            yobs = yobs
+          )
 
           if (is.list(fit$spectral) && is.matrix(fit$spectral$eigenvectors)) {
             ev <- fit$spectral$eigenvectors
@@ -592,20 +647,30 @@ gflowui_make_server_renderer_helpers <- function(rv, current_reference_info) {
             if (nrow(dd) != n_vertices) {
               next
             }
+            oo_label <- pretty_outcome_label(oo)
+            src_base_key <- sprintf("long_%s_%s", cs_id, oo)
+            yhat <- suppressWarnings(as.numeric(dd$y_fitted))
+            yobs <- if ("y_observed" %in% names(dd)) suppressWarnings(as.numeric(dd$y_observed)) else numeric(0)
             add_source(
-              key = sprintf("long_%s_%s_yhat", cs_id, oo),
-              label = sprintf("%s CondExp", pretty_outcome_label(oo)),
-              values = suppressWarnings(as.numeric(dd$y_fitted)),
+              key = sprintf("%s_yhat", src_base_key),
+              label = sprintf("%s CondExp", oo_label),
+              values = yhat,
               type = "numeric"
             )
             if ("y_observed" %in% names(dd)) {
               add_source(
-                key = sprintf("long_%s_%s_yobs", cs_id, oo),
-                label = sprintf("Observed %s", pretty_outcome_label(oo)),
-                values = suppressWarnings(as.numeric(dd$y_observed)),
+                key = sprintf("%s_yobs", src_base_key),
+                label = sprintf("Observed %s", oo_label),
+                values = yobs,
                 type = "numeric"
               )
             }
+            add_relative_condexp_source(
+              key_base = src_base_key,
+              outcome_label = oo_label,
+              yhat = yhat,
+              yobs = yobs
+            )
           }
         }
       }

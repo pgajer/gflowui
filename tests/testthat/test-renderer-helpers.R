@@ -63,6 +63,116 @@ test_that("spectral layout selection honors requested graph family", {
   expect_equal(unname(picked_top50$spectral_coords), unname(hv50_coords))
 })
 
+test_that("binary fit-file condexp adds rel.y.hat color source", {
+  root <- tempfile("renderer-condexp-rel-fit-")
+  dir.create(root, recursive = TRUE, showWarnings = FALSE)
+  on.exit(unlink(root, recursive = TRUE, force = TRUE), add = TRUE)
+
+  fit_path <- file.path(root, "fit_all_k10.rds")
+  y <- c(0, 1, 1, 0, 1)
+  yhat <- c(0.1, 0.8, 0.7, 0.2, 0.9)
+  saveRDS(list(y = y, fitted.values = yhat), fit_path)
+
+  manifest <- list(
+    condexp_sets = list(list(
+      id = "vag_odor_binary",
+      outcomes = "vag_odor",
+      family_runs = list(
+        list(family = "all", fit_files = fit_path)
+      )
+    ))
+  )
+
+  rv <- new.env(parent = emptyenv())
+  rv$reference.layout.cache <- list()
+  rv$reference.html.cache <- list()
+  rv$html.resource.map <- list()
+
+  graph_helpers <- gflowui:::gflowui_make_server_graph_structure_helpers(rv = rv)
+  renderer_helpers <- gflowui:::gflowui_make_server_renderer_helpers(
+    rv = rv,
+    current_reference_info = graph_helpers$current_reference_info
+  )
+
+  out <- renderer_helpers$collect_reference_condexp_sources(
+    manifest = manifest,
+    set_id = "all",
+    k_use = 10L,
+    n_vertices = length(y)
+  )
+
+  labels <- vapply(out$sources, function(src) {
+    if (!is.list(src) || is.null(src$label)) {
+      return("")
+    }
+    as.character(src$label[[1]])
+  }, character(1))
+  rel_idx <- which(labels == "VAG_ODOR rel.y.hat")
+  expect_equal(length(rel_idx), 1L)
+  rel_vals <- out$sources[[rel_idx]]$values
+  expect_equal(rel_vals, yhat / mean(y))
+})
+
+test_that("rel.y.hat is added only for binary long-table outcomes", {
+  root <- tempfile("renderer-condexp-rel-long-")
+  dir.create(root, recursive = TRUE, showWarnings = FALSE)
+  on.exit(unlink(root, recursive = TRUE, force = TRUE), add = TRUE)
+
+  long_path <- file.path(root, "condexp.long.rds")
+  n <- 4L
+  tbl <- rbind(
+    data.frame(
+      k = 7L,
+      outcome = "ibs",
+      y_fitted = c(0.2, 0.4, 0.6, 0.8),
+      y_observed = c(0, 1, 0, 1),
+      stringsAsFactors = FALSE
+    ),
+    data.frame(
+      k = 7L,
+      outcome = "severity_score",
+      y_fitted = c(0.1, 0.2, 0.3, 0.4),
+      y_observed = c(0.2, 0.4, 0.6, 0.8),
+      stringsAsFactors = FALSE
+    )
+  )
+  saveRDS(tbl, long_path)
+
+  manifest <- list(
+    condexp_sets = list(list(
+      id = "ibs_ibd_benchmark",
+      long_table_file = long_path
+    ))
+  )
+
+  rv <- new.env(parent = emptyenv())
+  rv$reference.layout.cache <- list()
+  rv$reference.html.cache <- list()
+  rv$html.resource.map <- list()
+
+  graph_helpers <- gflowui:::gflowui_make_server_graph_structure_helpers(rv = rv)
+  renderer_helpers <- gflowui:::gflowui_make_server_renderer_helpers(
+    rv = rv,
+    current_reference_info = graph_helpers$current_reference_info
+  )
+
+  out <- renderer_helpers$collect_reference_condexp_sources(
+    manifest = manifest,
+    set_id = "shared_all_asv",
+    k_use = 7L,
+    n_vertices = n
+  )
+
+  labels <- vapply(out$sources, function(src) {
+    if (!is.list(src) || is.null(src$label)) {
+      return("")
+    }
+    as.character(src$label[[1]])
+  }, character(1))
+  expect_true("IBS rel.y.hat" %in% labels)
+  expect_false("Severity score rel.y.hat" %in% labels)
+})
+
 
 test_that("project layout manifest matrix resolves set and k specific layout", {
   root <- tempfile("renderer-layout-manifest-")
