@@ -903,6 +903,519 @@ app_server <- function(input, output, session) {
     )
   }, ignoreInit = TRUE)
 
+  endpoint_overlay_selection <- shiny::reactiveVal(character(0))
+  workflow_open_panels <- shiny::reactiveVal(NULL)
+  ## Generation counter: incremented whenever an endpoint-label
+  ## parameter changes so the renderUI emits a *new* output ID for
+  ## the rglwidget, forcing the browser to destroy the old WebGL
+  ## context and create a fresh one (avoids stale-texture black
+  ## rectangles on in-place widget updates).
+  rgl_gen <- shiny::reactiveVal(0L)
+  rgl_last_output_id <- shiny::reactiveVal(NULL)
+  shiny::observeEvent(rv$project.id, {
+    endpoint_overlay_selection(character(0))
+    workflow_open_panels(NULL)
+    rgl_last_output_id(NULL)
+    rgl_gen(0L)
+  }, ignoreInit = TRUE)
+  shiny::observeEvent(
+    list(input$endpoint_label_size, input$endpoint_label_offset,
+         input$endpoint_marker_size, input$endpoint_marker_color),
+    {
+      rgl_gen(shiny::isolate(rgl_gen()) + 1L)
+    },
+    ignoreInit = TRUE
+  )
+  shiny::observeEvent(endpoint_overlay_selection(), {
+    rgl_gen(shiny::isolate(rgl_gen()) + 1L)
+  }, ignoreInit = TRUE)
+
+  shiny::observeEvent(input$workflow_accordion, {
+    if (!isTRUE(rv$project.active) || is.null(input$workflow_accordion)) {
+      return()
+    }
+    vals <- as.character(input$workflow_accordion %||% character(0))
+    vals <- unique(vals[nzchar(vals)])
+    workflow_open_panels(vals)
+  }, ignoreInit = TRUE)
+
+  read_csv_safely <- function(path) {
+    pp <- as.character(path %||% "")
+    if (!nzchar(pp) || !file.exists(pp)) {
+      return(NULL)
+    }
+    tryCatch(utils::read.csv(pp, stringsAsFactors = FALSE), error = function(e) NULL)
+  }
+
+  first_existing_col <- function(df, candidates) {
+    if (!is.data.frame(df) || length(candidates) < 1L) {
+      return("")
+    }
+    cn <- names(df)
+    low <- tolower(cn)
+    for (cand in as.character(candidates)) {
+      idx <- match(tolower(cand), low)
+      if (is.finite(idx)) {
+        return(cn[[idx]])
+      }
+    }
+    ""
+  }
+
+  parse_k_from_token <- function(x) {
+    txt <- tolower(as.character(x %||% ""))
+    mm <- regexec("k0*([0-9]+)", txt, perl = TRUE)
+    rr <- regmatches(txt, mm)[[1]]
+    if (length(rr) >= 2L && nzchar(rr[[2]])) {
+      vv <- suppressWarnings(as.integer(rr[[2]]))
+      if (is.finite(vv) && vv > 0L) {
+        return(vv)
+      }
+    }
+    NA_integer_
+  }
+
+  parse_scale_multiplier <- function(x, default = 1) {
+    txt <- tolower(trimws(as.character(x %||% "")))
+    if (!nzchar(txt)) {
+      return(as.numeric(default))
+    }
+    val <- suppressWarnings(as.numeric(gsub("[^0-9.]+", "", txt)))
+    if (!is.finite(val) || val < 0) {
+      return(as.numeric(default))
+    }
+    val
+  }
+
+  endpoint_label_positions <- function(coords, endpoint_idx, offset_mult = 1) {
+    if (!is.matrix(coords) || nrow(coords) < 1L || ncol(coords) < 3L) {
+      return(matrix(numeric(0), ncol = 3))
+    }
+    idx <- suppressWarnings(as.integer(endpoint_idx))
+    idx <- idx[is.finite(idx) & idx >= 1L & idx <= nrow(coords)]
+    if (length(idx) < 1L) {
+      return(matrix(numeric(0), ncol = 3))
+    }
+
+    base <- coords[idx, 1:3, drop = FALSE]
+    center <- colMeans(coords[, 1:3, drop = FALSE], na.rm = TRUE)
+    dir <- sweep(base, 2, center, "-")
+    norm <- sqrt(rowSums(dir^2))
+    unit <- dir
+    good <- is.finite(norm) & norm > 1e-12
+    if (any(good)) {
+      unit[good, ] <- unit[good, , drop = FALSE] / norm[good]
+    }
+    if (any(!good)) {
+      unit[!good, ] <- c(0, 0, 1)
+    }
+
+    span <- apply(coords[, 1:3, drop = FALSE], 2, function(vv) diff(range(vv, na.rm = TRUE)))
+    span <- span[is.finite(span)]
+    span_ref <- if (length(span) > 0L) mean(span) else 1
+    shift <- max(1e-8, span_ref * 0.018 * as.numeric(offset_mult))
+    base + unit * shift
+  }
+
+  normalize_endpoint_method <- function(ep) {
+    methods <- unique(tolower(c(
+      as.character(ep$method %||% character(0)),
+      as.character(ep$methods %||% character(0))
+    )))
+    methods <- methods[nzchar(methods) & methods != "na"]
+    if (length(methods) < 1L) {
+      hint <- tolower(sprintf(
+        "%s %s",
+        as.character(ep$id %||% ""),
+        as.character(ep$label %||% "")
+      ))
+      if (grepl("evenness", hint, fixed = TRUE)) {
+        return("evenness")
+      }
+      return("endpoint")
+    }
+    if (any(grepl("evenness", methods, fixed = TRUE))) {
+      return("evenness")
+    }
+    out <- gsub("[^a-z0-9]+", "_", methods[[1]])
+    out <- gsub("^_+|_+$", "", out)
+    if (!nzchar(out)) {
+      out <- "endpoint"
+    }
+    out
+  }
+
+  resolve_endpoint_run <- function(manifest, preferred_k = NA_integer_) {
+    endpoint_runs <- if (is.list(manifest$endpoint_runs)) manifest$endpoint_runs else list()
+    if (length(endpoint_runs) < 1L) {
+      return(NULL)
+    }
+    defaults <- if (is.list(manifest$defaults)) manifest$defaults else list()
+    default_id <- as.character(defaults$endpoint_run_id %||% "")
+    ids <- vapply(endpoint_runs, function(ep) as.character(ep$id %||% ""), character(1))
+    idx <- match(default_id, ids)
+    if (!is.finite(idx)) {
+      idx <- 1L
+    }
+
+    k_pref <- suppressWarnings(as.integer(preferred_k))
+    if (is.finite(k_pref)) {
+      has_k <- vapply(endpoint_runs, function(ep) {
+        kvals <- suppressWarnings(as.integer(ep$k_values %||% integer(0)))
+        kvals <- kvals[is.finite(kvals)]
+        if (length(kvals) > 0L) {
+          return(k_pref %in% kvals)
+        }
+        sf <- read_csv_safely(ep$summary_csv %||% "")
+        if (is.data.frame(sf) && "k" %in% names(sf)) {
+          kk <- suppressWarnings(as.integer(sf$k))
+          return(any(is.finite(kk) & kk == k_pref))
+        }
+        lf <- read_csv_safely(ep$labels_csv %||% "")
+        if (is.data.frame(lf) && "k" %in% names(lf)) {
+          kk <- suppressWarnings(as.integer(lf$k))
+          return(any(is.finite(kk) & kk == k_pref))
+        }
+        FALSE
+      }, logical(1))
+
+      if ((length(has_k) == length(endpoint_runs)) && any(has_k)) {
+        if (!isTRUE(has_k[[idx]])) {
+          idx <- which(has_k)[[1]]
+        }
+      }
+    }
+
+    endpoint_runs[[idx]]
+  }
+
+  endpoint_rows_for_run <- function(ep_run) {
+    if (!is.list(ep_run) || length(ep_run) < 1L) {
+      return(data.frame())
+    }
+
+    run_id <- as.character(ep_run$id %||% "endpoint_run")
+    method <- normalize_endpoint_method(ep_run)
+    labels_csv <- as.character(ep_run$labels_csv %||% "")
+    summary_csv <- as.character(ep_run$summary_csv %||% "")
+    bundle_file <- as.character(ep_run$bundle_file %||% "")
+    per_k_files <- normalize_paths(ep_run$per_k_bundles %||% character(0))
+    per_k_files <- per_k_files[file.exists(per_k_files)]
+
+    kvals <- suppressWarnings(as.integer(ep_run$k_values %||% integer(0)))
+    kvals <- kvals[is.finite(kvals) & kvals > 0L]
+
+    sf <- read_csv_safely(summary_csv)
+    if (is.data.frame(sf) && "k" %in% names(sf)) {
+      ks <- suppressWarnings(as.integer(sf$k))
+      ks <- ks[is.finite(ks) & ks > 0L]
+      kvals <- c(kvals, ks)
+    }
+
+    lf <- read_csv_safely(labels_csv)
+    if (is.data.frame(lf) && "k" %in% names(lf)) {
+      ks <- suppressWarnings(as.integer(lf$k))
+      ks <- ks[is.finite(ks) & ks > 0L]
+      kvals <- c(kvals, ks)
+    }
+
+    if (length(per_k_files) > 0L) {
+      ks <- suppressWarnings(as.integer(vapply(per_k_files, parse_k_from_token, integer(1))))
+      ks <- ks[is.finite(ks) & ks > 0L]
+      kvals <- c(kvals, ks)
+    }
+
+    if (file.exists(bundle_file)) {
+      kk <- suppressWarnings(as.integer(tryCatch(readRDS(bundle_file)$k, error = function(e) NA_integer_)))
+      if (is.finite(kk) && kk > 0L) {
+        kvals <- c(kvals, kk)
+      }
+    }
+
+    kvals <- sort(unique(kvals))
+    if (length(kvals) < 1L) {
+      kk <- parse_k_from_token(run_id)
+      if (is.finite(kk) && kk > 0L) {
+        kvals <- kk
+      }
+    }
+    if (length(kvals) < 1L) {
+      kvals <- NA_integer_
+    }
+
+    rows <- lapply(seq_along(kvals), function(ii) {
+      kk <- suppressWarnings(as.integer(kvals[[ii]]))
+      per_file <- ""
+      if (length(per_k_files) > 0L && is.finite(kk)) {
+        hit <- per_k_files[vapply(
+          per_k_files,
+          function(pp) {
+            kf <- parse_k_from_token(basename(pp))
+            is.finite(kf) && identical(as.integer(kf), as.integer(kk))
+          },
+          logical(1)
+        )]
+        if (length(hit) > 0L) {
+          per_file <- hit[[1]]
+        }
+      }
+
+      key <- sanitize_token_id(
+        sprintf(
+          "%s_%s_k%s",
+          run_id,
+          method,
+          if (is.finite(kk)) sprintf("%03d", kk) else "na"
+        ),
+        fallback = sprintf("endpoint_row_%d", ii)
+      )
+
+      data.frame(
+        key = key,
+        input_id = sprintf("endpoint_pick_%s", key),
+        run_id = run_id,
+        method = method,
+        k = kk,
+        k_display = if (is.finite(kk)) as.character(kk) else "-",
+        labels_csv = labels_csv,
+        bundle_file = bundle_file,
+        per_k_file = per_file,
+        stringsAsFactors = FALSE
+      )
+    })
+
+    out <- do.call(rbind, rows)
+    rownames(out) <- NULL
+    out
+  }
+
+  read_endpoint_labels_from_row <- function(row_df) {
+    if (!is.data.frame(row_df) || nrow(row_df) < 1L) {
+      return(list(vertices = integer(0), labels = character(0)))
+    }
+    row <- row_df[1, , drop = FALSE]
+    k_use <- suppressWarnings(as.integer(row$k[[1]]))
+
+    extract_from_labels_csv <- function(path) {
+      tbl <- read_csv_safely(path)
+      if (!is.data.frame(tbl) || nrow(tbl) < 1L) {
+        return(NULL)
+      }
+      if ("k" %in% names(tbl) && is.finite(k_use)) {
+        kk <- suppressWarnings(as.integer(tbl$k))
+        tbl <- tbl[is.finite(kk) & kk == k_use, , drop = FALSE]
+      }
+      if (nrow(tbl) < 1L) {
+        return(NULL)
+      }
+
+      vcol <- first_existing_col(
+        tbl,
+        c(
+          "vertex.global", "vertex_global", "vertex",
+          "vertex.id", "vertex_id",
+          "vertex.local", "vertex_local",
+          "endpoint.vertex", "endpoint_vertex"
+        )
+      )
+      if (!nzchar(vcol)) {
+        return(NULL)
+      }
+
+      vv <- suppressWarnings(as.integer(tbl[[vcol]]))
+      keep <- is.finite(vv) & vv > 0L
+      vv <- vv[keep]
+      if (length(vv) < 1L) {
+        return(NULL)
+      }
+
+      lcol <- first_existing_col(
+        tbl,
+        c("label", "endpoint.label", "endpoint_label", "name", "end.label", "end_label")
+      )
+      labs <- if (nzchar(lcol)) as.character(tbl[[lcol]]) else rep("", nrow(tbl))
+      labs <- labs[keep]
+      labs[is.na(labs)] <- ""
+      if (!any(nzchar(labs))) {
+        labs <- sprintf("v%d", vv)
+      }
+
+      list(vertices = as.integer(vv), labels = as.character(labs))
+    }
+
+    extract_from_rds <- function(path) {
+      pp <- as.character(path %||% "")
+      if (!nzchar(pp) || !file.exists(pp)) {
+        return(NULL)
+      }
+      obj <- tryCatch(readRDS(pp), error = function(e) NULL)
+      if (!is.list(obj)) {
+        return(NULL)
+      }
+      if (is.finite(k_use) && "k" %in% names(obj)) {
+        kk <- suppressWarnings(as.integer(obj$k))
+        if (is.finite(kk) && !identical(as.integer(kk), as.integer(k_use))) {
+          return(NULL)
+        }
+      }
+
+      vv <- suppressWarnings(as.integer(
+        obj$`end.vertices.global` %||%
+          obj$end_vertices_global %||%
+          obj$`end.vertices` %||%
+          obj$end_vertices %||%
+          obj$endpoints %||%
+          obj$`end.vertices.local` %||%
+          integer(0)
+      ))
+      vv <- vv[is.finite(vv) & vv > 0L]
+      if (length(vv) < 1L) {
+        return(NULL)
+      }
+
+      labs_raw <- obj$`end.labels` %||% obj$end_labels %||% character(0)
+      labs <- rep("", length(vv))
+      if (is.character(labs_raw) || is.factor(labs_raw)) {
+        lr <- as.character(labs_raw)
+        if (length(lr) == length(vv)) {
+          labs <- lr
+        } else if (!is.null(names(labs_raw)) && length(names(labs_raw)) > 0L) {
+          nm_int <- suppressWarnings(as.integer(names(labs_raw)))
+          mm <- match(vv, nm_int)
+          ok <- is.finite(mm)
+          labs[ok] <- lr[mm[ok]]
+        }
+      }
+      labs[is.na(labs)] <- ""
+      if (!any(nzchar(labs))) {
+        labs <- sprintf("v%d", vv)
+      }
+
+      list(vertices = as.integer(vv), labels = as.character(labs))
+    }
+
+    from_csv <- extract_from_labels_csv(as.character(row$labels_csv[[1]] %||% ""))
+    if (is.list(from_csv) && length(from_csv$vertices) > 0L) {
+      return(from_csv)
+    }
+
+    from_per_k <- extract_from_rds(as.character(row$per_k_file[[1]] %||% ""))
+    if (is.list(from_per_k) && length(from_per_k$vertices) > 0L) {
+      return(from_per_k)
+    }
+
+    from_bundle <- extract_from_rds(as.character(row$bundle_file[[1]] %||% ""))
+    if (is.list(from_bundle) && length(from_bundle$vertices) > 0L) {
+      return(from_bundle)
+    }
+
+    list(vertices = integer(0), labels = character(0))
+  }
+
+  endpoint_panel_state <- shiny::reactive({
+    if (!isTRUE(rv$project.active)) {
+      return(list(rows = data.frame(), run_id = "", run_label = ""))
+    }
+    manifest <- active_manifest()
+    if (!is.list(manifest)) {
+      return(list(rows = data.frame(), run_id = "", run_label = ""))
+    }
+
+    gs <- graph_structure_state()
+    k_pref <- if (is.list(gs) && is.null(gs$error)) suppressWarnings(as.integer(gs$k_selected)) else NA_integer_
+    run <- resolve_endpoint_run(manifest, preferred_k = k_pref)
+    if (!is.list(run)) {
+      return(list(rows = data.frame(), run_id = "", run_label = ""))
+    }
+
+    rows <- endpoint_rows_for_run(run)
+    if (!is.data.frame(rows) || nrow(rows) < 1L) {
+      return(list(
+        rows = data.frame(),
+        run_id = as.character(run$id %||% ""),
+        run_label = as.character(run$label %||% run$id %||% "")
+      ))
+    }
+
+    ord <- order(!is.finite(rows$k), rows$k, rows$method, rows$key)
+    rows <- rows[ord, , drop = FALSE]
+    rows$selected <- rows$key %in% endpoint_overlay_selection()
+
+    list(
+      rows = rows,
+      run_id = as.character(run$id %||% ""),
+      run_label = as.character(run$label %||% run$id %||% "")
+    )
+  })
+
+  shiny::observe({
+    st <- endpoint_panel_state()
+    rows <- if (is.list(st) && is.data.frame(st$rows)) st$rows else data.frame()
+    if (nrow(rows) < 1L) {
+      endpoint_overlay_selection(character(0))
+      return()
+    }
+
+    prev <- endpoint_overlay_selection()
+    sel <- character(0)
+    for (ii in seq_len(nrow(rows))) {
+      in_id <- as.character(rows$input_id[[ii]] %||% "")
+      key <- as.character(rows$key[[ii]] %||% "")
+      if (!nzchar(in_id) || !nzchar(key)) {
+        next
+      }
+      vv <- input[[in_id]]
+      if (isTRUE(vv)) {
+        sel <- c(sel, key)
+      } else if (is.null(vv) && key %in% prev) {
+        sel <- c(sel, key)
+      }
+    }
+    endpoint_overlay_selection(unique(sel))
+  })
+
+  endpoint_overlay_active <- shiny::reactive({
+    st <- endpoint_panel_state()
+    rows <- if (is.list(st) && is.data.frame(st$rows)) st$rows else data.frame()
+    if (nrow(rows) < 1L) {
+      return(list(vertices = integer(0), labels = structure(character(0), names = character(0))))
+    }
+
+    selected <- intersect(endpoint_overlay_selection(), as.character(rows$key))
+    if (length(selected) < 1L) {
+      return(list(vertices = integer(0), labels = structure(character(0), names = character(0))))
+    }
+
+    rows_sel <- rows[rows$key %in% selected, , drop = FALSE]
+    vertices_all <- integer(0)
+    label_lookup <- structure(character(0), names = character(0))
+
+    for (ii in seq_len(nrow(rows_sel))) {
+      res <- read_endpoint_labels_from_row(rows_sel[ii, , drop = FALSE])
+      vv <- suppressWarnings(as.integer(res$vertices %||% integer(0)))
+      vv <- vv[is.finite(vv) & vv > 0L]
+      if (length(vv) < 1L) {
+        next
+      }
+      labs <- as.character(res$labels %||% character(0))
+      if (length(labs) != length(vv)) {
+        labs <- rep("", length(vv))
+      }
+      labs[is.na(labs)] <- ""
+      vertices_all <- c(vertices_all, vv)
+      for (jj in seq_along(vv)) {
+        nm <- as.character(vv[[jj]])
+        if (!nm %in% names(label_lookup) || !nzchar(label_lookup[[nm]])) {
+          label_lookup[[nm]] <- labs[[jj]]
+        }
+      }
+    }
+
+    vertices_all <- sort(unique(suppressWarnings(as.integer(vertices_all))))
+    vertices_all <- vertices_all[is.finite(vertices_all) & vertices_all > 0L]
+    list(vertices = vertices_all, labels = label_lookup)
+  })
+
   reference_view_state <- shiny::reactive({
     if (!isTRUE(rv$project.active)) {
       return(list(error = "No project selected."))
@@ -1183,6 +1696,34 @@ app_server <- function(input, output, session) {
     if (!component_mode %in% c("all", "lcc")) {
       component_mode <- "all"
     }
+    endpoint_label_size <- parse_scale_multiplier(input$endpoint_label_size %||% "1x", default = 1)
+    if (!is.finite(endpoint_label_size) || endpoint_label_size <= 0) {
+      endpoint_label_size <- 1
+    }
+    endpoint_label_offset <- parse_scale_multiplier(input$endpoint_label_offset %||% "1x", default = 1)
+    if (!is.finite(endpoint_label_offset) || endpoint_label_offset < 0) {
+      endpoint_label_offset <- 1
+    }
+    endpoint_marker_size <- parse_scale_multiplier(input$endpoint_marker_size %||% "1x", default = 1)
+    if (!is.finite(endpoint_marker_size) || endpoint_marker_size <= 0) {
+      endpoint_marker_size <- 1
+    }
+    endpoint_marker_palette <- c(
+      "Red" = "#ef4444",
+      "Orange" = "#f97316",
+      "Gold" = "#eab308",
+      "Green" = "#22c55e",
+      "Teal" = "#14b8a6",
+      "Blue" = "#3b82f6",
+      "Purple" = "#8b5cf6",
+      "Pink" = "#ec4899",
+      "Black" = "#111827"
+    )
+    endpoint_marker_color <- tolower(trimws(as.character(input$endpoint_marker_color %||% "#ef4444")))
+    palette_values <- tolower(unname(endpoint_marker_palette))
+    if (!(endpoint_marker_color %in% palette_values)) {
+      endpoint_marker_color <- "#ef4444"
+    }
 
     n_vertices <- suppressWarnings(as.integer(st$n_vertices %||% 0L))
     keep_idx <- seq_len(max(0L, n_vertices))
@@ -1324,7 +1865,11 @@ app_server <- function(input, output, session) {
       size_label = size_label,
       component_mode = component_mode,
       keep_idx = as.integer(keep_idx),
-      component_note = component_note
+      component_note = component_note,
+      endpoint_label_size = endpoint_label_size,
+      endpoint_label_offset = endpoint_label_offset,
+      endpoint_marker_size = endpoint_marker_size,
+      endpoint_marker_color = endpoint_marker_color
     )
   })
 
@@ -1430,6 +1975,24 @@ app_server <- function(input, output, session) {
       vertex_mode <- tolower(as.character(rr$vertex_mode %||% "sphere"))
       base_size <- if (identical(vertex_mode, "point")) 2.8 else 5.2
       point_size <- max(1.2, base_size * size_mult)
+      endpoint_label_size <- suppressWarnings(as.numeric(rr$endpoint_label_size %||% 1))
+      if (!is.finite(endpoint_label_size) || endpoint_label_size <= 0) {
+        endpoint_label_size <- 1
+      }
+      endpoint_label_offset <- suppressWarnings(as.numeric(rr$endpoint_label_offset %||% 1))
+      if (!is.finite(endpoint_label_offset) || endpoint_label_offset < 0) {
+        endpoint_label_offset <- 1
+      }
+      endpoint_marker_size <- suppressWarnings(as.numeric(rr$endpoint_marker_size %||% 1))
+      if (!is.finite(endpoint_marker_size) || endpoint_marker_size <= 0) {
+        endpoint_marker_size <- 1
+      }
+      endpoint_marker_color <- as.character(rr$endpoint_marker_color %||% "#ef4444")
+      if (length(endpoint_marker_color) < 1L || !nzchar(endpoint_marker_color[[1]])) {
+        endpoint_marker_color <- "#ef4444"
+      } else {
+        endpoint_marker_color <- endpoint_marker_color[[1]]
+      }
 
       idx <- keep_idx
       if (length(idx) < 1L) {
@@ -1531,7 +2094,29 @@ app_server <- function(input, output, session) {
       ep <- viz_state()$endpoint.result$endpoints
       ep <- suppressWarnings(as.integer(ep))
       ep <- ep[is.finite(ep) & ep >= 1L & ep <= nn]
+
+      ep_overlay <- endpoint_overlay_active()
+      ep_extra <- suppressWarnings(as.integer(ep_overlay$vertices %||% integer(0)))
+      ep_extra <- ep_extra[is.finite(ep_extra) & ep_extra >= 1L & ep_extra <= nn]
+      ep <- sort(unique(c(ep, ep_extra)))
       ep <- ep[ep %in% idx]
+
+      ep_label_lookup <- ep_overlay$labels %||% structure(character(0), names = character(0))
+      ep_label_lookup <- as.character(ep_label_lookup)
+      ep_label_names <- names(ep_overlay$labels %||% character(0))
+      if (length(ep_label_names) == length(ep_label_lookup)) {
+        names(ep_label_lookup) <- as.character(ep_label_names)
+      } else {
+        names(ep_label_lookup) <- character(length(ep_label_lookup))
+      }
+      ep_label_text <- rep("", length(ep))
+      if (length(ep) > 0L && length(ep_label_lookup) > 0L && !is.null(names(ep_label_lookup))) {
+        mm <- match(as.character(ep), names(ep_label_lookup))
+        ok <- is.finite(mm)
+        ep_label_text[ok] <- as.character(ep_label_lookup[mm[ok]])
+        ep_label_text[is.na(ep_label_text)] <- ""
+      }
+
       if (length(ep) > 0L) {
         p <- p %>%
           plotly::add_trace(
@@ -1544,10 +2129,35 @@ app_server <- function(input, output, session) {
             text = sprintf("endpoint vertex=%d", ep),
             hoverinfo = "text",
             marker = list(
-              size = max(4.5, point_size + 2.2),
-              color = "#ef4444",
+              size = max(4.5, (point_size + 2.2) * endpoint_marker_size),
+              color = endpoint_marker_color,
               line = list(color = "#111827", width = 1)
             )
+          )
+      }
+
+      label_idx <- which(nzchar(ep_label_text))
+      if (length(label_idx) > 0L) {
+        label_xyz <- endpoint_label_positions(
+          coords = coords,
+          endpoint_idx = ep[label_idx],
+          offset_mult = endpoint_label_offset
+        )
+        if (!is.matrix(label_xyz) || nrow(label_xyz) != length(label_idx)) {
+          label_xyz <- coords[ep[label_idx], 1:3, drop = FALSE]
+        }
+        p <- p %>%
+          plotly::add_trace(
+            type = "scatter3d",
+            mode = "text",
+            x = label_xyz[, 1],
+            y = label_xyz[, 2],
+            z = label_xyz[, 3],
+            text = ep_label_text[label_idx],
+            textposition = "top center",
+            hoverinfo = "skip",
+            showlegend = FALSE,
+            textfont = list(size = max(8, 12 * endpoint_label_size), color = "#111827")
           )
       }
 
@@ -1578,7 +2188,17 @@ app_server <- function(input, output, session) {
   }
 
   if (requireNamespace("rgl", quietly = TRUE)) {
-    output$reference_rgl <- rgl::renderRglwidget({
+    shiny::observe({
+      gen <- rgl_gen()
+      rgl_output_id <- paste0("reference_rgl_", gen)
+      prev_output_id <- shiny::isolate(rgl_last_output_id())
+      if (is.character(prev_output_id) &&
+          length(prev_output_id) == 1L &&
+          nzchar(prev_output_id) &&
+          !identical(prev_output_id, rgl_output_id)) {
+        output[[prev_output_id]] <- NULL
+      }
+      output[[rgl_output_id]] <- rgl::renderRglwidget({
       rr <- reference_renderer_state()
       st <- rr$st
       req(is.null(st$error))
@@ -1618,17 +2238,60 @@ app_server <- function(input, output, session) {
       radius_base <- max(1e-8, 0.01 * mean(span))
       sphere_radius <- max(1e-8, radius_base * size_mult)
       point_size <- max(1.2, 3 * size_mult)
+      endpoint_label_size <- suppressWarnings(as.numeric(rr$endpoint_label_size %||% 1))
+      if (!is.finite(endpoint_label_size) || endpoint_label_size <= 0) {
+        endpoint_label_size <- 1
+      }
+      endpoint_label_offset <- suppressWarnings(as.numeric(rr$endpoint_label_offset %||% 1))
+      if (!is.finite(endpoint_label_offset) || endpoint_label_offset < 0) {
+        endpoint_label_offset <- 1
+      }
+      endpoint_marker_size <- suppressWarnings(as.numeric(rr$endpoint_marker_size %||% 1))
+      if (!is.finite(endpoint_marker_size) || endpoint_marker_size <= 0) {
+        endpoint_marker_size <- 1
+      }
+      endpoint_marker_color <- as.character(rr$endpoint_marker_color %||% "#ef4444")
+      if (length(endpoint_marker_color) < 1L || !nzchar(endpoint_marker_color[[1]])) {
+        endpoint_marker_color <- "#ef4444"
+      } else {
+        endpoint_marker_color <- endpoint_marker_color[[1]]
+      }
 
       ep <- viz_state()$endpoint.result$endpoints
       ep <- suppressWarnings(as.integer(ep))
       ep <- ep[is.finite(ep) & ep >= 1L & ep <= nn]
+
+      ep_overlay <- endpoint_overlay_active()
+      ep_extra <- suppressWarnings(as.integer(ep_overlay$vertices %||% integer(0)))
+      ep_extra <- ep_extra[is.finite(ep_extra) & ep_extra >= 1L & ep_extra <= nn]
+      ep <- sort(unique(c(ep, ep_extra)))
       ep <- ep[ep %in% keep_idx]
+
+      ep_label_lookup <- ep_overlay$labels %||% structure(character(0), names = character(0))
+      ep_label_lookup <- as.character(ep_label_lookup)
+      ep_label_names <- names(ep_overlay$labels %||% character(0))
+      if (length(ep_label_names) == length(ep_label_lookup)) {
+        names(ep_label_lookup) <- as.character(ep_label_names)
+      } else {
+        names(ep_label_lookup) <- character(length(ep_label_lookup))
+      }
+
+      ep_labels <- rep("", length(ep))
+      if (length(ep) > 0L && length(ep_label_lookup) > 0L && !is.null(names(ep_label_lookup))) {
+        mm <- match(as.character(ep), names(ep_label_lookup))
+        ok <- is.finite(mm)
+        ep_labels[ok] <- as.character(ep_label_lookup[mm[ok]])
+        ep_labels[is.na(ep_labels)] <- ""
+      }
+
       ep_view <- match(ep, keep_idx)
-      ep_view <- ep_view[is.finite(ep_view) & ep_view >= 1L & ep_view <= nn_view]
+      valid_ep <- is.finite(ep_view) & ep_view >= 1L & ep_view <= nn_view
+      ep_view <- ep_view[valid_ep]
+      ep_view_labels <- ep_labels[valid_ep]
 
       endpoint_layers <- if (length(ep_view) > 0L) {
         list(list(
-          fun = function(ctx, endpoint_idx, draw_mode, endpoint_radius, endpoint_size) {
+          fun = function(ctx, endpoint_idx, endpoint_labels, draw_mode, endpoint_radius, endpoint_size, endpoint_label_size, endpoint_label_offset, endpoint_marker_size, endpoint_marker_color) {
             idx <- suppressWarnings(as.integer(endpoint_idx))
             idx <- idx[is.finite(idx) & idx >= 1L & idx <= nrow(ctx$X)]
             if (length(idx) < 1L) {
@@ -1637,23 +2300,56 @@ app_server <- function(input, output, session) {
             if (identical(draw_mode, "sphere")) {
               rgl::spheres3d(
                 ctx$X[idx, , drop = FALSE],
-                col = "#ef4444",
-                radius = max(1e-8, endpoint_radius * 1.35)
+                col = endpoint_marker_color,
+                radius = max(1e-8, endpoint_radius * 1.35 * endpoint_marker_size)
               )
             } else {
               rgl::points3d(
                 ctx$X[idx, , drop = FALSE],
-                col = "#ef4444",
-                size = max(4.5, endpoint_size + 2.2)
+                col = endpoint_marker_color,
+                size = max(4.5, (endpoint_size + 2.2) * endpoint_marker_size)
               )
+            }
+
+            labs <- as.character(endpoint_labels %||% character(0))
+            if (length(labs) == length(idx)) {
+              labs[is.na(labs)] <- ""
+              show_idx <- which(nzchar(labs))
+              if (length(show_idx) > 0L) {
+                xyz <- endpoint_label_positions(
+                  coords = ctx$X,
+                  endpoint_idx = idx[show_idx],
+                  offset_mult = endpoint_label_offset
+                )
+                if (!is.matrix(xyz) || nrow(xyz) != length(show_idx)) {
+                  xyz <- ctx$X[idx[show_idx], , drop = FALSE]
+                }
+                label_cex <- max(0.5, 1.5 * endpoint_label_size)
+                rgl::texts3d(
+                  x = xyz[, 1],
+                  y = xyz[, 2],
+                  z = xyz[, 3],
+                  texts = as.character(labs[show_idx]),
+                  cex = label_cex,
+                  col = "#111827",
+                  useFreeType = TRUE,
+                  fixedSize = TRUE,
+                  lit = FALSE
+                )
+              }
             }
             invisible(NULL)
           },
           args = list(
             endpoint_idx = ep_view,
+            endpoint_labels = ep_view_labels,
             draw_mode = vertex_mode,
             endpoint_radius = sphere_radius,
-            endpoint_size = point_size
+            endpoint_size = point_size,
+            endpoint_label_size = endpoint_label_size,
+            endpoint_label_offset = endpoint_label_offset,
+            endpoint_marker_size = endpoint_marker_size,
+            endpoint_marker_color = endpoint_marker_color
           ),
           with_ctx = TRUE
         ))
@@ -1723,6 +2419,8 @@ app_server <- function(input, output, session) {
           )
         }
       }
+    })
+      rgl_last_output_id(rgl_output_id)
     })
   }
 
@@ -2043,11 +2741,46 @@ app_server <- function(input, output, session) {
       condexp_sets,
       default_id = as.character(defaults$condexp_set_id %||% NA_character_)
     )
-    endpoint_tbl <- summarize_endpoint_assets(
-      endpoint_runs,
-      default_id = as.character(defaults$endpoint_run_id %||% NA_character_)
-    )
-    has_asset_views <- nrow(graph_tbl) > 0L || nrow(condexp_tbl) > 0L || nrow(endpoint_tbl) > 0L
+    endpoint_panel <- endpoint_panel_state()
+    endpoint_rows <- if (is.list(endpoint_panel) && is.data.frame(endpoint_panel$rows)) endpoint_panel$rows else data.frame()
+    has_asset_views <- nrow(graph_tbl) > 0L || nrow(condexp_tbl) > 0L || length(endpoint_runs) > 0L
+
+    build_endpoint_method_k_table <- function(rows_df) {
+      if (!is.data.frame(rows_df) || nrow(rows_df) < 1L) {
+        return(shiny::p(class = "gf-hint", "No endpoint options found."))
+      }
+
+      head_row <- shiny::tags$tr(
+        shiny::tags$th(""),
+        shiny::tags$th("method"),
+        shiny::tags$th("k")
+      )
+      body_rows <- lapply(seq_len(nrow(rows_df)), function(ii) {
+        rr <- rows_df[ii, , drop = FALSE]
+        in_id <- as.character(rr$input_id[[1]] %||% "")
+        checked <- isTRUE(rr$selected[[1]])
+        shiny::tags$tr(
+          shiny::tags$td(
+            shiny::tags$input(
+              type = "checkbox",
+              id = in_id,
+              checked = if (isTRUE(checked)) "checked" else NULL
+            )
+          ),
+          shiny::tags$td(as.character(rr$method[[1]] %||% "")),
+          shiny::tags$td(as.character(rr$k_display[[1]] %||% ""))
+        )
+      })
+
+      shiny::div(
+        class = "table-responsive",
+        shiny::tags$table(
+          class = "table table-sm gf-asset-table",
+          shiny::tags$thead(head_row),
+          shiny::tags$tbody(body_rows)
+        )
+      )
+    }
 
     panels <- list()
     open.panels <- c("workflow_graph_structure")
@@ -2196,11 +2929,82 @@ app_server <- function(input, output, session) {
             "Endpoints",
             value = "workflow_endpoint_structure",
             shiny::tagList(
-              build_html_table(endpoint_tbl, empty_text = "No endpoint runs found."),
+              build_endpoint_method_k_table(endpoint_rows),
               shiny::actionButton(
                 "endpoint_update_placeholder",
                 "Update / Recompute Endpoints...",
                 class = "btn-light gf-btn-wide"
+              ),
+              shiny::hr(),
+              shiny::h6(class = "gf-graph-layout-head", "Endpoint Layout"),
+              shiny::div(
+                class = "gf-graph-row gf-graph-layout-row",
+                shiny::span(class = "gf-graph-row-label", "Label size:"),
+                shiny::selectInput(
+                  "endpoint_label_size",
+                  label = NULL,
+                  choices = stats::setNames(
+                    c("0.75x", "1x", "1.25x", "1.50x", "2x", "2.5x", "3.0x"),
+                    c("0.75x", "1x", "1.25x", "1.50x", "2x", "2.5x", "3.0x")
+                  ),
+                  selected = as.character(input$endpoint_label_size %||% "1x"),
+                  width = "170px"
+                )
+              ),
+              shiny::div(
+                class = "gf-graph-row gf-graph-layout-row",
+                shiny::span(class = "gf-graph-row-label", "Label offset:"),
+                shiny::selectInput(
+                  "endpoint_label_offset",
+                  label = NULL,
+                  choices = stats::setNames(
+                    c(
+                      "0x", "0.50x", "1x", "1.50x", "2x", "2.50x", "3x",
+                      "3.50x", "4x", "4.50x", "5x"
+                    ),
+                    c(
+                      "0x", "0.50x", "1x", "1.50x", "2x", "2.50x", "3x",
+                      "3.50x", "4x", "4.50x", "5x"
+                    )
+                  ),
+                  selected = as.character(input$endpoint_label_offset %||% "1x"),
+                  width = "170px"
+                )
+              ),
+              shiny::div(
+                class = "gf-graph-row gf-graph-layout-row",
+                shiny::span(class = "gf-graph-row-label", "Marker size:"),
+                shiny::selectInput(
+                  "endpoint_marker_size",
+                  label = NULL,
+                  choices = stats::setNames(
+                    c("0.75x", "1x", "1.25x", "1.50x", "2x", "2.50x", "3x"),
+                    c("0.75x", "1x", "1.25x", "1.50x", "2x", "2.50x", "3x")
+                  ),
+                  selected = as.character(input$endpoint_marker_size %||% "1x"),
+                  width = "170px"
+                )
+              ),
+              shiny::div(
+                class = "gf-graph-row gf-graph-layout-row",
+                shiny::span(class = "gf-graph-row-label", "Marker color:"),
+                shiny::selectInput(
+                  "endpoint_marker_color",
+                  label = NULL,
+                  choices = c(
+                    "Red" = "#ef4444",
+                    "Orange" = "#f97316",
+                    "Gold" = "#eab308",
+                    "Green" = "#22c55e",
+                    "Teal" = "#14b8a6",
+                    "Blue" = "#3b82f6",
+                    "Purple" = "#8b5cf6",
+                    "Pink" = "#ec4899",
+                    "Black" = "#111827"
+                  ),
+                  selected = as.character(input$endpoint_marker_color %||% "#ef4444"),
+                  width = "170px"
+                )
               )
             )
           ),
@@ -2248,6 +3052,27 @@ app_server <- function(input, output, session) {
         if (isTRUE(rv$project.show.data)) "workflow_data" else character(0),
         "workflow_graph"
       )
+    }
+
+    available_panels <- c(
+      if (isTRUE(rv$project.show.data)) "workflow_data" else character(0),
+      if (isTRUE(has_asset_views)) {
+        c(
+          "workflow_graph_structure",
+          "workflow_endpoint_structure",
+          "workflow_condexp_structure",
+          "workflow_analysis"
+        )
+      } else {
+        c("workflow_graph", "workflow_condexp", "workflow_analysis")
+      }
+    )
+    remembered_open <- workflow_open_panels()
+    if (!is.null(remembered_open)) {
+      mapped_open <- intersect(as.character(remembered_open), available_panels)
+      if (length(mapped_open) > 0L || length(remembered_open) < 1L) {
+        open.panels <- mapped_open
+      }
     }
 
     shiny::div(
@@ -2779,7 +3604,7 @@ app_server <- function(input, output, session) {
       } else {
         shiny::div(
           class = "gf-rgl-wrap",
-          rgl::rglwidgetOutput("reference_rgl", width = "100%", height = "78vh"),
+          rgl::rglwidgetOutput(paste0("reference_rgl_", rgl_gen()), width = "100%", height = "78vh"),
           build_rgl_legend(rr, st)
         )
       }
