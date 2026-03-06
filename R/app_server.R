@@ -904,6 +904,7 @@ app_server <- function(input, output, session) {
   }, ignoreInit = TRUE)
 
   endpoint_overlay_selection <- shiny::reactiveVal(character(0))
+  endpoint_autoselect_done <- shiny::reactiveVal(FALSE)
   workflow_open_panels <- shiny::reactiveVal(NULL)
   ## Generation counter: incremented whenever an endpoint-label
   ## parameter changes so the renderUI emits a *new* output ID for
@@ -914,6 +915,7 @@ app_server <- function(input, output, session) {
   rgl_last_output_id <- shiny::reactiveVal(NULL)
   shiny::observeEvent(rv$project.id, {
     endpoint_overlay_selection(character(0))
+    endpoint_autoselect_done(FALSE)
     workflow_open_panels(NULL)
     rgl_last_output_id(NULL)
     rgl_gen(0L)
@@ -1367,6 +1369,40 @@ app_server <- function(input, output, session) {
     )
   })
 
+  shiny::observeEvent(endpoint_panel_state(), {
+    if (!isTRUE(rv$project.active) || isTRUE(endpoint_autoselect_done())) {
+      return()
+    }
+    st <- endpoint_panel_state()
+    rows <- if (is.list(st) && is.data.frame(st$rows)) st$rows else data.frame()
+    if (nrow(rows) < 1L) {
+      return()
+    }
+
+    prev <- endpoint_overlay_selection()
+    if (length(prev) > 0L) {
+      endpoint_autoselect_done(TRUE)
+      return()
+    }
+
+    k_cur <- scalar_int(input$graph_k, default = NA_integer_)
+    keys <- character(0)
+    if (is.finite(k_cur) && "k" %in% names(rows)) {
+      hit <- which(is.finite(rows$k) & as.integer(rows$k) == as.integer(k_cur))
+      if (length(hit) > 0L) {
+        keys <- as.character(rows$key[hit])
+      }
+    }
+    if (length(keys) < 1L) {
+      keys <- as.character(rows$key[[1]] %||% "")
+    }
+    keys <- unique(keys[nzchar(keys)])
+    if (length(keys) > 0L) {
+      endpoint_overlay_selection(keys)
+    }
+    endpoint_autoselect_done(TRUE)
+  }, ignoreInit = FALSE, priority = 100)
+
   shiny::observe({
     st <- endpoint_panel_state()
     rows <- if (is.list(st) && is.data.frame(st$rows)) st$rows else data.frame()
@@ -1532,6 +1568,12 @@ app_server <- function(input, output, session) {
       n_vertices = n_vertices,
       reference_adj_list = adj_list
     )
+    endpoint_sources <- collect_reference_endpoint_sources(
+      manifest = manifest,
+      k_use = picked$k_actual,
+      n_vertices = n_vertices,
+      reference_adj_list = adj_list
+    )
 
     cache_key <- sprintf(
       "%s|%s|%s|%s",
@@ -1598,6 +1640,11 @@ app_server <- function(input, output, session) {
     }
     if (is.list(condexp$sources) && length(condexp$sources) > 0L) {
       for (src in condexp$sources) {
+        add_source_entry(src)
+      }
+    }
+    if (is.list(endpoint_sources) && length(endpoint_sources) > 0L) {
+      for (src in endpoint_sources) {
         add_source_entry(src)
       }
     }
