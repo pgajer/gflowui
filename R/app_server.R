@@ -652,7 +652,7 @@ app_server <- function(input, output, session) {
     layout_presets <- list(
       renderer = tolower(as.character(input$graph_layout_renderer %||% "rglwidget")),
       vertex_layout = tolower(as.character(input$graph_layout_vertex %||% "sphere")),
-      vertex_size = as.character(input$graph_layout_size %||% "1x"),
+      vertex_size = as.character(input$graph_layout_size %||% "1.0x"),
       color_by = as.character(input$graph_layout_color_by %||% "vertex_degree"),
       component = tolower(as.character(input$graph_layout_component %||% "all"))
     )
@@ -985,6 +985,25 @@ app_server <- function(input, output, session) {
       return(as.numeric(default))
     }
     val
+  }
+
+  normalize_scale_label <- function(x, default = "1.0x") {
+    val <- parse_scale_multiplier(x, default = NA_real_)
+    if (!is.finite(val) || val <= 0) {
+      return(as.character(default))
+    }
+
+    if (val < 1 || isTRUE(all.equal(val, round(val), tolerance = 1e-10))) {
+      return(sprintf("%.1fx", val))
+    }
+    if (isTRUE(all.equal(val, 1.25, tolerance = 1e-10))) {
+      return("1.25x")
+    }
+    if (isTRUE(all.equal(val, 1.5, tolerance = 1e-10))) {
+      return("1.50x")
+    }
+
+    sprintf("%sx", format(val, scientific = FALSE, trim = TRUE))
   }
 
   endpoint_label_positions <- function(coords, endpoint_idx, offset_mult = 1) {
@@ -1686,7 +1705,7 @@ app_server <- function(input, output, session) {
     if (!vertex_mode %in% c("sphere", "point")) {
       vertex_mode <- "sphere"
     }
-    size_raw <- as.character(input$graph_layout_size %||% "1x")
+    size_raw <- as.character(input$graph_layout_size %||% "1.0x")
     size_mult <- suppressWarnings(as.numeric(gsub("[^0-9.]+", "", size_raw)))
     if (!is.finite(size_mult) || size_mult <= 0) {
       size_mult <- 1
@@ -2560,7 +2579,10 @@ app_server <- function(input, output, session) {
     if (!vertex_layout %in% c("sphere", "point")) {
       vertex_layout <- "sphere"
     }
-    size_selected <- as.character(input$graph_layout_size %||% layout_presets$vertex_size %||% "1x")
+    size_selected <- normalize_scale_label(
+      input$graph_layout_size %||% layout_presets$vertex_size %||% "1.0x",
+      default = "1.0x"
+    )
     component_choices <- c("All vertices" = "all", "Main connected component" = "lcc")
     component_selected <- tolower(as.character(input$graph_layout_component %||% layout_presets$component %||% "all"))
     if (!(component_selected %in% unname(component_choices))) {
@@ -2797,7 +2819,10 @@ app_server <- function(input, output, session) {
       graph_panel <- if (!is.null(graph_ui$error)) {
         shiny::p(class = "gf-hint", graph_ui$error)
       } else {
-        size_choices <- c("0.50x", "0.75x", "1x", "1.25x", "1.50x", "2x")
+        size_choices <- c(
+          paste0(format(seq(0.1, 0.9, by = 0.1), nsmall = 1, trim = TRUE), "x"),
+          "1.0x", "1.25x", "1.50x", "2.0x"
+        )
         if (!(graph_ui$size_selected %in% size_choices)) {
           size_choices <- unique(c(size_choices, graph_ui$size_selected))
         }
