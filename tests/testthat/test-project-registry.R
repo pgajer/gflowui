@@ -47,6 +47,14 @@ test_that("register/list/unregister roundtrip persists manifest and registry", {
 test_that("discover_project_artifacts finds symptoms_restart outputs", {
   root <- tempfile("symptoms-restart-")
   results_root <- file.path(root, "results")
+  data_dir <- file.path(root, "data")
+  dir.create(data_dir, recursive = TRUE, showWarnings = FALSE)
+  mt.asv <- data.frame(
+    CST = c("I", "II"),
+    subCST = c("I-A", "II-A"),
+    stringsAsFactors = FALSE
+  )
+  save(mt.asv, file = file.path(data_dir, "S_asv.rda"))
 
   dir.create(file.path(results_root, "asv_hv_k_gcv_sweep", "top20"), recursive = TRUE, showWarnings = FALSE)
   saveRDS(list(dummy = TRUE), file.path(results_root, "asv_hv_k_gcv_sweep", "top20", "iknn.selection.rds"))
@@ -88,11 +96,17 @@ test_that("discover_project_artifacts finds symptoms_restart outputs", {
   expect_true("response_gcv" %in% names(top20$optimal_k_artifacts))
   expect_true(is.list(top20$layout_assets$presets))
   expect_true(is.list(top20$layout_assets$grip_layouts))
+  expect_true(is.list(top20$color_assets))
+  expect_equal(top20$color_assets$vector_columns, c("CST", "subCST"))
+  expect_equal(top20$color_assets$preferred_order, c("CST", "subCST"))
+  expect_equal(top20$color_assets$metadata_object, "mt.asv")
+  expect_true(file.exists(top20$color_assets$metadata_file))
   expect_true(length(top20$layout_assets$grip_layouts) >= 1L)
   expect_true(any(vapply(top20$layout_assets$grip_layouts, function(x) identical(as.integer(x$k), 5L), logical(1))))
 
   expect_equal(length(discovered$condexp_sets), 1L)
   expect_equal(discovered$condexp_sets[[1]]$id, "vag_odor_binary")
+  expect_equal(discovered$condexp_sets[[1]]$outcomes, "vag_odor")
   expect_true(5L %in% discovered$condexp_sets[[1]]$k_values)
 
   expect_equal(length(discovered$endpoint_runs), 1L)
@@ -141,6 +155,9 @@ test_that("discover_project_artifacts finds agp_restart outputs", {
   expect_equal(shared$data_type_label, "ASV")
   expect_true(is.list(shared$layout_assets$presets))
   expect_true(any(vapply(discovered$condexp_sets, function(x) identical(x$id, "ibs_ibd_benchmark_k071230"), logical(1))))
+  bench <- discovered$condexp_sets[[which(vapply(discovered$condexp_sets, function(x) identical(x$id, "ibs_ibd_benchmark_k071230"), logical(1)))[1]]]
+  expect_equal(sort(bench$outcomes), c("ibd", "ibs"))
+  expect_equal(sort(as.integer(bench$k_values)), c(7L, 12L))
   expect_true(any(vapply(discovered$endpoint_runs, function(x) identical(x$id, "evenness_endpoints_k07"), logical(1))))
   expect_equal(discovered$defaults$graph_set_id, "shared_all_asv")
 })
@@ -195,6 +212,7 @@ test_that("register_project normalizes graph-set metadata and infers layout vari
   expect_equal(gs$data_type_label, "Set A")
   expect_true(is.list(gs$layout_assets$presets))
   expect_equal(gs$layout_assets$presets$renderer, "rglwidget")
+  expect_equal(gs$layout_assets$presets$color_by, "vertex_degree")
   expect_true(is.list(gs$layout_assets$variants))
   expect_true(length(gs$layout_assets$variants) >= 1L)
   expect_true(is.list(gs$layout_assets$grip_layouts))

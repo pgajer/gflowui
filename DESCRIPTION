@@ -21,7 +21,10 @@ Imports:
     bslib,
     gflow
 Suggests:
+    knitr,
     plotly,
+    rmarkdown,
     rgl,
     testthat (>= 3.0.0)
+VignetteBuilder: knitr
 Config/testthat/edition: 3

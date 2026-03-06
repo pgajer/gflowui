@@ -254,7 +254,172 @@ gflowui_make_server_renderer_helpers <- function(rv, current_reference_info) {
     files[grepl(pat2, basename(files), perl = TRUE)]
   }
 
-  collect_reference_condexp_sources <- function(manifest, set_id, k_use, n_vertices) {
+  extract_lcc_index <- function(adj_list) {
+    if (!is.list(adj_list) || length(adj_list) < 1L) {
+      return(integer(0))
+    }
+    comp <- tryCatch(
+      gflow::graph.connected.components(adj_list),
+      error = function(e) NULL
+    )
+    comp <- suppressWarnings(as.integer(comp))
+    if (length(comp) != length(adj_list)) {
+      return(integer(0))
+    }
+    tab <- table(comp)
+    if (length(tab) < 1L) {
+      return(integer(0))
+    }
+    as.integer(which(comp == as.integer(names(which.max(tab)))))
+  }
+
+  expand_lcc_to_full <- function(values, reference_adj_list, n_vertices) {
+    vv <- suppressWarnings(as.numeric(values))
+    if (length(vv) == n_vertices) {
+      return(vv)
+    }
+    if (!is.list(reference_adj_list) || length(reference_adj_list) != n_vertices) {
+      return(vv)
+    }
+    idx <- extract_lcc_index(reference_adj_list)
+    if (length(idx) != length(vv)) {
+      return(vv)
+    }
+    out <- rep(NA_real_, n_vertices)
+    out[idx] <- vv
+    out
+  }
+
+  collect_reference_metadata_sources <- function(manifest, graph_set, n_vertices) {
+    out <- list()
+    if (!is.list(manifest) || !is.list(graph_set) || n_vertices < 1L) {
+      return(out)
+    }
+
+    color_assets <- if (is.list(graph_set$color_assets)) graph_set$color_assets else list()
+    preferred <- c("CST", "subCST")
+    preferred <- c(preferred, as.character(color_assets$preferred_order %||% character(0)))
+    cols_hint <- as.character(color_assets$vector_columns %||% character(0))
+    cols_hint <- cols_hint[nzchar(cols_hint)]
+    if (length(cols_hint) > 0L) {
+      preferred <- unique(c(preferred, cols_hint))
+    }
+    preferred <- unique(preferred[nzchar(preferred)])
+
+    labels_map <- character(0)
+    labels_raw <- color_assets$labels
+    if (is.list(labels_raw)) {
+      labels_raw <- unlist(labels_raw, recursive = TRUE, use.names = TRUE)
+    }
+    if (is.character(labels_raw) && !is.null(names(labels_raw)) && length(labels_raw) > 0L) {
+      keep <- nzchar(names(labels_raw)) & nzchar(as.character(labels_raw))
+      labels_map <- as.character(labels_raw[keep])
+      names(labels_map) <- tolower(as.character(names(labels_raw)[keep]))
+    }
+
+    metadata_object <- scalar_chr(color_assets$metadata_object %||% "mt.asv", default = "mt.asv")
+
+    root <- scalar_chr(manifest$project_root %||% "", default = "")
+    candidates <- c(
+      as.character(color_assets$metadata_file %||% ""),
+      if (nzchar(root)) file.path(root, "data", "S_asv.rda") else ""
+    )
+    candidates <- unique(candidates[nzchar(candidates)])
+    if (length(candidates) < 1L) {
+      return(out)
+    }
+
+    for (path in candidates) {
+      if (!file.exists(path)) {
+        next
+      }
+      env <- new.env(parent = emptyenv())
+      ok <- tryCatch({
+        load(path, envir = env)
+        TRUE
+      }, error = function(e) FALSE)
+      if (!isTRUE(ok)) {
+        next
+      }
+      object_candidates <- unique(c(metadata_object, "mt.asv", "mt"))
+      mt <- NULL
+      for (obj_name in object_candidates) {
+        if (!exists(obj_name, envir = env, inherits = FALSE)) {
+          next
+        }
+        candidate <- get(obj_name, envir = env, inherits = FALSE)
+        if (is.data.frame(candidate) && nrow(candidate) == n_vertices) {
+          mt <- candidate
+          break
+        }
+      }
+      if (!is.data.frame(mt) || nrow(mt) != n_vertices) {
+        next
+      }
+
+      cn <- names(mt)
+      canon <- function(nm) {
+        idx <- match(tolower(nm), tolower(cn))
+        idx <- idx[is.finite(idx)]
+        if (length(idx) < 1L) return("")
+        as.character(cn[idx[[1]]])
+      }
+      use_cols <- unique(vapply(preferred, canon, character(1)))
+      use_cols <- use_cols[nzchar(use_cols)]
+      if (length(use_cols) < 1L) {
+        next
+      }
+
+      add_one <- function(key, label, values, type = c("numeric", "categorical")) {
+        type <- match.arg(type)
+        vv <- values
+        if (length(vv) != n_vertices || all(is.na(vv))) {
+          return(invisible(NULL))
+        }
+        kk <- sanitize_token_id(key, fallback = "meta")
+        while (kk %in% names(out)) {
+          kk <- sprintf("%s_%d", kk, length(out) + 1L)
+        }
+        out[[kk]] <<- list(key = kk, label = label, type = type, values = vv)
+        invisible(NULL)
+      }
+
+      pretty_label <- function(col_name) {
+        low <- tolower(col_name)
+        if (low %in% names(labels_map)) {
+          return(labels_map[[low]])
+        }
+        if (identical(low, "cst")) {
+          return("CST")
+        }
+        if (identical(low, "subcst")) {
+          return("subCST")
+        }
+        txt <- gsub("_+", " ", as.character(col_name))
+        paste(toupper(substr(txt, 1L, 1L)), substr(txt, 2L, nchar(txt)), sep = "")
+      }
+
+      for (col in use_cols) {
+        vv_raw <- mt[[col]]
+        label <- pretty_label(col)
+        if (is.factor(vv_raw) || is.character(vv_raw) || is.logical(vv_raw)) {
+          add_one(col, label, as.character(vv_raw), type = "categorical")
+        } else {
+          vv_num <- suppressWarnings(as.numeric(vv_raw))
+          if (length(vv_num) == n_vertices) {
+            add_one(col, label, vv_num, type = "numeric")
+          }
+        }
+      }
+      if (length(out) > 0L) {
+        break
+      }
+    }
+
+    out
+  }
+
+  collect_reference_condexp_sources <- function(manifest, set_id, k_use, n_vertices, reference_adj_list = NULL) {
     sources <- list()
     spectral_coords <- NULL
     spectral_best <- NULL
@@ -297,8 +462,34 @@ gflowui_make_server_renderer_helpers <- function(rv, current_reference_info) {
     }
     alias <- alias[nzchar(alias)]
 
+    pretty_outcome_label <- function(x) {
+      xx <- as.character(x %||% "")
+      xx <- xx[nzchar(xx)]
+      if (length(xx) < 1L) {
+        return("")
+      }
+      txt <- xx[[1]]
+      txt <- gsub("[^A-Za-z0-9]+", "_", txt)
+      txt <- gsub("^_+|_+$", "", txt)
+      if (!nzchar(txt)) {
+        return("")
+      }
+      low <- tolower(txt)
+      if (low %in% c("ibs", "ibd", "vag_odor")) {
+        return(toupper(low))
+      }
+      txt <- gsub("_+", " ", txt)
+      paste(toupper(substr(txt, 1L, 1L)), substr(txt, 2L, nchar(txt)), sep = "")
+    }
+
     for (cs in condexp_sets) {
       cs_id <- as.character(cs$id %||% "condexp")
+      cs_outcomes <- as.character(cs$outcomes %||% character(0))
+      cs_outcomes <- cs_outcomes[nzchar(cs_outcomes)]
+      cs_outcome_label <- pretty_outcome_label(if (length(cs_outcomes) > 0L) cs_outcomes[[1]] else cs_id)
+      if (!nzchar(cs_outcome_label)) {
+        cs_outcome_label <- cs_id
+      }
 
       if (is.list(cs$family_runs) && length(cs$family_runs) > 0L) {
         for (fr in cs$family_runs) {
@@ -315,6 +506,10 @@ gflowui_make_server_renderer_helpers <- function(rv, current_reference_info) {
             fam_alias <- unique(c(fam_alias, "all", "asv", "shared_all_asv", "full", "asvfull"))
           }
           fam_alias <- fam_alias[nzchar(fam_alias)]
+          fam_match <- (fam_key %in% alias) || (length(intersect(alias, fam_alias)) > 0L)
+          if (!isTRUE(fam_match)) {
+            next
+          }
 
           cand <- find_fit_file_for_k(fr$fit_files, k_use = k_use)
           if (length(cand) < 1L) {
@@ -331,21 +526,29 @@ gflowui_make_server_renderer_helpers <- function(rv, current_reference_info) {
             next
           }
 
-          yhat <- suppressWarnings(as.numeric(fit$fitted.values %||% numeric(0)))
+          yhat <- expand_lcc_to_full(
+            values = fit$fitted.values %||% numeric(0),
+            reference_adj_list = reference_adj_list,
+            n_vertices = n_vertices
+          )
           if (length(yhat) == n_vertices) {
             add_source(
               key = sprintf("condexp_%s_%s_yhat", cs_id, fam),
-              label = sprintf("CondExp %s/%s y.hat", cs_id, fam),
+              label = sprintf("%s CondExp", cs_outcome_label),
               values = yhat,
               type = "numeric"
             )
           }
 
-          yobs <- suppressWarnings(as.numeric(fit$y %||% numeric(0)))
+          yobs <- expand_lcc_to_full(
+            values = fit$y %||% numeric(0),
+            reference_adj_list = reference_adj_list,
+            n_vertices = n_vertices
+          )
           if (length(yobs) == n_vertices) {
             add_source(
               key = sprintf("condexp_%s_%s_yobs", cs_id, fam),
-              label = sprintf("Observed %s/%s y", cs_id, fam),
+              label = sprintf("Observed %s", cs_outcome_label),
               values = yobs,
               type = "numeric"
             )
@@ -391,14 +594,14 @@ gflowui_make_server_renderer_helpers <- function(rv, current_reference_info) {
             }
             add_source(
               key = sprintf("long_%s_%s_yhat", cs_id, oo),
-              label = sprintf("CondExp %s %s y.hat", cs_id, oo),
+              label = sprintf("%s CondExp", pretty_outcome_label(oo)),
               values = suppressWarnings(as.numeric(dd$y_fitted)),
               type = "numeric"
             )
             if ("y_observed" %in% names(dd)) {
               add_source(
                 key = sprintf("long_%s_%s_yobs", cs_id, oo),
-                label = sprintf("Observed %s %s y", cs_id, oo),
+                label = sprintf("Observed %s", pretty_outcome_label(oo)),
                 values = suppressWarnings(as.numeric(dd$y_observed)),
                 type = "numeric"
               )
@@ -1167,6 +1370,7 @@ gflowui_make_server_renderer_helpers <- function(rv, current_reference_info) {
     select_graph_for_k = select_graph_for_k,
     resolve_reference_spec = resolve_reference_spec,
     find_fit_file_for_k = find_fit_file_for_k,
+    collect_reference_metadata_sources = collect_reference_metadata_sources,
     collect_reference_condexp_sources = collect_reference_condexp_sources,
     compute_reference_layout = compute_reference_layout,
     string_hash_token = string_hash_token,

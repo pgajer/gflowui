@@ -726,9 +726,9 @@ gflowui_infer_layout_variants <- function(paths) {
   }
   presets$vertex_size <- vertex_size
 
-  color_by <- .as_scalar_chr(presets$color_by, default = "vertex_index")
+  color_by <- .as_scalar_chr(presets$color_by, default = "vertex_degree")
   if (!nzchar(color_by)) {
-    color_by <- "vertex_index"
+    color_by <- "vertex_degree"
   }
   presets$color_by <- color_by
 
@@ -760,6 +760,42 @@ gflowui_infer_layout_variants <- function(paths) {
   la$grip_layouts <- grip_layouts
   la$grip_layout_params <- grip_params
   la
+}
+
+.normalize_color_assets <- function(color_assets) {
+  ca <- if (is.list(color_assets)) color_assets else list()
+
+  metadata_file <- .normalize_path_or_url(ca$metadata_file %||% ca$data_file %||% "")
+  ca$metadata_file <- metadata_file
+  ca$metadata_object <- .as_scalar_chr(ca$metadata_object, default = "mt.asv")
+
+  cols <- as.character(ca$vector_columns %||% ca$columns %||% character(0))
+  cols <- unique(cols[nzchar(cols)])
+  ca$vector_columns <- cols
+
+  preferred <- as.character(ca$preferred_order %||% cols)
+  preferred <- unique(preferred[nzchar(preferred)])
+  ca$preferred_order <- preferred
+
+  labels <- character(0)
+  labels_in <- ca$labels
+  if (is.list(labels_in)) {
+    labels_in <- unlist(labels_in, recursive = TRUE, use.names = TRUE)
+  }
+  if (is.character(labels_in) && length(labels_in) > 0L) {
+    if (is.null(names(labels_in))) {
+      labels <- as.character(labels_in)
+      if (length(cols) > 0L) {
+        names(labels) <- cols[seq_len(min(length(cols), length(labels)))]
+      }
+    } else {
+      keep <- nzchar(names(labels_in)) & nzchar(as.character(labels_in))
+      labels <- as.character(labels_in[keep])
+      names(labels) <- as.character(names(labels_in)[keep])
+    }
+  }
+  ca$labels <- labels
+  ca
 }
 
 gflowui_normalize_graph_set_manifest <- function(graph_set) {
@@ -797,6 +833,7 @@ gflowui_normalize_graph_set_manifest <- function(graph_set) {
   }
 
   out$layout_assets <- .normalize_layout_assets(out$layout_assets)
+  out$color_assets <- .normalize_color_assets(out$color_assets)
   legacy_variant_paths <- c(
     out$html_file,
     out$html_files,
@@ -923,6 +960,15 @@ gflowui_normalize_graph_sets_manifest <- function(graph_sets) {
 
 .discover_symptoms_artifacts <- function(project_root) {
   results_root <- file.path(project_root, "results")
+  metadata_file <- file.path(project_root, "data", "S_asv.rda")
+  metadata_file_norm <- if (file.exists(metadata_file)) normalizePath(metadata_file, mustWork = TRUE) else ""
+  symptoms_color_assets <- list(
+    metadata_file = metadata_file_norm,
+    metadata_object = "mt.asv",
+    vector_columns = c("CST", "subCST"),
+    preferred_order = c("CST", "subCST"),
+    labels = c(CST = "CST", subCST = "subCST")
+  )
   hv_summary_file <- file.path(results_root, "asv_hv_k_gcv_sweep", "summary.across.feature.sets.csv")
   full_summary_file <- file.path(results_root, "asv_full_graph_hv_criteria_k_selection", "summary.across.criteria.csv")
   full_meta_file <- file.path(results_root, "asv_full_graph_hv_criteria_k_selection", "run.metadata.rds")
@@ -961,6 +1007,11 @@ gflowui_normalize_graph_sets_manifest <- function(graph_sets) {
       k_source = file.path(results_root, "vag_odor_asv_graph_gcv_sweep", "all", "vag_odor_gcv_by_k.csv")
     )
   )
+
+  hv_fig_dir <- file.path(results_root, "asv_hv_k_gcv_sweep", "figures")
+  full_criteria_dir <- file.path(results_root, "asv_full_graph_hv_criteria_k_selection")
+  full_fig_dir <- file.path(full_criteria_dir, "figures")
+  vag_fig_dir <- file.path(results_root, "vag_odor_asv_graph_gcv_sweep", "figures")
 
   graph_sets <- list()
   for (sp in graph_specs) {
@@ -1023,8 +1074,37 @@ gflowui_normalize_graph_sets_manifest <- function(graph_sets) {
     }
 
     optimal_artifacts <- list()
-    if (file.exists(sp$k_source)) {
-      optimal_artifacts$response_gcv <- normalizePath(sp$k_source, mustWork = TRUE)
+    add_artifact <- function(name, path) {
+      if (file.exists(path)) {
+        optimal_artifacts[[name]] <<- normalizePath(path, mustWork = TRUE)
+      }
+      invisible(NULL)
+    }
+
+    if (identical(sp$id, "all")) {
+      add_artifact("median_norm_gcv", file.path(full_fig_dir, "criterion_hv20_hv30_hv50_mean_median_vs_k.pdf"))
+      add_artifact("median_norm_gcv_summary", file.path(full_criteria_dir, "summary.across.criteria.csv"))
+      add_artifact("median_norm_gcv_hv20", file.path(full_fig_dir, "criterion.hv20_mean_median_vs_k.pdf"))
+      add_artifact("median_norm_gcv_hv30", file.path(full_fig_dir, "criterion.hv30_mean_median_vs_k.pdf"))
+      add_artifact("median_norm_gcv_hv50", file.path(full_fig_dir, "criterion.hv50_mean_median_vs_k.pdf"))
+      add_artifact("response_gcv", file.path(vag_fig_dir, "all_vag_odor_gcv_vs_k.pdf"))
+      if (!("response_gcv" %in% names(optimal_artifacts))) {
+        add_artifact("response_gcv", sp$k_source)
+      }
+    } else {
+      set_tag <- as.character(sp$id)
+      fam_tag <- sub("^top", "hv", set_tag)
+
+      add_artifact("median_norm_gcv", file.path(hv_fig_dir, sprintf("%s_mean_median_vs_k.pdf", set_tag)))
+      add_artifact("median_norm_gcv_summary", file.path(results_root, "asv_hv_k_gcv_sweep", set_tag, "k.distribution.summary.csv"))
+      if (!("median_norm_gcv" %in% names(optimal_artifacts))) {
+        add_artifact("median_norm_gcv", file.path(results_root, "asv_hv_k_gcv_sweep", set_tag, "k.distribution.summary.csv"))
+      }
+
+      add_artifact("response_gcv", file.path(vag_fig_dir, sprintf("%s_vag_odor_gcv_vs_k.pdf", fam_tag)))
+      if (!("response_gcv" %in% names(optimal_artifacts))) {
+        add_artifact("response_gcv", sp$k_source)
+      }
     }
 
     graph_sets[[length(graph_sets) + 1L]] <- gflowui_normalize_graph_set_manifest(list(
@@ -1036,7 +1116,8 @@ gflowui_normalize_graph_sets_manifest <- function(graph_sets) {
       k_values = k_vals,
       n_samples = n_samples,
       n_features = n_features,
-      optimal_k_artifacts = optimal_artifacts
+      optimal_k_artifacts = optimal_artifacts,
+      color_assets = symptoms_color_assets
     ))
   }
 
@@ -1090,6 +1171,7 @@ gflowui_normalize_graph_sets_manifest <- function(graph_sets) {
       id = "vag_odor_binary",
       label = "VAG_ODOR Conditional Expectation",
       type = "fit_files",
+      outcomes = c("vag_odor"),
       family_runs = fam_rows,
       summary_file = if (file.exists(file.path(results_root, "vag_odor_asv_graph_gcv_sweep", "vag_odor_gcv_all_families.csv"))) {
         normalizePath(file.path(results_root, "vag_odor_asv_graph_gcv_sweep", "vag_odor_gcv_all_families.csv"), mustWork = TRUE)
@@ -1197,6 +1279,17 @@ gflowui_normalize_graph_sets_manifest <- function(graph_sets) {
       }
       if ("outcome" %in% names(gcv_tbl)) {
         outcomes <- sort(unique(as.character(gcv_tbl$outcome)))
+      }
+    }
+    if ((length(k_vals) < 1L || length(outcomes) < 1L) && file.exists(long_file)) {
+      long_tbl <- tryCatch(readRDS(long_file), error = function(e) NULL)
+      if (is.data.frame(long_tbl) && nrow(long_tbl) > 0L) {
+        if (length(k_vals) < 1L && "k" %in% names(long_tbl)) {
+          k_vals <- .extract_int_values(long_tbl$k)
+        }
+        if (length(outcomes) < 1L && "outcome" %in% names(long_tbl)) {
+          outcomes <- sort(unique(as.character(long_tbl$outcome)))
+        }
       }
     }
 

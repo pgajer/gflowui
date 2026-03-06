@@ -653,7 +653,8 @@ app_server <- function(input, output, session) {
       renderer = tolower(as.character(input$graph_layout_renderer %||% "rglwidget")),
       vertex_layout = tolower(as.character(input$graph_layout_vertex %||% "sphere")),
       vertex_size = as.character(input$graph_layout_size %||% "1x"),
-      color_by = as.character(input$graph_layout_color_by %||% "vertex_index")
+      color_by = as.character(input$graph_layout_color_by %||% "vertex_degree"),
+      component = tolower(as.character(input$graph_layout_component %||% "all"))
     )
     graph_asset_dir <- file.path(gflowui_projects_data_dir(), "graphs", rv$project.id)
     dir.create(graph_asset_dir, recursive = TRUE, showWarnings = FALSE)
@@ -946,6 +947,38 @@ app_server <- function(input, output, session) {
       return(list(error = "Reference graph has no vertices."))
     }
 
+    component_ids <- rep.int(1L, n_vertices)
+    comp_res <- tryCatch(
+      gflow::graph.connected.components(adj_list),
+      error = function(e) NULL
+    )
+    comp_int <- suppressWarnings(as.integer(comp_res))
+    if (length(comp_int) == n_vertices && any(is.finite(comp_int))) {
+      bad <- !is.finite(comp_int)
+      if (any(bad)) {
+        comp_int[bad] <- -seq_len(sum(bad))
+      }
+      component_ids <- comp_int
+    }
+    comp_tab <- table(component_ids)
+    lcc_id <- if (length(comp_tab) > 0L) {
+      as.integer(names(comp_tab)[which.max(comp_tab)])
+    } else {
+      1L
+    }
+    lcc_index <- which(component_ids == lcc_id)
+    if (length(lcc_index) < 1L) {
+      lcc_index <- seq_len(n_vertices)
+    }
+    components <- list(
+      ids = component_ids,
+      n_components = as.integer(length(unique(component_ids))),
+      lcc_id = as.integer(lcc_id),
+      lcc_index = as.integer(lcc_index),
+      lcc_size = as.integer(length(lcc_index)),
+      n_vertices = as.integer(n_vertices)
+    )
+
     manifest_layout_coords <- grip_layout_matrix_for_graph_set(
       graph_set = spec$graph_set,
       k_ref = picked$k_actual
@@ -964,7 +997,8 @@ app_server <- function(input, output, session) {
       manifest = manifest,
       set_id = spec$set_id,
       k_use = picked$k_actual,
-      n_vertices = n_vertices
+      n_vertices = n_vertices,
+      reference_adj_list = adj_list
     )
 
     cache_key <- sprintf(
@@ -984,7 +1018,7 @@ app_server <- function(input, output, session) {
       )
     }
 
-    sources <- condexp$sources
+    sources <- list()
     add_source <- function(key, label, values, type = c("numeric", "categorical")) {
       type <- match.arg(type)
       vv <- values
@@ -1007,8 +1041,34 @@ app_server <- function(input, output, session) {
       invisible(NULL)
     }
 
-    degree <- suppressWarnings(as.numeric(lengths(adj_list)))
-    add_source("graph_degree", "Graph Degree", degree, type = "numeric")
+    add_source_entry <- function(src) {
+      if (!is.list(src)) {
+        return(invisible(NULL))
+      }
+      add_source(
+        key = as.character(src$key %||% src$label %||% "source"),
+        label = as.character(src$label %||% src$key %||% "source"),
+        values = src$values %||% numeric(0),
+        type = if (identical(as.character(src$type %||% "numeric"), "categorical")) "categorical" else "numeric"
+      )
+      invisible(NULL)
+    }
+
+    meta_sources <- collect_reference_metadata_sources(
+      manifest = manifest,
+      graph_set = spec$graph_set,
+      n_vertices = n_vertices
+    )
+    if (length(meta_sources) > 0L) {
+      for (src in meta_sources) {
+        add_source_entry(src)
+      }
+    }
+    if (is.list(condexp$sources) && length(condexp$sources) > 0L) {
+      for (src in condexp$sources) {
+        add_source_entry(src)
+      }
+    }
 
     dat <- data_state()
     if (!is.null(dat$data) && nrow(dat$data) == n_vertices) {
@@ -1038,7 +1098,8 @@ app_server <- function(input, output, session) {
     }
 
     if (length(sources) < 1L) {
-      add_source("vertex_index", "Vertex Index", seq_len(n_vertices), type = "numeric")
+      degree <- suppressWarnings(as.numeric(lengths(adj_list)))
+      add_source("vertex_degree", "Vertex Degree", degree, type = "numeric")
     }
 
     labels <- vapply(sources, function(src) as.character(src$label %||% src$key), character(1))
@@ -1067,6 +1128,7 @@ app_server <- function(input, output, session) {
       n_vertices = n_vertices,
       coords = coords,
       adj_list = adj_list,
+      components = components,
       graph_set = spec$graph_set,
       sources = sources,
       choices = choices,
@@ -1117,6 +1179,28 @@ app_server <- function(input, output, session) {
       size_mult <- 1
     }
     size_label <- sprintf("%sx", format(size_mult, scientific = FALSE, trim = TRUE))
+    component_mode <- tolower(trimws(as.character(input$graph_layout_component %||% "all")))
+    if (!component_mode %in% c("all", "lcc")) {
+      component_mode <- "all"
+    }
+
+    n_vertices <- suppressWarnings(as.integer(st$n_vertices %||% 0L))
+    keep_idx <- seq_len(max(0L, n_vertices))
+    component_note <- ""
+    comp <- if (is.list(st$components)) st$components else list()
+    comp_n <- suppressWarnings(as.integer(comp$n_components %||% 1L))
+    comp_lcc <- suppressWarnings(as.integer(comp$lcc_index %||% integer(0)))
+    if (is.finite(comp_n) && comp_n > 1L && identical(component_mode, "lcc") && length(comp_lcc) > 0L) {
+      comp_lcc <- comp_lcc[is.finite(comp_lcc) & comp_lcc >= 1L & comp_lcc <= n_vertices]
+      if (length(comp_lcc) > 0L) {
+        keep_idx <- unique(comp_lcc)
+        component_note <- sprintf(
+          "Showing main connected component (%s/%s vertices).",
+          format(length(keep_idx), big.mark = ","),
+          format(max(1L, n_vertices), big.mark = ",")
+        )
+      }
+    }
 
     html_candidates <- if (is.list(manifest) && is.list(spec)) {
       discover_reference_html_candidates(
@@ -1146,20 +1230,20 @@ app_server <- function(input, output, session) {
         effective <- "rglwidget"
       } else if (length(html_choices) > 0L) {
         effective <- "html"
-        note <- "RGL live mode requested, but `rgl` is unavailable. Showing HTML fallback."
+        note <- "RGL mode requested, but `rgl` is unavailable. Showing HTML fallback."
       } else if (isTRUE(plotly_ready)) {
         effective <- "plotly"
-        note <- "RGL live mode requested, but `rgl` is unavailable. Showing Plotly fallback."
+        note <- "RGL mode requested, but `rgl` is unavailable. Showing Plotly fallback."
       } else {
         effective <- "none"
-        note <- "RGL live mode requested, but `rgl` is unavailable and no fallback renderer is ready."
+        note <- "RGL mode requested, but `rgl` is unavailable and no fallback renderer is ready."
       }
     } else if (identical(requested, "html")) {
       if (length(html_choices) > 0L) {
         effective <- "html"
       } else if (isTRUE(rgl_ready)) {
         effective <- "rglwidget"
-        note <- "HTML mode requested, but no HTML assets were found. Showing live RGL fallback."
+        note <- "HTML mode requested, but no HTML assets were found. Showing RGL fallback."
       } else if (isTRUE(plotly_ready)) {
         effective <- "plotly"
         note <- "HTML mode requested, but no HTML assets were found. Showing Plotly fallback."
@@ -1172,7 +1256,7 @@ app_server <- function(input, output, session) {
         effective <- "plotly"
       } else if (isTRUE(rgl_ready)) {
         effective <- "rglwidget"
-        note <- "Plotly is unavailable. Showing live RGL fallback."
+        note <- "Plotly is unavailable. Showing RGL fallback."
       } else if (length(html_choices) > 0L) {
         effective <- "html"
         note <- "Plotly is unavailable. Showing HTML fallback."
@@ -1180,6 +1264,28 @@ app_server <- function(input, output, session) {
         effective <- "none"
         note <- "Plotly is unavailable and no fallback renderer is available."
       }
+    }
+
+    if (identical(component_mode, "lcc") && identical(effective, "html")) {
+      if (isTRUE(rgl_ready)) {
+        effective <- "rglwidget"
+        note <- paste(
+          c(note, "Main connected component filtering is interactive-only; showing RGL."),
+          collapse = " "
+        )
+      } else if (isTRUE(plotly_ready)) {
+        effective <- "plotly"
+        note <- paste(
+          c(note, "Main connected component filtering is interactive-only; showing Plotly."),
+          collapse = " "
+        )
+      } else {
+        note <- paste(
+          c(note, "Main connected component filtering is unavailable in HTML mode."),
+          collapse = " "
+        )
+      }
+      note <- trimws(gsub("\\s+", " ", note))
     }
 
     html_url <- ""
@@ -1215,9 +1321,87 @@ app_server <- function(input, output, session) {
       color_label = color_label,
       vertex_mode = vertex_mode,
       size_mult = size_mult,
-      size_label = size_label
+      size_label = size_label,
+      component_mode = component_mode,
+      keep_idx = as.integer(keep_idx),
+      component_note = component_note
     )
   })
+
+  categorical_palette <- function(values, source_key = "", source_label = "") {
+    to_hex <- function(col) {
+      cc <- as.character(col %||% "")
+      if (!nzchar(cc)) {
+        return("#808080")
+      }
+      rgb <- tryCatch(grDevices::col2rgb(cc), error = function(e) NULL)
+      if (is.null(rgb) || ncol(rgb) < 1L) {
+        return(cc)
+      }
+      grDevices::rgb(rgb[1, 1], rgb[2, 1], rgb[3, 1], maxColorValue = 255)
+    }
+
+    cst_colors_raw <- c(
+      Lactobacillus_crispatus = "red1",
+      Lactobacillus_gasseri = "chartreuse",
+      Lactobacillus_iners = "darkorange2",
+      BVAB1 = "aquamarine4",
+      Atopobium_vaginae = "orange",
+      Gardnerella_vaginalis = "royalblue",
+      Sneathia_sanguinegens = "limegreen",
+      g_Anaerococcus = "blue",
+      g_Corynebacterium_1 = "gold",
+      g_Streptococcus = "brown",
+      g_Enterococcus = "deeppink",
+      g_Bifidobacterium = "darkorchid",
+      Lactobacillus_jensenii = "yellow",
+      "I" = "red1",
+      "II" = "chartreuse",
+      "III" = "darkorange2",
+      "IV" = "aquamarine4",
+      "IV-A" = "aquamarine4",
+      "IV-B" = "royalblue",
+      "IV-C" = "palevioletred4",
+      "V" = "yellow",
+      "I-A" = "red1",
+      "I-B" = "palevioletred2",
+      "III-A" = "darkorange2",
+      "III-B" = "orange1",
+      "IV-C0" = "blue",
+      "IV-C1" = "brown",
+      "IV-C2" = "deeppink",
+      "IV-C3" = "darkorchid",
+      "IV-C4" = "cyan"
+    )
+    cst_colors <- vapply(cst_colors_raw, to_hex, character(1))
+    names(cst_colors) <- tolower(names(cst_colors_raw))
+
+    vv <- as.character(values)
+    vv[is.na(vv) | !nzchar(vv)] <- "NA"
+    lev <- unique(vv)
+    if (length(lev) < 1L) {
+      lev <- "NA"
+    }
+
+    cols <- grDevices::hcl.colors(max(1L, length(lev)), "Dynamic")
+    cols <- as.character(cols)[seq_len(length(lev))]
+    lev_low <- tolower(lev)
+    match_idx <- match(lev_low, names(cst_colors))
+    n_match <- sum(!is.na(match_idx))
+    src_txt <- tolower(sprintf("%s %s", as.character(source_key %||% ""), as.character(source_label %||% "")))
+    use_cst <- grepl("(^|[^a-z])cst([^a-z]|$)|subcst|linf", src_txt, perl = TRUE) ||
+      (length(lev) > 0L && n_match >= max(2L, floor(length(lev) / 2L)))
+    if (isTRUE(use_cst) && n_match > 0L) {
+      for (ii in seq_along(lev)) {
+        idx <- match_idx[[ii]]
+        if (is.finite(idx)) {
+          cols[[ii]] <- cst_colors[[idx]]
+        }
+      }
+    }
+    names(cols) <- lev
+    list(values = vv, levels = lev, colors = cols)
+  }
 
   if (requireNamespace("plotly", quietly = TRUE)) {
     output$reference_plot <- plotly::renderPlotly({
@@ -1234,6 +1418,11 @@ app_server <- function(input, output, session) {
       coords <- st$coords
       nn <- nrow(coords)
       idx_all <- seq_len(nn)
+      keep_idx <- suppressWarnings(as.integer(rr$keep_idx %||% idx_all))
+      keep_idx <- keep_idx[is.finite(keep_idx) & keep_idx >= 1L & keep_idx <= nn]
+      if (length(keep_idx) < 1L) {
+        keep_idx <- idx_all
+      }
       size_mult <- suppressWarnings(as.numeric(rr$size_mult %||% 1))
       if (!is.finite(size_mult) || size_mult <= 0) {
         size_mult <- 1
@@ -1242,9 +1431,7 @@ app_server <- function(input, output, session) {
       base_size <- if (identical(vertex_mode, "point")) 2.8 else 5.2
       point_size <- max(1.2, base_size * size_mult)
 
-      keep <- rep(TRUE, nn)
-
-      idx <- idx_all[keep]
+      idx <- keep_idx
       if (length(idx) < 1L) {
         return(
           plotly::plot_ly() %>%
@@ -1271,11 +1458,14 @@ app_server <- function(input, output, session) {
       p <- plotly::plot_ly()
 
       if (identical(src$type, "categorical")) {
-        vv <- as.character(plot_data$value)
-        vv[is.na(vv) | !nzchar(vv)] <- "NA"
-        fac <- factor(vv, levels = unique(vv))
+        pal_info <- categorical_palette(
+          plot_data$value,
+          source_key = src_key,
+          source_label = src$label %||% src_key
+        )
+        fac <- factor(pal_info$values, levels = pal_info$levels)
         nlev <- nlevels(fac)
-        pal <- grDevices::hcl.colors(max(1L, nlev), "Dynamic")
+        pal <- pal_info$colors
 
         for (ii in seq_len(nlev)) {
           lvl <- levels(fac)[ii]
@@ -1288,12 +1478,31 @@ app_server <- function(input, output, session) {
               y = plot_data$y[sel],
               z = plot_data$z[sel],
               name = lvl,
+              legendgroup = lvl,
               text = sprintf("vertex=%d<br>%s=%s", plot_data$vertex[sel], src$label, lvl),
               hoverinfo = "text",
               marker = list(
                 size = point_size,
-                color = pal[ii],
+                color = pal[[lvl]],
                 opacity = if (identical(vertex_mode, "point")) 0.82 else 0.93
+              ),
+              showlegend = FALSE
+            ) %>%
+            plotly::add_trace(
+              type = "scatter3d",
+              mode = "markers",
+              x = if (nrow(plot_data) > 0L) plot_data$x[[1]] else 0,
+              y = if (nrow(plot_data) > 0L) plot_data$y[[1]] else 0,
+              z = if (nrow(plot_data) > 0L) plot_data$z[[1]] else 0,
+              name = lvl,
+              legendgroup = lvl,
+              visible = "legendonly",
+              hoverinfo = "skip",
+              marker = list(
+                size = max(10, point_size * 2.5),
+                color = pal[[lvl]],
+                opacity = 1,
+                symbol = "square"
               )
             )
         }
@@ -1322,6 +1531,7 @@ app_server <- function(input, output, session) {
       ep <- viz_state()$endpoint.result$endpoints
       ep <- suppressWarnings(as.integer(ep))
       ep <- ep[is.finite(ep) & ep >= 1L & ep <= nn]
+      ep <- ep[ep %in% idx]
       if (length(ep) > 0L) {
         p <- p %>%
           plotly::add_trace(
@@ -1344,7 +1554,19 @@ app_server <- function(input, output, session) {
       p %>%
         plotly::layout(
           margin = list(l = 0, r = 0, b = 0, t = 10),
-          legend = list(orientation = "h"),
+          legend = if (identical(src$type, "categorical")) {
+            list(
+              orientation = "v",
+              x = 1.01,
+              y = 1,
+              xanchor = "left",
+              yanchor = "top",
+              itemsizing = "constant",
+              font = list(size = 13)
+            )
+          } else {
+            list(orientation = "h")
+          },
           scene = list(
             xaxis = list(title = "", showgrid = FALSE, zeroline = FALSE, visible = FALSE),
             yaxis = list(title = "", showgrid = FALSE, zeroline = FALSE, visible = FALSE),
@@ -1379,7 +1601,19 @@ app_server <- function(input, output, session) {
         vertex_mode <- "sphere"
       }
 
-      span <- apply(coords, 2, function(vv) diff(range(vv, na.rm = TRUE)))
+      keep_idx <- suppressWarnings(as.integer(rr$keep_idx %||% seq_len(nn)))
+      keep_idx <- keep_idx[is.finite(keep_idx) & keep_idx >= 1L & keep_idx <= nn]
+      if (length(keep_idx) < 1L) {
+        keep_idx <- seq_len(nn)
+      }
+      keep_idx <- unique(keep_idx)
+
+      coords_view <- coords[keep_idx, , drop = FALSE]
+      values_view <- src$values[keep_idx]
+      nn_view <- nrow(coords_view)
+      req(nn_view > 0L)
+
+      span <- apply(coords_view, 2, function(vv) diff(range(vv, na.rm = TRUE)))
       span[!is.finite(span)] <- 0
       radius_base <- max(1e-8, 0.01 * mean(span))
       sphere_radius <- max(1e-8, radius_base * size_mult)
@@ -1388,8 +1622,11 @@ app_server <- function(input, output, session) {
       ep <- viz_state()$endpoint.result$endpoints
       ep <- suppressWarnings(as.integer(ep))
       ep <- ep[is.finite(ep) & ep >= 1L & ep <= nn]
+      ep <- ep[ep %in% keep_idx]
+      ep_view <- match(ep, keep_idx)
+      ep_view <- ep_view[is.finite(ep_view) & ep_view >= 1L & ep_view <= nn_view]
 
-      endpoint_layers <- if (length(ep) > 0L) {
+      endpoint_layers <- if (length(ep_view) > 0L) {
         list(list(
           fun = function(ctx, endpoint_idx, draw_mode, endpoint_radius, endpoint_size) {
             idx <- suppressWarnings(as.integer(endpoint_idx))
@@ -1413,7 +1650,7 @@ app_server <- function(input, output, session) {
             invisible(NULL)
           },
           args = list(
-            endpoint_idx = ep,
+            endpoint_idx = ep_view,
             draw_mode = vertex_mode,
             endpoint_radius = sphere_radius,
             endpoint_size = point_size
@@ -1426,7 +1663,7 @@ app_server <- function(input, output, session) {
 
       make_plain_widget <- function() {
         gflow::plot3D.plain.html(
-          X = coords,
+          X = coords_view,
           radius = if (identical(vertex_mode, "sphere")) sphere_radius else NULL,
           size = point_size,
           col = "gray70",
@@ -1438,12 +1675,18 @@ app_server <- function(input, output, session) {
       }
 
       if (identical(src$type, "categorical")) {
-        vv <- as.character(src$values)
-        vv[is.na(vv) | !nzchar(vv)] <- "NA"
+        pal_info <- categorical_palette(
+          values_view,
+          source_key = src_key,
+          source_label = src$label %||% src_key
+        )
+        vv <- pal_info$values
+        cltr_col_tbl <- pal_info$colors
         tryCatch(
           gflow::plot3D.cltrs.html(
-            X = coords,
+            X = coords_view,
             cltr = vv,
+            cltr.col.tbl = cltr_col_tbl,
             show.cltr.labels = FALSE,
             show.legend = FALSE,
             legend.title = as.character(src$label %||% src_key),
@@ -1456,26 +1699,26 @@ app_server <- function(input, output, session) {
           error = function(e) make_plain_widget()
         )
       } else {
-        vv <- suppressWarnings(as.numeric(src$values))
+        vv <- suppressWarnings(as.numeric(values_view))
         if (all(!is.finite(vv))) {
           make_plain_widget()
         } else {
           tryCatch(
-            gflow::plot3D.cont.html(
-              X = coords,
-              y = vv,
-              subset = rep(TRUE, nn),
-              non.highlight.type = if (identical(vertex_mode, "sphere")) "sphere" else "point",
-              highlight.type = if (identical(vertex_mode, "sphere")) "sphere" else "point",
-              point.size = point_size,
-              radius = if (identical(vertex_mode, "sphere")) sphere_radius else NULL,
-              legend.title = as.character(src$label %||% src_key),
-              legend.show = FALSE,
-              widget.width = 1700L,
-              widget.height = 1000L,
-              background.color = "white",
-              post.layers = endpoint_layers
-            ),
+              gflow::plot3D.cont.html(
+                X = coords_view,
+                y = vv,
+                subset = rep(TRUE, nn_view),
+                non.highlight.type = if (identical(vertex_mode, "sphere")) "sphere" else "point",
+                highlight.type = if (identical(vertex_mode, "sphere")) "sphere" else "point",
+                point.size = point_size,
+                radius = if (identical(vertex_mode, "sphere")) sphere_radius else NULL,
+                legend.title = as.character(src$label %||% src_key),
+                legend.show = FALSE,
+                widget.width = 1700L,
+                widget.height = 1000L,
+                background.color = "white",
+                post.layers = endpoint_layers
+              ),
             error = function(e) make_plain_widget()
           )
         }
@@ -1593,8 +1836,8 @@ app_server <- function(input, output, session) {
       if (is.finite(n_features)) format(as.integer(n_features), big.mark = ",") else "?"
     )
 
-    color_choices <- c("Vertex Index" = "vertex_index")
-    color_selected <- "vertex_index"
+    color_choices <- c("Vertex Degree" = "vertex_degree")
+    color_selected <- "vertex_degree"
     if (is.list(st_use) && length(st_use$choices %||% c()) > 0L) {
       color_choices <- st_use$choices
       color_selected <- as.character(
@@ -1620,6 +1863,25 @@ app_server <- function(input, output, session) {
       vertex_layout <- "sphere"
     }
     size_selected <- as.character(input$graph_layout_size %||% layout_presets$vertex_size %||% "1x")
+    component_choices <- c("All vertices" = "all", "Main connected component" = "lcc")
+    component_selected <- tolower(as.character(input$graph_layout_component %||% layout_presets$component %||% "all"))
+    if (!(component_selected %in% unname(component_choices))) {
+      component_selected <- "all"
+    }
+    component_hint <- ""
+    if (is.list(st_use$components)) {
+      nn <- suppressWarnings(as.integer(st_use$components$n_vertices))
+      nlcc <- suppressWarnings(as.integer(st_use$components$lcc_size))
+      nc <- suppressWarnings(as.integer(st_use$components$n_components))
+      if (is.finite(nn) && is.finite(nlcc) && is.finite(nc) && nc > 1L) {
+        component_hint <- sprintf(
+          "Connected components: %s (LCC %s/%s vertices)",
+          format(nc, big.mark = ","),
+          format(nlcc, big.mark = ","),
+          format(nn, big.mark = ",")
+        )
+      }
+    }
 
     list(
       error = NULL,
@@ -1636,6 +1898,9 @@ app_server <- function(input, output, session) {
       renderer_selected = renderer_selected,
       vertex_layout = vertex_layout,
       size_selected = size_selected,
+      component_choices = component_choices,
+      component_selected = component_selected,
+      component_hint = component_hint,
       color_choices = color_choices,
       color_selected = color_selected
     )
@@ -1704,7 +1969,19 @@ app_server <- function(input, output, session) {
     }
 
     set_tokens <- graph_alias_tokens(gs$set_id, gs$data_type_label)
-    target <- resolve_optimal_k_display_path(method$path, set_tokens = set_tokens)
+    cache_dir <- file.path(
+      gflowui_projects_data_dir(),
+      "cache",
+      "optimal_k",
+      rv$project.id %||% "project",
+      sanitize_token_id(gs$set_id %||% "set", fallback = "set")
+    )
+    target <- resolve_optimal_k_display_path(
+      method$path,
+      set_tokens = set_tokens,
+      cache_dir = cache_dir,
+      method_id = method_id
+    )
     if (!nzchar(target)) {
       shiny::showNotification("No plot/report file could be located for the selected criterion.", type = "error")
       return()
@@ -1742,55 +2019,13 @@ app_server <- function(input, output, session) {
         "project_new",
         "New",
         class = "btn-secondary gf-btn-wide"
-      ),
-      shiny::div(
-        class = "gf-inline-status",
-        shiny::textOutput("project_status")
       )
-    )
-  })
-
-  output$project_status <- shiny::renderText({
-    if (!isTRUE(rv$project.active)) {
-      return("Select an existing project or click 'New'.")
-    }
-
-    manifest <- active_manifest()
-    ref_info <- current_reference_info(manifest)
-    origin_value <- rv$project.origin %||% "unknown"
-    origin_txt <- if (grepl("^registered:", origin_value)) {
-      sprintf("registered project (%s)", sub("^registered:", "", origin_value))
-    } else {
-      switch(
-        origin_value,
-        existing = "existing project",
-        template = "new project from template",
-        clone = "cloned project",
-        scratch = "new project from scratch",
-        "project"
-      )
-    }
-
-    graph_txt <- if (isTRUE(rv$project.has.graphs)) "graphs ready" else "graphs not built yet"
-
-    sprintf(
-      "Workspace: %s | %s | %s | Ref: %s",
-      rv$project.name %||% "Untitled Project",
-      origin_txt,
-      graph_txt,
-      ref_info$summary
     )
   })
 
   output$workflow_controls <- shiny::renderUI({
     if (!isTRUE(rv$project.active)) {
-      return(
-        shiny::div(
-          class = "gf-sidebar-note",
-          shiny::strong("Workspace Locked"),
-          shiny::p("Select a project from the dropdown or click 'New' to reveal workflow controls.")
-        )
-      )
+      return(NULL)
     }
 
     manifest <- active_manifest()
@@ -1848,7 +2083,7 @@ app_server <- function(input, output, session) {
             shiny::span(class = "gf-graph-dims", graph_ui$dims_text)
           ),
           shiny::div(
-            class = "gf-graph-row gf-graph-row-tight",
+            class = "gf-graph-row gf-graph-row-tight gf-graph-row-k",
             shiny::span(class = "gf-graph-row-label", "k:"),
             shiny::selectInput(
               "graph_k",
@@ -1864,14 +2099,14 @@ app_server <- function(input, output, session) {
             )
           ),
           shiny::div(
-            class = "gf-graph-row gf-graph-row-tight",
+            class = "gf-graph-row gf-graph-row-tight gf-graph-row-optimal",
             shiny::span(class = "gf-graph-row-label", "Optimal k:"),
             shiny::selectInput(
               "graph_optimal_method",
               label = NULL,
               choices = graph_ui$optimal_choices,
               selected = graph_ui$optimal_selected,
-              width = "170px"
+              width = "180px"
             ),
             shiny::actionButton(
               "graph_optimal_show",
@@ -1887,18 +2122,18 @@ app_server <- function(input, output, session) {
           shiny::hr(),
           shiny::h6(class = "gf-graph-layout-head", "Graph Layout"),
           shiny::div(
-            class = "gf-graph-row",
+            class = "gf-graph-row gf-graph-layout-row",
             shiny::span(class = "gf-graph-row-label", "Renderer:"),
             shiny::selectInput(
               "graph_layout_renderer",
               label = NULL,
-              choices = c("RGL (live)" = "rglwidget", "HTML" = "html", "Plotly" = "plotly"),
+              choices = c("RGL" = "rglwidget", "HTML" = "html", "Plotly" = "plotly"),
               selected = graph_ui$renderer_selected,
               width = "180px"
             )
           ),
           shiny::div(
-            class = "gf-graph-row",
+            class = "gf-graph-row gf-graph-layout-row",
             shiny::span(class = "gf-graph-row-label", "Vertex Layout:"),
             shiny::selectInput(
               "graph_layout_vertex",
@@ -1909,7 +2144,7 @@ app_server <- function(input, output, session) {
             )
           ),
           shiny::div(
-            class = "gf-graph-row",
+            class = "gf-graph-row gf-graph-layout-row",
             shiny::span(class = "gf-graph-row-label", "Vertex size:"),
             shiny::selectInput(
               "graph_layout_size",
@@ -1920,16 +2155,32 @@ app_server <- function(input, output, session) {
             )
           ),
           shiny::div(
-            class = "gf-graph-row",
+            class = "gf-graph-row gf-graph-layout-row",
             shiny::span(class = "gf-graph-row-label", "Color by:"),
             shiny::selectInput(
               "graph_layout_color_by",
               label = NULL,
               choices = graph_ui$color_choices,
               selected = graph_ui$color_selected,
-              width = "320px"
+              width = "205px"
             )
-          )
+          ),
+          shiny::div(
+            class = "gf-graph-row gf-graph-layout-row",
+            shiny::span(class = "gf-graph-row-label", "Component:"),
+            shiny::selectInput(
+              "graph_layout_component",
+              label = NULL,
+              choices = graph_ui$component_choices,
+              selected = graph_ui$component_selected,
+              width = "205px"
+            )
+          ),
+          if (nzchar(as.character(graph_ui$component_hint %||% ""))) {
+            shiny::div(class = "gf-hint", graph_ui$component_hint)
+          } else {
+            NULL
+          }
         )
       }
 
@@ -2061,6 +2312,11 @@ app_server <- function(input, output, session) {
         shiny::div(class = "gf-dirty-flag gf-dirty-clean", "All changes saved")
       },
       shiny::actionButton(
+        "project_settings",
+        "Settings",
+        class = "btn-light gf-btn-wide"
+      ),
+      shiny::actionButton(
         "save_project",
         "Save Project",
         class = "btn-light gf-btn-wide"
@@ -2072,6 +2328,199 @@ app_server <- function(input, output, session) {
       )
     )
   })
+
+  shiny::observeEvent(input$project_settings, {
+    if (!isTRUE(rv$project.active)) {
+      return()
+    }
+
+    manifest <- active_manifest()
+    if (!is.list(manifest)) {
+      shiny::showNotification("Project manifest not found.", type = "error")
+      return()
+    }
+
+    defaults <- if (is.list(manifest$defaults)) manifest$defaults else list()
+    graph_sets <- if (is.list(manifest$graph_sets)) manifest$graph_sets else list()
+    condexp_sets <- if (is.list(manifest$condexp_sets)) manifest$condexp_sets else list()
+    endpoint_runs <- if (is.list(manifest$endpoint_runs)) manifest$endpoint_runs else list()
+
+    graph_choices <- c("None" = "")
+    if (length(graph_sets) > 0L) {
+      ids <- vapply(graph_sets, function(gs) as.character(gs$id %||% ""), character(1))
+      labels <- vapply(graph_sets, function(gs) as.character(gs$label %||% gs$id %||% ""), character(1))
+      keep <- nzchar(ids)
+      if (any(keep)) {
+        graph_choices <- c(graph_choices, stats::setNames(ids[keep], labels[keep]))
+      }
+    }
+
+    condexp_choices <- c("None" = "")
+    if (length(condexp_sets) > 0L) {
+      ids <- vapply(condexp_sets, function(cs) as.character(cs$id %||% ""), character(1))
+      labels <- vapply(condexp_sets, function(cs) as.character(cs$label %||% cs$id %||% ""), character(1))
+      keep <- nzchar(ids)
+      if (any(keep)) {
+        condexp_choices <- c(condexp_choices, stats::setNames(ids[keep], labels[keep]))
+      }
+    }
+
+    endpoint_choices <- c("None" = "")
+    if (length(endpoint_runs) > 0L) {
+      ids <- vapply(endpoint_runs, function(ep) as.character(ep$id %||% ""), character(1))
+      labels <- vapply(endpoint_runs, function(ep) as.character(ep$label %||% ep$id %||% ""), character(1))
+      keep <- nzchar(ids)
+      if (any(keep)) {
+        endpoint_choices <- c(endpoint_choices, stats::setNames(ids[keep], labels[keep]))
+      }
+    }
+
+    profile_choices <- c(
+      "workspace" = "workspace",
+      "symptoms_restart" = "symptoms_restart",
+      "agp_restart" = "agp_restart",
+      "custom" = "custom"
+    )
+
+    settings_project_name <- scalar_chr(manifest$project_name %||% rv$project.name %||% "", default = "")
+    settings_project_root <- scalar_chr(manifest$project_root %||% "", default = "")
+    settings_profile <- scalar_chr(manifest$profile %||% "workspace", default = "workspace")
+    settings_default_graph_set <- scalar_chr(defaults$graph_set_id %||% "", default = "")
+    settings_reference_graph_set <- scalar_chr(
+      defaults$reference_graph_set_id %||% defaults$graph_set_id %||% "",
+      default = ""
+    )
+    settings_reference_k <- scalar_int(defaults$reference_k, default = NA_integer_)
+    settings_reference_reason <- scalar_chr(defaults$reference_reason %||% "", default = "")
+    settings_default_condexp_set <- scalar_chr(defaults$condexp_set_id %||% "", default = "")
+    settings_default_endpoint_run <- scalar_chr(defaults$endpoint_run_id %||% "", default = "")
+
+    shiny::showModal(
+      shiny::modalDialog(
+        title = "Project Settings",
+        easyClose = TRUE,
+        size = "l",
+        shiny::textInput(
+          "settings_project_name",
+          "Project Name",
+          value = settings_project_name
+        ),
+        shiny::textInput(
+          "settings_project_root",
+          "Project Root",
+          value = settings_project_root
+        ),
+        shiny::selectInput(
+          "settings_profile",
+          "Profile",
+          choices = profile_choices,
+          selected = settings_profile
+        ),
+        shiny::hr(),
+        shiny::selectInput(
+          "settings_default_graph_set",
+          "Default Graph Set",
+          choices = graph_choices,
+          selected = settings_default_graph_set
+        ),
+        shiny::selectInput(
+          "settings_reference_graph_set",
+          "Reference Graph Set",
+          choices = graph_choices,
+          selected = settings_reference_graph_set
+        ),
+        shiny::textInput(
+          "settings_reference_k",
+          "Reference k",
+          value = if (is.finite(settings_reference_k)) as.character(settings_reference_k) else ""
+        ),
+        shiny::textInput(
+          "settings_reference_reason",
+          "Reference Reason",
+          value = settings_reference_reason
+        ),
+        shiny::selectInput(
+          "settings_default_condexp_set",
+          "Default Conditional Expectation Set",
+          choices = condexp_choices,
+          selected = settings_default_condexp_set
+        ),
+        shiny::selectInput(
+          "settings_default_endpoint_run",
+          "Default Endpoint Run",
+          choices = endpoint_choices,
+          selected = settings_default_endpoint_run
+        ),
+        footer = shiny::tagList(
+          shiny::modalButton("Cancel"),
+          shiny::actionButton("save_project_settings", "Save Settings", class = "btn-primary")
+        )
+      )
+    )
+  }, ignoreInit = TRUE)
+
+  shiny::observeEvent(input$save_project_settings, {
+    if (!isTRUE(rv$project.active)) {
+      return()
+    }
+
+    ctx <- active_project_context()
+    if (is.null(ctx)) {
+      shiny::showNotification("Active project context not available.", type = "error")
+      return()
+    }
+
+    payload <- load_or_init_active_manifest(ctx)
+    manifest <- payload$manifest
+    defaults <- if (is.list(manifest$defaults)) manifest$defaults else list()
+
+    project_name <- trimws(scalar_chr(input$settings_project_name %||% "", default = ""))
+    if (!nzchar(project_name)) {
+      project_name <- scalar_chr(rv$project.name %||% "Untitled Project", default = "Untitled Project")
+    }
+    project_root <- trimws(scalar_chr(input$settings_project_root %||% "", default = ""))
+    profile <- trimws(scalar_chr(input$settings_profile %||% "workspace", default = "workspace"))
+    if (!nzchar(profile)) {
+      profile <- "workspace"
+    }
+
+    defaults$graph_set_id <- scalar_chr(input$settings_default_graph_set %||% "", default = "")
+    defaults$reference_graph_set_id <- scalar_chr(input$settings_reference_graph_set %||% "", default = "")
+    ref_k <- suppressWarnings(as.integer(input$settings_reference_k))
+    defaults$reference_k <- if (is.finite(ref_k) && ref_k > 0L) as.integer(ref_k) else NA_integer_
+    ref_reason <- trimws(scalar_chr(input$settings_reference_reason %||% "", default = ""))
+    defaults$reference_reason <- if (nzchar(ref_reason)) ref_reason else NA_character_
+    defaults$condexp_set_id <- scalar_chr(input$settings_default_condexp_set %||% "", default = "")
+    defaults$endpoint_run_id <- scalar_chr(input$settings_default_endpoint_run %||% "", default = "")
+
+    manifest$project_name <- project_name
+    manifest$project_root <- if (nzchar(project_root)) project_root else NA_character_
+    manifest$profile <- profile
+    manifest$defaults <- defaults
+
+    payload$manifest <- manifest
+    payload$reg$label[[payload$idx]] <- project_name
+    payload$reg$project_root[[payload$idx]] <- if (nzchar(project_root)) project_root else NA_character_
+    if (profile %in% c("symptoms_restart", "agp_restart", "custom")) {
+      payload$reg$origin[[payload$idx]] <- sprintf("registered:%s", profile)
+    }
+
+    ok <- tryCatch(save_active_manifest(payload), error = function(e) e)
+    if (inherits(ok, "error")) {
+      shiny::showNotification(
+        sprintf("Failed to save project settings: %s", conditionMessage(ok)),
+        type = "error"
+      )
+      set_run_monitor_note(sprintf("Project settings save failed: %s", conditionMessage(ok)))
+      return()
+    }
+
+    rv$project.name <- project_name
+    rv$project.origin <- scalar_chr(payload$reg$origin[[payload$idx]] %||% rv$project.origin %||% "workspace", default = "workspace")
+    shiny::removeModal()
+    set_run_monitor_note("Project settings saved.")
+    shiny::showNotification("Project settings saved.", type = "message")
+  }, ignoreInit = TRUE)
 
   shiny::observeEvent(input$save_project, {
     ok <- save_current_project()
@@ -2145,7 +2594,7 @@ app_server <- function(input, output, session) {
 
     mode_label <- switch(
       rr$effective,
-      rglwidget = "RGL live",
+      rglwidget = "RGL",
       html = "HTML",
       plotly = "Plotly",
       none = "none",
@@ -2153,7 +2602,7 @@ app_server <- function(input, output, session) {
     )
     req_label <- switch(
       rr$requested,
-      rglwidget = "RGL live",
+      rglwidget = "RGL",
       html = "HTML",
       plotly = "Plotly",
       rr$requested
@@ -2182,50 +2631,11 @@ app_server <- function(input, output, session) {
   })
 
   output$run_monitor <- shiny::renderText({
-    dat <- data_state()
-    g <- graph_state()
-    cfit <- condexp_state()
-    vz <- viz_state()
-    manifest <- active_manifest()
-    ref_info <- current_reference_info(manifest)
-    rr <- reference_renderer_state()
-
-    proj.msg <- if (!isTRUE(rv$project.active)) {
-      "Project: not started"
-    } else {
-      sprintf(
-        "Project: %s | Origin: %s | Graph-ready: %s | Dirty: %s",
-        rv$project.name %||% "Untitled Project",
-        rv$project.origin %||% "unknown",
-        if (isTRUE(rv$project.has.graphs)) "yes" else "no",
-        if (isTRUE(rv$project.dirty)) "yes" else "no"
-      )
-    }
-
-    data.msg <- if (is.null(dat$data)) {
-      "Data: not loaded"
-    } else {
-      sprintf("Data: %d rows x %d columns | Source: %s", nrow(dat$data), ncol(dat$data), dat$source %||% "unknown")
-    }
-
-    graph.msg <- sprintf("Graphs: %s", g$status %||% "not run")
-    ref.msg <- sprintf("Reference Graph: %s | Overrides: %s", ref_info$summary, ref_info$by_outcome_text)
-    renderer.msg <- sprintf(
-      "Renderer: %s [%s]%s",
-      rr$effective %||% "unknown",
-      rr$requested %||% "rglwidget",
-      if (identical(rr$effective, "html")) sprintf(" | html assets: %d", length(rr$html_choices)) else ""
-    )
-    condexp.msg <- sprintf("CondExp: %s", cfit$status %||% "not run")
-    viz.msg <- sprintf("Endpoints/View: %s", vz$status %||% "not run")
     note.msg <- trimws(as.character(rv$run.monitor.note %||% ""))
-
-    parts <- c()
-    if (nzchar(note.msg)) {
-      parts <- c(parts, sprintf("Job: %s", note.msg))
+    if (!nzchar(note.msg)) {
+      return("No recent job message.")
     }
-    parts <- c(parts, proj.msg, data.msg, graph.msg, ref.msg, renderer.msg, condexp.msg, viz.msg)
-    paste(parts, collapse = "\n\n")
+    sprintf("Job: %s", note.msg)
   })
 
   output$workspace_view <- shiny::renderUI({
@@ -2248,6 +2658,99 @@ app_server <- function(input, output, session) {
       mode_note <- ""
     } else {
       mode_note <- mode_note[[1]]
+    }
+    component_note <- as.character(rr$component_note %||% "")
+    if (length(component_note) < 1L || !nzchar(component_note[[1]])) {
+      component_note <- ""
+    } else {
+      component_note <- component_note[[1]]
+    }
+
+    build_rgl_legend <- function(rr_state, st_state) {
+      if (!identical(rr_state$effective, "rglwidget")) {
+        return(NULL)
+      }
+      src_key <- as.character(rr_state$src_key %||% st_state$default_key %||% "")
+      if (!(src_key %in% names(st_state$sources %||% list()))) {
+        return(NULL)
+      }
+      src <- st_state$sources[[src_key]]
+      nn <- suppressWarnings(as.integer(st_state$n_vertices %||% length(src$values)))
+      keep_idx <- suppressWarnings(as.integer(rr_state$keep_idx %||% seq_len(max(0L, nn))))
+      keep_idx <- keep_idx[is.finite(keep_idx) & keep_idx >= 1L & keep_idx <= nn]
+      if (length(keep_idx) < 1L) {
+        keep_idx <- seq_len(max(0L, nn))
+      }
+      values_view <- src$values[keep_idx]
+      src_type <- as.character(src$type %||% "")
+      col_tbl <- character(0)
+      labs <- character(0)
+
+      if (identical(src_type, "categorical")) {
+        pal_info <- categorical_palette(
+          values_view,
+          source_key = src_key,
+          source_label = src$label %||% src_key
+        )
+        lev <- pal_info$levels
+        if (length(lev) < 1L) {
+          return(NULL)
+        }
+        col_tbl <- unname(as.character(pal_info$colors[lev]))
+        counts <- table(factor(pal_info$values, levels = lev))
+        labs <- sprintf("%s (%s)", lev, format(as.integer(counts), big.mark = ","))
+      } else if (identical(src_type, "numeric")) {
+        if (!requireNamespace("gflow", quietly = TRUE)) {
+          return(NULL)
+        }
+        vals <- suppressWarnings(as.numeric(values_view))
+        vals <- vals[is.finite(vals)]
+        if (length(vals) < 2L) {
+          return(NULL)
+        }
+        q <- tryCatch(
+          gflow::quantize.for.legend(
+            y = vals,
+            quantize.method = "uniform",
+            quantize.wins.p = 0.01,
+            quantize.round = FALSE,
+            quantize.dig.lab = 2,
+            start = 1 / 6,
+            end = 0,
+            n.levels = 10
+          ),
+          error = function(e) NULL
+        )
+        if (is.null(q) || length(q$y.col.tbl %||% character(0)) < 1L) {
+          return(NULL)
+        }
+        col_tbl <- unname(as.character(q$y.col.tbl))
+        labs <- as.character(q$legend.labs %||% names(q$y.col.tbl))
+        if (length(labs) != length(col_tbl)) {
+          labs <- as.character(names(q$y.col.tbl))
+        }
+      } else {
+        return(NULL)
+      }
+
+      items <- lapply(seq_along(col_tbl), function(ii) {
+        shiny::div(
+          class = "gf-rgl-legend-item",
+          shiny::span(
+            class = "gf-rgl-legend-swatch",
+            style = sprintf("background:%s;", col_tbl[[ii]])
+          ),
+          shiny::span(class = "gf-rgl-legend-label", labs[[ii]])
+        )
+      })
+      shiny::div(
+        class = "gf-rgl-legend",
+        shiny::div(
+          class = "gf-rgl-legend-title",
+          as.character(src$label %||% src_key)
+        ),
+        items
+      )
     }
 
     if (!is.null(st$error)) {
@@ -2274,7 +2777,11 @@ app_server <- function(input, output, session) {
           )
         )
       } else {
-        rgl::rglwidgetOutput("reference_rgl", width = "100%", height = "78vh")
+        shiny::div(
+          class = "gf-rgl-wrap",
+          rgl::rglwidgetOutput("reference_rgl", width = "100%", height = "78vh"),
+          build_rgl_legend(rr, st)
+        )
       }
     } else if (identical(rr$effective, "html")) {
       if (nzchar(html_error) || !nzchar(html_url)) {
@@ -2329,8 +2836,12 @@ app_server <- function(input, output, session) {
     shiny::div(
       class = "gf-reference-view gf-reference-view-plain",
       view_body,
-      if (nzchar(mode_note)) {
-        shiny::p(class = "gf-mode-note", mode_note)
+      {
+        notes <- unique(c(mode_note, component_note))
+        notes <- notes[nzchar(notes)]
+        if (length(notes) > 0L) {
+          shiny::p(class = "gf-mode-note", paste(notes, collapse = " "))
+        }
       }
     )
   })
