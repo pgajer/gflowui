@@ -178,6 +178,51 @@ body {
   margin-bottom: 0;
 }
 
+.gf-graph-layout-row {
+  flex-wrap: nowrap;
+}
+
+.gf-graph-layout-row .gf-graph-row-label {
+  min-width: 108px;
+  width: 108px;
+  white-space: nowrap;
+}
+
+.gf-graph-layout-row .form-group {
+  flex: 0 0 auto;
+}
+
+.gf-graph-layout-row .selectize-control.single .selectize-input {
+  min-height: 34px;
+  height: 34px;
+  padding: 6px 30px 6px 10px;
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.gf-graph-layout-row .selectize-input .item {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.1;
+}
+
+.gf-graph-layout-row .selectize-control.single .selectize-input > input {
+  margin: 0;
+  line-height: 1;
+}
+
+.gf-graph-layout-row select.form-control,
+.gf-graph-layout-row select.form-select {
+  height: 34px;
+  line-height: 1.1;
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
 .gf-graph-row-label {
   min-width: 92px;
   font-weight: 700;
@@ -194,6 +239,11 @@ body {
 .gf-btn-inline {
   white-space: nowrap;
   padding: 0.32rem 0.65rem;
+}
+
+.gf-graph-row-k .gf-btn-inline,
+.gf-graph-row-optimal .gf-btn-inline {
+  margin-left: auto;
 }
 
 .gf-graph-layout-head {
@@ -313,6 +363,53 @@ body {
   margin: 0.4rem 0 0;
   font-size: 0.83rem;
   color: rgba(26, 47, 51, 0.78);
+}
+
+.gf-rgl-wrap {
+  position: relative;
+  width: 100%;
+  min-height: 78vh;
+}
+
+.gf-rgl-legend {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 210px;
+  max-height: 95%;
+  overflow: auto;
+  background: rgba(255, 255, 255, 0.93);
+  padding: 8px 10px;
+  border: 1px solid #bbbbbb;
+  border-radius: 4px;
+  z-index: 1000;
+  font-size: 11px;
+}
+
+.gf-rgl-legend-title {
+  font-weight: 600;
+  margin-bottom: 6px;
+  font-size: 12px;
+}
+
+.gf-rgl-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 2px 0;
+  line-height: 1.15;
+}
+
+.gf-rgl-legend-swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 1px solid #666666;
+  flex: 0 0 auto;
+}
+
+.gf-rgl-legend-label {
+  font-family: "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 }
 
 .gf-html-frame-wrap {
@@ -481,5 +578,14 @@ body {
 @media (max-width: 520px) {
   .gf-graph-row-tight {
     flex-wrap: wrap;
+  }
+
+  .gf-graph-layout-row {
+    flex-wrap: wrap;
+  }
+
+  .gf-graph-layout-row .gf-graph-row-label {
+    min-width: 96px;
+    width: 96px;
   }
 }

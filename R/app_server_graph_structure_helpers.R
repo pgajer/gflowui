@@ -507,6 +507,12 @@ gflowui_make_server_graph_structure_helpers <- function(rv) {
 
   infer_optimal_method_id <- function(path) {
     low <- tolower(basename(as.character(path %||% "")))
+    if (grepl("mean_median_vs_k", low, fixed = TRUE) || grepl("median_vs_k", low, fixed = TRUE)) {
+      return("median_norm_gcv")
+    }
+    if (grepl("k\\.distribution\\.summary", low, perl = TRUE) || grepl("k\\.selection\\.summary", low, perl = TRUE)) {
+      return("median_norm_gcv")
+    }
     if (grepl("median", low, fixed = TRUE) && grepl("gcv", low, fixed = TRUE)) {
       return("median_norm_gcv")
     }
@@ -526,15 +532,29 @@ gflowui_make_server_graph_structure_helpers <- function(rv) {
   }
 
   optimal_method_label <- function(id) {
+    id_chr <- as.character(id %||% "")
+    if (grepl("^median_norm_gcv_(?:criterion_)?hv([0-9]+)$", id_chr, perl = TRUE)) {
+      dig <- sub("^median_norm_gcv_(?:criterion_)?hv([0-9]+)$", "\\1", id_chr, perl = TRUE)
+      return(sprintf("median norm-GCV (HV%s)", dig))
+    }
+    if (grepl("^response_gcv_hv([0-9]+)$", id_chr, perl = TRUE)) {
+      dig <- sub("^response_gcv_hv([0-9]+)$", "\\1", id_chr, perl = TRUE)
+      return(sprintf("response GCV (HV%s)", dig))
+    }
+    if (identical(id_chr, "median_norm_gcv_summary")) {
+      return("median norm-GCV summary")
+    }
     switch(
-      as.character(id %||% ""),
+      id_chr,
       median_norm_gcv = "median norm-GCV",
       response_gcv = "response GCV",
+      response_gcv_all = "response GCV (all)",
       edit_distance = "edit distance",
       mixing = "mixing score",
       connectivity = "connectivity summary",
       criterion = "criterion summary",
-      as.character(id %||% "criterion")
+      criterion_summary = "criterion summary",
+      id_chr
     )
   }
 
@@ -585,6 +605,63 @@ gflowui_make_server_graph_structure_helpers <- function(rv) {
       add_one(infer_optimal_method_id(pp), pp, source = "graph_set")
     }
 
+    project_root <- as.character(manifest$project_root %||% "")
+    if (nzchar(project_root) && !identical(project_root, "NA") && dir.exists(project_root)) {
+      root <- tryCatch(normalizePath(project_root, mustWork = TRUE), error = function(e) "")
+      if (nzchar(root)) {
+        sid <- tolower(as.character(spec$set_id %||% ""))
+        if (sid %in% c("top20", "top30", "top50")) {
+          fam <- sub("^top", "hv", sid)
+          add_one(
+            "median_norm_gcv",
+            file.path(root, "results", "asv_hv_k_gcv_sweep", "figures", sprintf("%s_mean_median_vs_k.pdf", sid)),
+            source = "project_root.figures"
+          )
+          add_one(
+            "median_norm_gcv_summary",
+            file.path(root, "results", "asv_hv_k_gcv_sweep", sid, "k.distribution.summary.csv"),
+            source = "project_root.summary"
+          )
+          add_one(
+            "response_gcv",
+            file.path(root, "results", "vag_odor_asv_graph_gcv_sweep", "figures", sprintf("%s_vag_odor_gcv_vs_k.pdf", fam)),
+            source = "project_root.figures"
+          )
+        } else if (identical(sid, "all")) {
+          add_one(
+            "median_norm_gcv",
+            file.path(root, "results", "asv_full_graph_hv_criteria_k_selection", "figures", "criterion_hv20_hv30_hv50_mean_median_vs_k.pdf"),
+            source = "project_root.figures"
+          )
+          add_one(
+            "median_norm_gcv_summary",
+            file.path(root, "results", "asv_full_graph_hv_criteria_k_selection", "summary.across.criteria.csv"),
+            source = "project_root.summary"
+          )
+          add_one(
+            "median_norm_gcv_hv20",
+            file.path(root, "results", "asv_full_graph_hv_criteria_k_selection", "figures", "criterion.hv20_mean_median_vs_k.pdf"),
+            source = "project_root.figures"
+          )
+          add_one(
+            "median_norm_gcv_hv30",
+            file.path(root, "results", "asv_full_graph_hv_criteria_k_selection", "figures", "criterion.hv30_mean_median_vs_k.pdf"),
+            source = "project_root.figures"
+          )
+          add_one(
+            "median_norm_gcv_hv50",
+            file.path(root, "results", "asv_full_graph_hv_criteria_k_selection", "figures", "criterion.hv50_mean_median_vs_k.pdf"),
+            source = "project_root.figures"
+          )
+          add_one(
+            "response_gcv",
+            file.path(root, "results", "vag_odor_asv_graph_gcv_sweep", "figures", "all_vag_odor_gcv_vs_k.pdf"),
+            source = "project_root.figures"
+          )
+        }
+      }
+    }
+
     tokens <- graph_alias_tokens(spec$set_id, spec$set_label)
     path_matches <- function(path) {
       low <- tolower(as.character(path %||% ""))
@@ -628,10 +705,18 @@ gflowui_make_server_graph_structure_helpers <- function(rv) {
 
     ids <- vapply(out, function(x) as.character(x$id %||% "criterion"), character(1))
     labs <- vapply(out, function(x) as.character(x$label %||% "criterion"), character(1))
-    ord <- order(
-      match(ids, c("median_norm_gcv", "response_gcv", "edit_distance", "mixing", "connectivity", "criterion"), nomatch = 100L),
-      labs
-    )
+    rank_id <- function(x) {
+      if (identical(x, "median_norm_gcv")) return(1L)
+      if (grepl("^median_norm_gcv_", x, fixed = TRUE)) return(2L)
+      if (identical(x, "response_gcv")) return(3L)
+      if (grepl("^response_gcv_", x, fixed = TRUE)) return(4L)
+      if (identical(x, "edit_distance")) return(5L)
+      if (identical(x, "mixing")) return(6L)
+      if (identical(x, "connectivity")) return(7L)
+      if (identical(x, "criterion") || identical(x, "criterion_summary")) return(8L)
+      99L
+    }
+    ord <- order(vapply(ids, rank_id, integer(1)), labs)
     out <- out[ord]
     ids <- ids[ord]
     labs <- labs[ord]
@@ -655,7 +740,7 @@ gflowui_make_server_graph_structure_helpers <- function(rv) {
     )
   }
 
-  resolve_optimal_k_display_path <- function(path, set_tokens = character(0)) {
+  resolve_optimal_k_display_path <- function(path, set_tokens = character(0), cache_dir = "", method_id = "") {
     pp <- as.character(path %||% "")
     if (!nzchar(pp)) {
       return("")
@@ -666,45 +751,188 @@ gflowui_make_server_graph_structure_helpers <- function(rv) {
     if (!file.exists(pp)) {
       return("")
     }
+    pp <- normalizePath(pp, mustWork = TRUE)
     ext <- tolower(tools::file_ext(pp))
     if (identical(ext, "pdf")) {
-      return(normalizePath(pp, mustWork = TRUE))
-    }
-
-    dd <- dirname(pp)
-    pdfs <- list.files(dd, pattern = "\\.pdf$", full.names = TRUE, ignore.case = TRUE)
-    if (length(pdfs) < 1L) {
-      return(normalizePath(pp, mustWork = TRUE))
-    }
-    pdfs <- normalizePath(pdfs[file.exists(pdfs)], mustWork = TRUE)
-    if (length(pdfs) < 1L) {
-      return(normalizePath(pp, mustWork = TRUE))
+      return(pp)
     }
 
     base <- tolower(tools::file_path_sans_ext(basename(pp)))
-    tokens <- unique(tolower(c(base, as.character(set_tokens %||% character(0)))))
+    tokens <- unique(tolower(c(
+      base,
+      as.character(method_id %||% ""),
+      as.character(set_tokens %||% character(0)),
+      sub("^top", "hv", as.character(set_tokens %||% character(0)))
+    )))
     tokens <- tokens[nzchar(tokens)]
+
+    candidate_dirs <- character(0)
+    dd <- dirname(pp)
+    for (ii in seq_len(5L)) {
+      if (!nzchar(dd) || identical(dd, ".") || identical(dd, "/")) {
+        break
+      }
+      candidate_dirs <- c(candidate_dirs, dd, file.path(dd, "figures"))
+      next_dd <- dirname(dd)
+      if (identical(next_dd, dd)) {
+        break
+      }
+      dd <- next_dd
+    }
+    candidate_dirs <- unique(candidate_dirs[file.exists(candidate_dirs) & dir.exists(candidate_dirs)])
+
+    pdfs <- character(0)
+    for (one_dir in candidate_dirs) {
+      found <- list.files(one_dir, pattern = "\\.pdf$", full.names = TRUE, ignore.case = TRUE)
+      if (length(found) > 0L) {
+        pdfs <- c(pdfs, found)
+      }
+    }
+    pdfs <- unique(pdfs[file.exists(pdfs)])
+    if (length(pdfs) > 0L) {
+      pdfs <- normalizePath(pdfs, mustWork = TRUE)
+    }
 
     score_pdf <- function(one) {
       low <- tolower(one)
+      base_name <- tolower(basename(one))
       sc <- 0
       for (tok in tokens) {
         if (grepl(tok, low, fixed = TRUE)) {
           sc <- sc + 2
         }
       }
+      requested_hv <- tokens[grepl("^hv[0-9]+$", tokens, perl = TRUE)]
+      if (length(requested_hv) > 0L) {
+        for (hv in requested_hv) {
+          if (grepl(sprintf("(^|[_\\.-])%s([_\\.-]|$)", hv), base_name, perl = TRUE)) {
+            sc <- sc + 4
+          }
+        }
+        if (grepl("hv20_hv30_hv50_all", base_name, fixed = TRUE)) {
+          sc <- sc - 2
+        }
+      }
+      requested_all <- "all" %in% tokens
+      if (requested_all && grepl("all", base_name, fixed = TRUE)) {
+        sc <- sc + 2
+      }
+      if (!requested_all && length(requested_hv) > 0L && grepl("all", base_name, fixed = TRUE)) {
+        sc <- sc - 1
+      }
       if (grepl("gcv", low, fixed = TRUE)) {
         sc <- sc + 1
+      }
+      if (grepl("mean_median_vs_k", low, fixed = TRUE)) {
+        sc <- sc + 2
       }
       sc
     }
 
-    scores <- vapply(pdfs, score_pdf, numeric(1))
-    pick <- pdfs[which.max(scores)]
-    if (!nzchar(pick)) {
-      pick <- pdfs[1]
+    if (length(pdfs) > 0L) {
+      scores <- vapply(pdfs, score_pdf, numeric(1))
+      pick <- pdfs[which.max(scores)]
+      if (nzchar(pick)) {
+        return(pick)
+      }
     }
-    pick
+
+    generate_pdf_from_csv <- function(csv_path) {
+      tbl <- tryCatch(utils::read.csv(csv_path, stringsAsFactors = FALSE), error = function(e) NULL)
+      if (!is.data.frame(tbl) || nrow(tbl) < 2L) {
+        return("")
+      }
+
+      nms <- tolower(names(tbl))
+      pick_col <- function(cands) {
+        idx <- match(tolower(cands), nms)
+        idx <- idx[is.finite(idx)]
+        if (length(idx) < 1L) {
+          return(NA_integer_)
+        }
+        as.integer(idx[[1]])
+      }
+
+      x_idx <- pick_col(c("k", "k.requested", "k_reported", "k.reported", "k.selected", "k_selected"))
+      if (!is.finite(x_idx)) {
+        return("")
+      }
+
+      prefer_median <- grepl("median_norm_gcv", tolower(method_id), fixed = TRUE) ||
+        any(grepl("median", tokens, fixed = TRUE))
+      y_candidates <- if (prefer_median) {
+        c("median.norm", "mean.norm", "trimmed.mean.norm", "gcv.norm", "gcv", "value")
+      } else {
+        c("gcv", "gcv.norm", "median.norm", "mean.norm", "trimmed.mean.norm", "value")
+      }
+      y_idx <- pick_col(y_candidates)
+      if (!is.finite(y_idx)) {
+        return("")
+      }
+
+      xx <- suppressWarnings(as.numeric(tbl[[x_idx]]))
+      yy <- suppressWarnings(as.numeric(tbl[[y_idx]]))
+      keep <- is.finite(xx) & is.finite(yy)
+      if (sum(keep) < 2L) {
+        return("")
+      }
+      xx <- xx[keep]
+      yy <- yy[keep]
+      ord <- order(xx)
+      xx <- xx[ord]
+      yy <- yy[ord]
+
+      cache_root <- as.character(cache_dir %||% "")
+      if (!nzchar(cache_root)) {
+        cache_root <- file.path(tempdir(), "gflowui_optimal_k_cache")
+      }
+      dir.create(cache_root, recursive = TRUE, showWarnings = FALSE)
+
+      base_id <- sanitize_token_id(tools::file_path_sans_ext(basename(csv_path)), fallback = "optimal_k")
+      mid <- sanitize_token_id(as.character(method_id %||% "criterion"), fallback = "criterion")
+      out_pdf <- file.path(cache_root, sprintf("%s_%s.pdf", base_id, mid))
+
+      csv_mtime <- tryCatch(file.info(csv_path)$mtime, error = function(e) as.POSIXct(NA))
+      pdf_mtime <- tryCatch(file.info(out_pdf)$mtime, error = function(e) as.POSIXct(NA))
+      if (file.exists(out_pdf) && is.finite(as.numeric(pdf_mtime)) && is.finite(as.numeric(csv_mtime)) &&
+          as.numeric(pdf_mtime) >= as.numeric(csv_mtime)) {
+        return(normalizePath(out_pdf, mustWork = TRUE))
+      }
+
+      title_txt <- sprintf("%s vs k", names(tbl)[[y_idx]])
+      ylab_txt <- names(tbl)[[y_idx]]
+      xlab_txt <- names(tbl)[[x_idx]]
+      ok <- tryCatch(
+        {
+          grDevices::pdf(file = out_pdf, width = 8.5, height = 5.5, useDingbats = FALSE)
+          on.exit(grDevices::dev.off(), add = TRUE)
+          graphics::plot(
+            xx, yy,
+            type = "b", pch = 16, col = "#1f78b4", lwd = 1.6,
+            xlab = xlab_txt, ylab = ylab_txt, main = title_txt
+          )
+          if (length(unique(xx)) > 1L) {
+            k_best <- xx[[which.min(yy)]]
+            graphics::abline(v = k_best, lty = 2, col = "#d95f02")
+          }
+          TRUE
+        },
+        error = function(e) FALSE
+      )
+      if (!isTRUE(ok) || !file.exists(out_pdf)) {
+        return("")
+      }
+      normalizePath(out_pdf, mustWork = TRUE)
+    }
+
+    if (ext %in% c("csv", "tsv", "txt")) {
+      gen_pdf <- generate_pdf_from_csv(pp)
+      if (nzchar(gen_pdf)) {
+        return(gen_pdf)
+      }
+    }
+
+    pp
   }
 
   open_external_path <- function(path) {

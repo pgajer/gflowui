@@ -1,0 +1,167 @@
+---
+title: "PRJNA208535: gflow to gflowui Handoff"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{PRJNA208535: gflow to gflowui Handoff}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
+```
+
+This vignette defines a reproducible pipeline to package a PRJNA208535-style analysis as a `gflowui` project.
+
+## Scope
+
+Target workflow:
+
+1. preprocess ASV table (feature reduction),
+2. build iKNN graph family for `k = 3:20`,
+3. generate 3D layouts via `grip.layout()`,
+4. compute median normalized GCV over top-variance ASVs,
+5. save graph/layout/optimal-k/CST assets,
+6. call `gflowui::register_project(..., overwrite = TRUE)`.
+
+Reference handoff notes can be kept alongside your analysis docs (for example the PRJNA208535 handoff markdown used in VMRC work).
+
+## 1) Preprocess ASV features
+
+```{r, eval = FALSE}
+# Input:
+#   X_raw: samples x ASVs matrix
+#   mt: metadata data.frame with rownames matching samples
+
+# Example reduction: keep top-variance ASVs (tune n_features as needed)
+n_features <- 50L
+vars <- apply(X_raw, 2, var, na.rm = TRUE)
+keep <- order(vars, decreasing = TRUE)[seq_len(min(n_features, ncol(X_raw)))]
+X <- X_raw[, keep, drop = FALSE]
+```
+
+## 2) Build graph family
+
+```{r, eval = FALSE}
+gobj <- gflow::build.iknn.graphs.and.selectk(
+  X = X,
+  kmin = 3L,
+  kmax = 20L,
+  method = "edit" # or project-standard method
+)
+
+saveRDS(gobj, "results/asv_graphs/iknn.selection.rds")
+```
+
+## 3) Create grip layouts for all k
+
+Use the same layout parameters across renderers:
+
+```{r, eval = FALSE}
+layout_args <- list(
+  dim = 3,
+  rounds = 200,
+  final_rounds = 200,
+  num_init = 10,
+  num_nbrs = 30,
+  r = 0.1,
+  s = 1.0,
+  tinit_factor = 6,
+  seed = 6
+)
+
+dir.create("results/asv_graphs/layouts_3d_rds", recursive = TRUE, showWarnings = FALSE)
+
+for (k in gobj$k.range) {
+  adj <- gobj$graphs[[as.character(k)]]$adj.list
+  wt <- gobj$graphs[[as.character(k)]]$weight.list
+  layout3d <- do.call(grip::grip.layout, c(list(adj_list = adj, weight_list = wt), layout_args))
+  saveRDS(layout3d, sprintf("results/asv_graphs/layouts_3d_rds/asv_k%02d_layout3d.rds", k))
+}
+```
+
+## 4) Compute median normalized GCV criterion
+
+```{r, eval = FALSE}
+# Pseudocode:
+# - pick top variance ASV outcomes (e.g. first 20)
+# - for each k and outcome, run fit.rdgraph.regression + refit.rdgraph.regression
+# - compute normalized GCV per outcome
+# - aggregate median normalized GCV per k
+# - save summary and figure
+
+write.csv(gcv_summary, "results/asv_graphs/optimal_k/median_norm_gcv_by_k.csv", row.names = FALSE)
+grDevices::pdf("results/asv_graphs/optimal_k/median_norm_gcv_by_k.pdf", width = 7, height = 5)
+plot(gcv_summary$k, gcv_summary$median_norm_gcv, type = "b")
+grDevices::dev.off()
+```
+
+## 5) Save metadata color assets and optional conditional expectations
+
+```{r, eval = FALSE}
+# Example metadata object expected by gflowui color discovery:
+mt.asv <- mt[, c("CST", "subCST"), drop = FALSE]
+save(mt.asv, file = "data/S_asv.rda")
+
+# Optional condexp assets:
+# - fit_files by family/k (type = "fit_files"), or
+# - long table with outcome/k/y_fitted/y_observed (type = "long_table")
+```
+
+## 6) Register in gflowui
+
+```{r, eval = FALSE}
+graph_sets <- list(
+  list(
+    id = "all",
+    label = "ASV Full Graph",
+    data_type_id = "all",
+    data_type_label = "ASV",
+    graph_file = normalizePath("results/asv_graphs/iknn.selection.rds", mustWork = TRUE),
+    k_values = 3:20,
+    n_samples = nrow(X),
+    n_features = ncol(X),
+    optimal_k_artifacts = list(
+      median_norm_gcv = normalizePath("results/asv_graphs/optimal_k/median_norm_gcv_by_k.pdf", mustWork = TRUE),
+      median_norm_gcv_summary = normalizePath("results/asv_graphs/optimal_k/median_norm_gcv_by_k.csv", mustWork = TRUE)
+    ),
+    layout_assets = list(
+      presets = list(renderer = "rglwidget", vertex_layout = "sphere", vertex_size = "1x", color_by = "CST"),
+      grip_layout_params = layout_args,
+      grip_layouts = lapply(3:20, function(k) list(
+        id = sprintf("k%02d", k),
+        label = sprintf("k=%d grip.layout", k),
+        k = k,
+        path = normalizePath(sprintf("results/asv_graphs/layouts_3d_rds/asv_k%02d_layout3d.rds", k), mustWork = TRUE),
+        source = "grip.layout"
+      ))
+    ),
+    color_assets = list(
+      metadata_file = normalizePath("data/S_asv.rda", mustWork = TRUE),
+      metadata_object = "mt.asv",
+      vector_columns = c("CST", "subCST"),
+      preferred_order = c("CST", "subCST"),
+      labels = c(CST = "CST", subCST = "subCST")
+    )
+  )
+)
+
+gflowui::register_project(
+  project_root = normalizePath(".", mustWork = TRUE),
+  project_id = "prjna208535",
+  project_name = "PRJNA208535",
+  profile = "custom",
+  scan_results = FALSE,
+  graph_sets = graph_sets,
+  condexp_sets = list(),   # fill when available
+  endpoint_runs = list(),  # fill when available
+  defaults = list(graph_set_id = "all"),
+  overwrite = TRUE
+)
+```
+
+## Notes
+
+- Keep layout generation deterministic (`seed = 6`) to avoid renderer drift.
+- `HTML`, `RGL`, and `Plotly` should all read the same saved `grip.layout()` coordinates.
+- Add new color variables through `color_assets$vector_columns`; `gflowui` will expose them in `Color by`.
