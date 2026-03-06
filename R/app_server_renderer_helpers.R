@@ -623,6 +623,241 @@ gflowui_make_server_renderer_helpers <- function(rv, current_reference_info) {
     )
   }
 
+  collect_reference_endpoint_sources <- function(manifest, k_use, n_vertices, reference_adj_list = NULL) {
+    sources <- list()
+    if (!is.list(manifest) || n_vertices < 1L) {
+      return(sources)
+    }
+
+    add_source <- function(key, label, values, type = c("numeric", "categorical")) {
+      type <- match.arg(type)
+      vv <- values
+      if (length(vv) != n_vertices) {
+        return(invisible(NULL))
+      }
+      if (all(is.na(vv))) {
+        return(invisible(NULL))
+      }
+      k <- sanitize_token_id(key, fallback = "source")
+      while (k %in% names(sources)) {
+        k <- sprintf("%s_%d", k, length(sources) + 1L)
+      }
+      sources[[k]] <<- list(
+        key = k,
+        label = as.character(label),
+        type = type,
+        values = vv
+      )
+      invisible(NULL)
+    }
+
+    endpoint_runs <- if (is.list(manifest$endpoint_runs)) manifest$endpoint_runs else list()
+    if (length(endpoint_runs) < 1L) {
+      return(sources)
+    }
+
+    default_ep <- tolower(scalar_chr(manifest$defaults$endpoint_run_id %||% "", default = ""))
+    if (nzchar(default_ep)) {
+      ids <- tolower(vapply(endpoint_runs, function(ep) scalar_chr(ep$id %||% "", default = ""), character(1)))
+      hit <- match(default_ep, ids)
+      if (is.finite(hit) && hit >= 1L && hit <= length(endpoint_runs)) {
+        endpoint_runs <- c(endpoint_runs[hit], endpoint_runs[-hit])
+      }
+    }
+
+    k_int <- suppressWarnings(as.integer(k_use))
+    if (!is.finite(k_int)) {
+      k_int <- NA_integer_
+    }
+
+    get_named <- function(lst, candidates) {
+      if (!is.list(lst) || length(candidates) < 1L) {
+        return(NULL)
+      }
+      nms <- names(lst)
+      if (is.null(nms) || length(nms) < 1L) {
+        return(NULL)
+      }
+      nms_low <- tolower(nms)
+      for (cand in candidates) {
+        cc <- as.character(cand %||% "")
+        if (!nzchar(cc)) {
+          next
+        }
+        idx <- match(tolower(cc), nms_low)
+        if (is.finite(idx) && idx >= 1L && idx <= length(lst)) {
+          return(lst[[idx]])
+        }
+      }
+      NULL
+    }
+
+    expand_to_full <- function(values, obj = NULL) {
+      vv <- suppressWarnings(as.numeric(values))
+      if (length(vv) == n_vertices) {
+        return(vv)
+      }
+
+      idx_global <- suppressWarnings(as.integer(c(
+        get_named(obj, c(
+          "lcc.index.global", "lcc_index_global",
+          "vertex.global", "vertex_global",
+          "index.global", "index_global"
+        )),
+        if (is.list(obj$lcc)) {
+          get_named(obj$lcc, c(
+            "lcc.index.global", "lcc_index_global",
+            "vertex.global", "vertex_global",
+            "index.global", "index_global"
+          ))
+        } else {
+          integer(0)
+        }
+      )))
+      idx_global <- idx_global[is.finite(idx_global) & idx_global >= 1L & idx_global <= n_vertices]
+
+      if (length(idx_global) == length(vv) && length(vv) > 0L) {
+        out <- rep(NA_real_, n_vertices)
+        out[idx_global] <- vv
+        return(out)
+      }
+
+      if (is.list(reference_adj_list) && length(reference_adj_list) == n_vertices) {
+        out <- expand_lcc_to_full(
+          values = vv,
+          reference_adj_list = reference_adj_list,
+          n_vertices = n_vertices
+        )
+        if (length(out) == n_vertices) {
+          return(out)
+        }
+      }
+
+      vv
+    }
+
+    pick_run_bundle <- function(ep_run) {
+      per_k_files <- normalize_paths(ep_run$per_k_bundles %||% character(0))
+      per_k_files <- per_k_files[file.exists(per_k_files)]
+      bundle_file <- scalar_chr(ep_run$bundle_file %||% "", default = "")
+
+      if (length(per_k_files) > 0L && is.finite(k_int)) {
+        cand <- find_fit_file_for_k(per_k_files, k_use = k_int)
+        if (length(cand) > 0L) {
+          return(cand[[1]])
+        }
+
+        parse_file_k <- function(path) {
+          mm <- regexec("k0*([0-9]+)", basename(path), perl = TRUE)
+          rr <- regmatches(basename(path), mm)[[1]]
+          if (length(rr) >= 2L && nzchar(rr[[2]])) {
+            val <- suppressWarnings(as.integer(rr[[2]]))
+            if (is.finite(val) && val > 0L) {
+              return(val)
+            }
+          }
+          NA_integer_
+        }
+        file_k <- suppressWarnings(as.integer(vapply(per_k_files, parse_file_k, integer(1))))
+        keep <- is.finite(file_k)
+        if (any(keep)) {
+          files_use <- per_k_files[keep]
+          k_use <- file_k[keep]
+          exact <- which(k_use == k_int)
+          if (length(exact) > 0L) {
+            return(files_use[[exact[[1]]]])
+          }
+          near <- which.min(abs(k_use - k_int))
+          if (is.finite(near) && near >= 1L && near <= length(files_use)) {
+            return(files_use[[near]])
+          }
+        }
+      }
+
+      if (nzchar(bundle_file) && file.exists(bundle_file)) {
+        return(normalizePath(bundle_file, mustWork = TRUE))
+      }
+
+      if (length(per_k_files) > 0L) {
+        return(per_k_files[[1]])
+      }
+
+      ""
+    }
+
+    have_condexp <- FALSE
+    have_raw <- FALSE
+
+    for (ep in endpoint_runs) {
+      bundle_path <- pick_run_bundle(ep)
+      if (!nzchar(bundle_path)) {
+        next
+      }
+      obj <- tryCatch(readRDS(bundle_path), error = function(e) NULL)
+      if (!is.list(obj)) {
+        next
+      }
+
+      if (!have_condexp) {
+        fit_vals <- get_named(
+          obj,
+          c(
+            "fitted.evenness", "fitted_evenness",
+            "evenness.hat", "evenness_hat",
+            "fitted.values", "fitted_values",
+            "fitted.evenness.lcc", "fitted_evenness_lcc"
+          )
+        )
+        if (is.null(fit_vals) && is.list(obj$fit)) {
+          fit_vals <- get_named(
+            obj$fit,
+            c("fitted.values", "fitted_values", "fitted.evenness", "fitted_evenness")
+          )
+        }
+        fit_full <- expand_to_full(fit_vals, obj = obj)
+        if (length(fit_full) == n_vertices && !all(is.na(fit_full))) {
+          add_source(
+            key = "endpoint_evenness_condexp",
+            label = "Evenness CondExp",
+            values = fit_full,
+            type = "numeric"
+          )
+          have_condexp <- TRUE
+        }
+      }
+
+      if (!have_raw) {
+        raw_vals <- get_named(
+          obj,
+          c(
+            "sample.evenness.raw", "sample_evenness_raw",
+            "sample.evenness", "sample_evenness",
+            "evenness.raw", "evenness"
+          )
+        )
+        if (is.null(raw_vals) && is.list(obj$fit)) {
+          raw_vals <- get_named(obj$fit, c("y", "y_observed", "observed"))
+        }
+        raw_full <- expand_to_full(raw_vals, obj = obj)
+        if (length(raw_full) == n_vertices && !all(is.na(raw_full))) {
+          add_source(
+            key = "endpoint_evenness",
+            label = "Evenness",
+            values = raw_full,
+            type = "numeric"
+          )
+          have_raw <- TRUE
+        }
+      }
+
+      if (have_condexp && have_raw) {
+        break
+      }
+    }
+
+    sources
+  }
+
   compute_reference_layout <- function(adj_list, cache_key, spectral_coords = NULL) {
     cache <- rv$reference.layout.cache %||% list()
     if (cache_key %in% names(cache)) {
@@ -1372,6 +1607,7 @@ gflowui_make_server_renderer_helpers <- function(rv, current_reference_info) {
     find_fit_file_for_k = find_fit_file_for_k,
     collect_reference_metadata_sources = collect_reference_metadata_sources,
     collect_reference_condexp_sources = collect_reference_condexp_sources,
+    collect_reference_endpoint_sources = collect_reference_endpoint_sources,
     compute_reference_layout = compute_reference_layout,
     string_hash_token = string_hash_token,
     local_html_resource_url = local_html_resource_url,

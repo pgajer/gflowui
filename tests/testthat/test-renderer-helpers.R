@@ -153,3 +153,115 @@ test_that("grip layout matrix resolver uses explicit layout_assets metadata", {
   expect_true(is.matrix(got11))
   expect_equal(unname(got11), unname(mat10))
 })
+
+
+test_that("endpoint evenness sources are exposed from per-k endpoint bundles", {
+  root <- tempfile("renderer-endpoint-evenness-")
+  dir.create(root, recursive = TRUE, showWarnings = FALSE)
+  on.exit(unlink(root, recursive = TRUE, force = TRUE), add = TRUE)
+
+  bundle <- file.path(root, "evenness_k07_endpoints.rds")
+  raw_vals <- c(0.10, 0.20, 0.30, 0.40, 0.50)
+  fit_vals <- c(0.15, 0.25, 0.35, 0.45, 0.55)
+  saveRDS(
+    list(
+      k = 7L,
+      sample.evenness = raw_vals,
+      fitted.evenness = fit_vals
+    ),
+    bundle
+  )
+
+  manifest <- list(
+    endpoint_runs = list(list(
+      id = "evenness_k07",
+      per_k_bundles = bundle
+    )),
+    defaults = list(endpoint_run_id = "evenness_k07")
+  )
+
+  rv <- new.env(parent = emptyenv())
+  rv$reference.layout.cache <- list()
+  rv$reference.html.cache <- list()
+  rv$html.resource.map <- list()
+
+  graph_helpers <- gflowui:::gflowui_make_server_graph_structure_helpers(rv = rv)
+  renderer_helpers <- gflowui:::gflowui_make_server_renderer_helpers(
+    rv = rv,
+    current_reference_info = graph_helpers$current_reference_info
+  )
+
+  out <- renderer_helpers$collect_reference_endpoint_sources(
+    manifest = manifest,
+    k_use = 7L,
+    n_vertices = 5L
+  )
+
+  expect_true("endpoint_evenness_condexp" %in% names(out))
+  expect_true("endpoint_evenness" %in% names(out))
+  expect_equal(out$endpoint_evenness_condexp$label, "Evenness CondExp")
+  expect_equal(out$endpoint_evenness$label, "Evenness")
+  expect_equal(out$endpoint_evenness_condexp$values, fit_vals)
+  expect_equal(out$endpoint_evenness$values, raw_vals)
+})
+
+
+test_that("endpoint evenness condexp expands LCC vectors to full graph", {
+  root <- tempfile("renderer-endpoint-lcc-")
+  dir.create(root, recursive = TRUE, showWarnings = FALSE)
+  on.exit(unlink(root, recursive = TRUE, force = TRUE), add = TRUE)
+
+  bundle <- file.path(root, "evenness_endpoints_k05_bundle.rds")
+  saveRDS(
+    list(
+      k = 5L,
+      sample.evenness.raw = c(1, 2, 3, 4, 5, 6),
+      fitted.evenness.lcc = c(0.2, 0.4, 0.6, 0.8),
+      lcc = list(lcc.index.global = c(1L, 2L, 3L, 4L))
+    ),
+    bundle
+  )
+
+  manifest <- list(
+    endpoint_runs = list(list(
+      id = "evenness_k05",
+      bundle_file = bundle
+    )),
+    defaults = list(endpoint_run_id = "evenness_k05")
+  )
+
+  adj_list <- list(
+    c(2L, 3L),
+    c(1L, 3L),
+    c(1L, 2L, 4L),
+    c(3L),
+    c(6L),
+    c(5L)
+  )
+
+  rv <- new.env(parent = emptyenv())
+  rv$reference.layout.cache <- list()
+  rv$reference.html.cache <- list()
+  rv$html.resource.map <- list()
+
+  graph_helpers <- gflowui:::gflowui_make_server_graph_structure_helpers(rv = rv)
+  renderer_helpers <- gflowui:::gflowui_make_server_renderer_helpers(
+    rv = rv,
+    current_reference_info = graph_helpers$current_reference_info
+  )
+
+  out <- renderer_helpers$collect_reference_endpoint_sources(
+    manifest = manifest,
+    k_use = 5L,
+    n_vertices = 6L,
+    reference_adj_list = adj_list
+  )
+
+  expect_true("endpoint_evenness_condexp" %in% names(out))
+  expect_true("endpoint_evenness" %in% names(out))
+  expect_equal(
+    out$endpoint_evenness_condexp$values,
+    c(0.2, 0.4, 0.6, 0.8, NA_real_, NA_real_)
+  )
+  expect_equal(out$endpoint_evenness$values, c(1, 2, 3, 4, 5, 6))
+})
