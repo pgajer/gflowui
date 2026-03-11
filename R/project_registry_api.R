@@ -316,58 +316,6 @@ gflowui_write_manifest <- function(manifest, path) {
   default
 }
 
-.infer_variant_renderer <- function(path, fallback = "html") {
-  pp <- .as_scalar_chr(path, default = "")
-  if (!nzchar(pp)) {
-    return(fallback)
-  }
-  ext <- tolower(tools::file_ext(pp))
-  if (ext %in% c("html", "htm")) {
-    return("html")
-  }
-  low <- tolower(basename(pp))
-  if (grepl("plotly", low, fixed = TRUE)) {
-    return("plotly")
-  }
-  fallback
-}
-
-.infer_variant_vertex_layout <- function(path, fallback = "sphere") {
-  low <- tolower(basename(.as_scalar_chr(path, default = "")))
-  if (grepl("point", low, fixed = TRUE)) {
-    return("point")
-  }
-  if (grepl("sphere", low, fixed = TRUE)) {
-    return("sphere")
-  }
-  fallback
-}
-
-.infer_variant_size_label <- function(path, fallback = "1x") {
-  low <- tolower(basename(.as_scalar_chr(path, default = "")))
-  mm <- regexec("([0-9]+(?:[._][0-9]+)?)x", low, perl = TRUE)
-  rr <- regmatches(low, mm)[[1]]
-  if (length(rr) >= 2L && nzchar(rr[[2]])) {
-    return(.normalize_size_label(rr[[2]], default = fallback))
-  }
-  mm2 <- regexec("size[_-]?([0-9]+(?:[._][0-9]+)?)", low, perl = TRUE)
-  rr2 <- regmatches(low, mm2)[[1]]
-  if (length(rr2) >= 2L && nzchar(rr2[[2]])) {
-    return(.normalize_size_label(rr2[[2]], default = fallback))
-  }
-  fallback
-}
-
-.infer_variant_color_by <- function(path, fallback = "") {
-  low <- tolower(tools::file_path_sans_ext(basename(.as_scalar_chr(path, default = ""))))
-  mm <- regexec("(?:color|colour|col|by)[_-]?([a-z0-9]+(?:_[a-z0-9]+)*)", low, perl = TRUE)
-  rr <- regmatches(low, mm)[[1]]
-  if (length(rr) >= 2L && nzchar(rr[[2]])) {
-    return(rr[[2]])
-  }
-  fallback
-}
-
 .infer_variant_k <- function(path) {
   low <- tolower(basename(.as_scalar_chr(path, default = "")))
   mm <- regexec("k0*([0-9]+)", low, perl = TRUE)
@@ -647,85 +595,6 @@ gflowui_write_manifest <- function(manifest, path) {
   out
 }
 
-.normalize_layout_variant_entry <- function(variant, fallback_id = "variant") {
-  vv <- variant
-  if (is.character(vv)) {
-    vv <- list(path = vv[[1]])
-  }
-  if (!is.list(vv)) {
-    return(NULL)
-  }
-
-  path_norm <- .normalize_path_or_url(vv$path %||% vv$html_file %||% "")
-  if (!nzchar(path_norm)) {
-    return(NULL)
-  }
-
-  renderer <- tolower(.as_scalar_chr(vv$renderer, default = .infer_variant_renderer(path_norm)))
-  if (identical(renderer, "rgl")) {
-    renderer <- "rglwidget"
-  }
-  if (!(renderer %in% c("html", "plotly", "rglwidget"))) {
-    renderer <- .infer_variant_renderer(path_norm, fallback = "html")
-  }
-
-  vertex_layout <- tolower(.as_scalar_chr(vv$vertex_layout, default = .infer_variant_vertex_layout(path_norm)))
-  if (!(vertex_layout %in% c("sphere", "point"))) {
-    vertex_layout <- .infer_variant_vertex_layout(path_norm, fallback = "sphere")
-  }
-
-  vertex_size <- .normalize_size_label(
-    vv$vertex_size %||% .infer_variant_size_label(path_norm, fallback = "1x"),
-    default = "1x"
-  )
-  color_by <- tolower(.as_scalar_chr(vv$color_by, default = .infer_variant_color_by(path_norm)))
-
-  k_val <- .as_scalar_pos_int(vv$k %||% vv$k_value %||% .infer_variant_k(path_norm))
-  id <- .sanitize_variant_id(
-    vv$id %||% sprintf("%s_%s_%s", tools::file_path_sans_ext(basename(path_norm)), vertex_layout, vertex_size),
-    fallback = fallback_id
-  )
-  label <- .as_scalar_chr(vv$label, default = basename(path_norm))
-
-  list(
-    id = id,
-    label = label,
-    renderer = renderer,
-    vertex_layout = vertex_layout,
-    vertex_size = vertex_size,
-    color_by = color_by,
-    k = k_val,
-    path = path_norm
-  )
-}
-
-gflowui_infer_layout_variants <- function(paths) {
-  pp <- as.character(paths %||% character(0))
-  pp <- pp[!is.na(pp) & nzchar(pp)]
-  if (length(pp) < 1L) {
-    return(list())
-  }
-
-  out <- list()
-  seen_path <- character(0)
-  seen_id <- character(0)
-
-  for (ii in seq_along(pp)) {
-    one <- .normalize_layout_variant_entry(pp[[ii]], fallback_id = sprintf("variant_%d", ii))
-    if (is.null(one) || !nzchar(one$path) || one$path %in% seen_path) {
-      next
-    }
-    while (one$id %in% seen_id) {
-      one$id <- sprintf("%s_%d", one$id, length(out) + 1L)
-    }
-    seen_path <- c(seen_path, one$path)
-    seen_id <- c(seen_id, one$id)
-    out[[one$id]] <- one
-  }
-
-  out
-}
-
 .normalize_layout_assets <- function(layout_assets) {
   la <- if (is.list(layout_assets)) layout_assets else list()
   presets <- if (is.list(la$presets)) la$presets else list()
@@ -734,7 +603,7 @@ gflowui_infer_layout_variants <- function(paths) {
   if (identical(renderer, "rgl")) {
     renderer <- "rglwidget"
   }
-  if (!(renderer %in% c("html", "plotly", "rglwidget"))) {
+  if (!(renderer %in% c("plotly", "rglwidget"))) {
     renderer <- "rglwidget"
   }
   presets$renderer <- renderer
@@ -763,31 +632,12 @@ gflowui_infer_layout_variants <- function(paths) {
   }
   presets$vertex_color <- vertex_color
 
-  variants_raw <- if (is.list(la$variants)) la$variants else list()
-  variants <- list()
-  seen_path <- character(0)
-  seen_id <- character(0)
-  if (length(variants_raw) > 0L) {
-    for (ii in seq_along(variants_raw)) {
-      one <- .normalize_layout_variant_entry(variants_raw[[ii]], fallback_id = sprintf("variant_%d", ii))
-      if (is.null(one) || one$path %in% seen_path) {
-        next
-      }
-      while (one$id %in% seen_id) {
-        one$id <- sprintf("%s_%d", one$id, length(variants) + 1L)
-      }
-      seen_path <- c(seen_path, one$path)
-      seen_id <- c(seen_id, one$id)
-      variants[[one$id]] <- one
-    }
-  }
-
   grip_raw <- la$grip_layouts %||% la$layout3d_files %||% la$layout_files %||% list()
   grip_layouts <- .normalize_grip_layout_entries(grip_raw)
   grip_params <- .normalize_grip_layout_params(la$grip_layout_params %||% la$grip_layout_args %||% list())
 
   la$presets <- presets
-  la$variants <- variants
+  la$variants <- list()
   la$grip_layouts <- grip_layouts
   la$grip_layout_params <- grip_params
   la
@@ -865,43 +715,6 @@ gflowui_normalize_graph_set_manifest <- function(graph_set) {
 
   out$layout_assets <- .normalize_layout_assets(out$layout_assets)
   out$color_assets <- .normalize_color_assets(out$color_assets)
-  legacy_variant_paths <- c(
-    out$html_file,
-    out$html_files,
-    out$html_candidates,
-    out$layout_assets$html_file,
-    out$layout_assets$html_files,
-    out$layout_assets$html_candidates
-  )
-  inferred_variants <- gflowui_infer_layout_variants(legacy_variant_paths)
-  if (length(inferred_variants) > 0L) {
-    existing <- if (is.list(out$layout_assets$variants)) out$layout_assets$variants else list()
-    existing_path <- if (length(existing) > 0L) {
-      vapply(existing, function(x) .as_scalar_chr(x$path, default = ""), character(1))
-    } else {
-      character(0)
-    }
-    existing_ids <- if (length(existing) > 0L) {
-      names(existing)
-    } else {
-      character(0)
-    }
-    for (nm in names(inferred_variants)) {
-      one <- inferred_variants[[nm]]
-      if (one$path %in% existing_path) {
-        next
-      }
-      id_use <- one$id
-      while (id_use %in% existing_ids) {
-        id_use <- sprintf("%s_%d", one$id, length(existing) + 1L)
-      }
-      one$id <- id_use
-      existing[[id_use]] <- one
-      existing_ids <- c(existing_ids, id_use)
-      existing_path <- c(existing_path, one$path)
-    }
-    out$layout_assets$variants <- existing
-  }
 
   existing_grip <- if (is.list(out$layout_assets$grip_layouts)) out$layout_assets$grip_layouts else list()
   existing_grip <- .normalize_grip_layout_entries(existing_grip)

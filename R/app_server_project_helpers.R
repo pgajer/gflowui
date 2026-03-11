@@ -98,9 +98,7 @@ gflowui_make_server_project_helpers <- function(
     project.baseline.signature = NULL,
     run.monitor.visible = FALSE,
     run.monitor.note = NULL,
-    reference.layout.cache = list(),
-    html.resource.map = list(),
-    reference.html.cache = list()
+    reference.layout.cache = list()
   )
 
   current_state_signature <- function() {
@@ -220,7 +218,6 @@ gflowui_make_server_project_helpers <- function(
     rv$run.monitor.visible <- FALSE
     rv$run.monitor.note <- NULL
     rv$reference.layout.cache <- list()
-    rv$reference.html.cache <- list()
     shiny::updateSelectInput(session, "project_select", selected = "")
     invisible(NULL)
   }
@@ -462,7 +459,6 @@ gflowui_make_server_project_helpers <- function(
     project_registry(gflowui_sanitize_registry(reg))
     rv$project.has.graphs <- isTRUE(length(payload$manifest$graph_sets) > 0L)
     rv$reference.layout.cache <- list()
-    rv$reference.html.cache <- list()
     mark_project_clean()
     invisible(TRUE)
   }
@@ -535,7 +531,6 @@ gflowui_make_server_project_helpers <- function(
     rv$run.monitor.visible <- FALSE
     rv$run.monitor.note <- NULL
     rv$reference.layout.cache <- list()
-    rv$reference.html.cache <- list()
     mark_project_clean()
 
     invisible(NULL)
