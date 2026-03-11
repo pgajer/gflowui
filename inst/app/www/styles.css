@@ -611,9 +611,18 @@ body {
   max-width: 100%;
 }
 
+.gf-endpoint-table-scroll .gf-asset-table tbody tr td {
+  vertical-align: middle;
+}
+
+.gf-endpoint-table-scroll .gf-asset-table tbody tr td:first-child {
+  white-space: nowrap;
+}
+
 .gf-endpoint-table-actions-cell {
   white-space: nowrap;
   width: 1%;
+  vertical-align: middle;
 }
 
 .gf-endpoint-remove-btn {
