@@ -58,6 +58,20 @@ gflowui_make_server_graph_structure_helpers <- function(rv) {
     sprintf("%s +%d", paste(vals[seq_len(max_n)], collapse = ", "), length(vals) - max_n)
   }
 
+  default_vertex_layout_for_graph <- function(preset = "point", n_vertices = NA_integer_) {
+    base <- tolower(scalar_chr(preset, default = "point"))
+    if (!(base %in% c("sphere", "point"))) {
+      base <- "point"
+    }
+
+    nn <- scalar_int(n_vertices, default = NA_integer_)
+    if (is.finite(nn) && nn >= 10000L) {
+      return("point")
+    }
+
+    base
+  }
+
   normalize_paths <- function(paths) {
     x <- as.character(paths %||% character(0))
     x <- x[!is.na(x) & nzchar(x)]
@@ -318,6 +332,85 @@ gflowui_make_server_graph_structure_helpers <- function(rv) {
     )
   }
 
+  resolve_graph_selection <- function(
+      manifest,
+      graph_sets,
+      input_set_id = "",
+      input_k = NA_integer_,
+      preferred_default_set_id = "",
+      preferred_default_k = NA_integer_,
+      sticky_set_id = "",
+      sticky_k = NA_integer_) {
+    if (!is.list(manifest) || !is.list(graph_sets) || length(graph_sets) < 1L) {
+      return(list(
+        set_id = "",
+        k_selected = NA_integer_,
+        data_type_choices = c(),
+        k_choices = c()
+      ))
+    }
+
+    choices <- graph_data_type_choices(graph_sets)
+    if (length(choices) < 1L) {
+      return(list(
+        set_id = "",
+        k_selected = NA_integer_,
+        data_type_choices = c(),
+        k_choices = c()
+      ))
+    }
+
+    ref <- current_reference_info(manifest)
+
+    set_id <- scalar_chr(input_set_id %||% "", default = "")
+    if (!(set_id %in% unname(choices))) {
+      sticky_set <- scalar_chr(sticky_set_id %||% "", default = "")
+      if (sticky_set %in% unname(choices)) {
+        set_id <- sticky_set
+      } else {
+        preferred_set <- scalar_chr(preferred_default_set_id %||% "", default = "")
+        fallback <- if (preferred_set %in% unname(choices)) {
+          preferred_set
+        } else {
+          scalar_chr(ref$set_id %||% manifest$defaults$graph_set_id %||% "", default = "")
+        }
+        if (fallback %in% unname(choices)) {
+          set_id <- fallback
+        } else {
+          set_id <- unname(choices)[1]
+        }
+      }
+    }
+
+    k_choices <- graph_k_choices(graph_sets, set_id)
+    kvals <- suppressWarnings(as.integer(unname(k_choices)))
+    kvals <- kvals[is.finite(kvals)]
+    k_sel <- scalar_int(input_k, default = NA_integer_)
+    k_sel_is_valid <- is.finite(k_sel) && (as.character(k_sel) %in% unname(k_choices))
+    if (!isTRUE(k_sel_is_valid)) {
+      sticky_k_use <- scalar_int(sticky_k, default = NA_integer_)
+      if (is.finite(sticky_k_use) && as.character(sticky_k_use) %in% unname(k_choices)) {
+        k_sel <- sticky_k_use
+      } else {
+        preferred_k_use <- scalar_int(preferred_default_k, default = NA_integer_)
+        if (is.finite(preferred_k_use) && as.character(preferred_k_use) %in% unname(k_choices)) {
+          k_sel <- preferred_k_use
+        } else if (is.finite(ref$k) && as.character(ref$k) %in% unname(k_choices)) {
+          k_sel <- scalar_int(ref$k, default = NA_integer_)
+        } else {
+          k_sel <- if (length(kvals) > 0L) kvals[1] else NA_integer_
+        }
+      }
+    }
+
+    list(
+      set_id = set_id,
+      k_selected = k_sel,
+      data_type_choices = choices,
+      k_choices = k_choices
+    )
+  }
+
   graph_set_by_id <- function(graph_sets, set_id = NA_character_) {
     if (!is.list(graph_sets) || length(graph_sets) < 1L) {
       return(NULL)
@@ -455,6 +548,24 @@ gflowui_make_server_graph_structure_helpers <- function(rv) {
       return(out)
     }
 
+    hv_run_meta_path <- file.path(root, "results", "asv_hv_k_gcv_sweep", "run.metadata.rds")
+    hv_run_meta <- if (file.exists(hv_run_meta_path)) {
+      suppressWarnings(tryCatch(readRDS(hv_run_meta_path), error = function(e) NULL))
+    } else {
+      NULL
+    }
+    if (is.list(hv_run_meta)) {
+      out$n_samples <- if (is.finite(out$n_samples)) out$n_samples else {
+        first_pos_int(hv_run_meta$asv.samples %||% hv_run_meta$sample_set.count)
+      }
+      out$n_features <- if (is.finite(out$n_features)) out$n_features else {
+        first_pos_int(hv_run_meta$asv.features)
+      }
+      if (is.finite(out$n_samples) || is.finite(out$n_features)) {
+        return(out)
+      }
+    }
+
     full_summary <- read_csv(file.path(root, "results", "asv_full_graph_hv_criteria_k_selection", "summary.across.criteria.csv"))
     if (is.data.frame(full_summary) && nrow(full_summary) > 0L && sid %in% c("all", "asv", "shared_all_asv")) {
       out$n_samples <- first_pos_int(full_summary$n.samples)
@@ -464,10 +575,12 @@ gflowui_make_server_graph_structure_helpers <- function(rv) {
       }
     }
 
-    run_meta <- tryCatch(
-      readRDS(file.path(root, "results", "asv_full_graph_hv_criteria_k_selection", "run.metadata.rds")),
-      error = function(e) NULL
-    )
+    run_meta_path <- file.path(root, "results", "asv_full_graph_hv_criteria_k_selection", "run.metadata.rds")
+    run_meta <- if (file.exists(run_meta_path)) {
+      suppressWarnings(tryCatch(readRDS(run_meta_path), error = function(e) NULL))
+    } else {
+      NULL
+    }
     if (is.list(run_meta)) {
       out$n_samples <- if (is.finite(out$n_samples)) out$n_samples else first_pos_int(run_meta$asv.samples)
       out$n_features <- if (is.finite(out$n_features)) out$n_features else first_pos_int(run_meta$asv.features)
@@ -958,6 +1071,7 @@ gflowui_make_server_graph_structure_helpers <- function(rv) {
   list(
     fmt_k_values = fmt_k_values,
     compact_values = compact_values,
+    default_vertex_layout_for_graph = default_vertex_layout_for_graph,
     normalize_paths = normalize_paths,
     summarize_graph_assets = summarize_graph_assets,
     summarize_condexp_assets = summarize_condexp_assets,
@@ -971,6 +1085,7 @@ gflowui_make_server_graph_structure_helpers <- function(rv) {
     graph_k_choices = graph_k_choices,
     collect_outcomes_from_condexp = collect_outcomes_from_condexp,
     current_reference_info = current_reference_info,
+    resolve_graph_selection = resolve_graph_selection,
     graph_set_by_id = graph_set_by_id,
     infer_data_type_label = infer_data_type_label,
     infer_feature_count = infer_feature_count,

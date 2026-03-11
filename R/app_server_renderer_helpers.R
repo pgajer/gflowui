@@ -1066,7 +1066,7 @@ gflowui_make_server_renderer_helpers <- function(rv, current_reference_info) {
   layout_variant_paths <- function(
       graph_set,
       requested_renderer = "html",
-      vertex_mode = "sphere",
+      vertex_mode = "point",
       size_label = "1x",
       color_label = "",
       k_ref = NA_integer_) {
@@ -1079,7 +1079,7 @@ gflowui_make_server_renderer_helpers <- function(rv, current_reference_info) {
     }
 
     req_renderer <- tolower(as.character(requested_renderer %||% "html"))
-    req_vertex <- tolower(as.character(vertex_mode %||% "sphere"))
+    req_vertex <- tolower(as.character(vertex_mode %||% "point"))
     req_size <- normalize_size_label(size_label)
     req_color <- normalize_token_key(color_label)
     k_use <- suppressWarnings(as.integer(k_ref))
@@ -1442,7 +1442,7 @@ gflowui_make_server_renderer_helpers <- function(rv, current_reference_info) {
       color_label = "",
       extra_tokens = character(0),
       requested_renderer = "html",
-      vertex_mode = "sphere",
+      vertex_mode = "point",
       size_label = "1x") {
     if (!is.list(manifest) || !is.list(spec) || !is.list(spec$graph_set)) {
       return(character(0))
@@ -1454,7 +1454,7 @@ gflowui_make_server_renderer_helpers <- function(rv, current_reference_info) {
       spec$k_ref %||% "k",
       as.character(color_label %||% ""),
       as.character(requested_renderer %||% "html"),
-      as.character(vertex_mode %||% "sphere"),
+      as.character(vertex_mode %||% "point"),
       as.character(size_label %||% "1x"),
       paste(as.character(extra_tokens %||% character(0)), collapse = ","),
       sep = "|"

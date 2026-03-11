@@ -536,6 +536,106 @@ body {
   color: #fff;
 }
 
+.gf-endpoint-section {
+  margin-bottom: 1rem;
+}
+
+.gf-endpoint-table-scroll {
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.gf-endpoint-actions {
+  display: flex;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.6rem;
+}
+
+.gf-endpoint-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.45rem;
+}
+
+.gf-endpoint-section-head {
+  margin-bottom: 0;
+}
+
+.gf-endpoint-inline-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+  font-size: 0.96rem;
+  font-weight: 500;
+}
+
+.gf-endpoint-inline-check input {
+  margin: 0;
+}
+
+.gf-endpoint-inspector-actions {
+  align-items: center;
+  flex-wrap: nowrap;
+}
+
+.gf-endpoint-input-row {
+  display: grid;
+  grid-template-columns: auto 92px max-content;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.gf-endpoint-inline-label {
+  margin: 0;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.gf-endpoint-inspector-input {
+  width: 92px;
+  min-width: 92px;
+}
+
+.gf-endpoint-inspector-input .form-group,
+.gf-endpoint-inspector-input .shiny-input-container {
+  margin-bottom: 0;
+}
+
+.gf-endpoint-compact-btn {
+  align-self: center;
+  margin-bottom: 0;
+  justify-self: start;
+}
+
+.gf-endpoint-metrics-details {
+  margin-top: 0.45rem;
+}
+
+.gf-endpoint-metrics-details summary {
+  cursor: pointer;
+  color: #4f5b55;
+  font-size: 0.95rem;
+}
+
+.gf-endpoint-table-input {
+  min-width: 140px;
+  width: 100%;
+  max-width: 100%;
+}
+
+.gf-endpoint-table-actions-cell {
+  white-space: nowrap;
+  width: 1%;
+}
+
+.gf-endpoint-remove-btn {
+  min-width: 72px;
+}
+
 @keyframes gf-fadein {
   from {
     opacity: 0;

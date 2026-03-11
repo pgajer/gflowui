@@ -474,13 +474,35 @@ gflowui_write_manifest <- function(manifest, path) {
   alias <- alias[nzchar(alias)]
 
   base_dir <- dirname(gp)
+  parent_dir <- dirname(base_dir)
+  sibling_layout_roots <- character(0)
+  if (dir.exists(parent_dir)) {
+    sibling_dirs <- list.dirs(parent_dir, recursive = FALSE, full.names = TRUE)
+    sibling_layout_roots <- sibling_dirs[grepl("^(graph3d_html|layouts?_3d)", basename(sibling_dirs), ignore.case = TRUE)]
+  }
+
+  alias_layout_roots <- unlist(lapply(alias, function(tok) {
+    if (!nzchar(tok)) {
+      return(character(0))
+    }
+    c(
+      file.path(parent_dir, tok),
+      file.path(parent_dir, tok, "layouts_3d_rds"),
+      file.path(parent_dir, tok, "layouts_3d"),
+      file.path(parent_dir, tok, "layout_3d_rds")
+    )
+  }), use.names = FALSE)
+
   search_dirs <- unique(c(
     base_dir,
     file.path(base_dir, "layouts_3d_rds"),
     file.path(base_dir, "layouts_3d"),
     file.path(base_dir, "layout_3d_rds"),
-    file.path(dirname(base_dir), sid, "layouts_3d_rds"),
-    file.path(dirname(base_dir), sid, "layouts_3d")
+    alias_layout_roots,
+    file.path(parent_dir, "graph3d_html"),
+    file.path(parent_dir, "layouts_3d_rds"),
+    file.path(parent_dir, "layouts_3d"),
+    sibling_layout_roots
   ))
   search_dirs <- search_dirs[file.exists(search_dirs) & dir.exists(search_dirs)]
   if (length(search_dirs) < 1L) {
@@ -528,8 +550,11 @@ gflowui_write_manifest <- function(manifest, path) {
     if (grepl("layout3d", base, fixed = TRUE)) {
       sc <- sc + 2
     }
+    if (grepl("graph3d_html", low, fixed = TRUE)) {
+      sc <- sc + 3
+    }
     if (grepl("layouts_3d", low, fixed = TRUE)) {
-      sc <- sc + 1
+      sc <- sc + 2
     }
     sc
   }
@@ -714,9 +739,9 @@ gflowui_infer_layout_variants <- function(paths) {
   }
   presets$renderer <- renderer
 
-  vertex_layout <- tolower(.as_scalar_chr(presets$vertex_layout, default = "sphere"))
+  vertex_layout <- tolower(.as_scalar_chr(presets$vertex_layout, default = "point"))
   if (!(vertex_layout %in% c("sphere", "point"))) {
-    vertex_layout <- "sphere"
+    vertex_layout <- "point"
   }
   presets$vertex_layout <- vertex_layout
 
@@ -731,6 +756,12 @@ gflowui_infer_layout_variants <- function(paths) {
     color_by <- "vertex_degree"
   }
   presets$color_by <- color_by
+
+  vertex_color <- tolower(.as_scalar_chr(presets$vertex_color, default = "#111827"))
+  if (!nzchar(vertex_color)) {
+    vertex_color <- "#111827"
+  }
+  presets$vertex_color <- vertex_color
 
   variants_raw <- if (is.list(la$variants)) la$variants else list()
   variants <- list()
@@ -1221,6 +1252,16 @@ gflowui_normalize_graph_sets_manifest <- function(graph_sets) {
 
 .discover_agp_artifacts <- function(project_root) {
   base <- file.path(project_root, "results", "asv_hv_k_gcv_sweep")
+  run_meta_file <- file.path(base, "run.metadata.rds")
+  run_meta <- if (file.exists(run_meta_file)) {
+    tryCatch(readRDS(run_meta_file), error = function(e) NULL)
+  } else {
+    NULL
+  }
+  run_meta_samples <- suppressWarnings(as.integer(run_meta$asv.samples %||% run_meta$sample_set.count %||% NA_integer_))
+  run_meta_samples <- run_meta_samples[is.finite(run_meta_samples) & run_meta_samples > 0L]
+  run_meta_features <- suppressWarnings(as.integer(run_meta$asv.features %||% NA_integer_))
+  run_meta_features <- run_meta_features[is.finite(run_meta_features) & run_meta_features > 0L]
 
   graph_sets <- list()
   shared_graph_file <- file.path(base, "shared_graphs_all_asv", "iknn.selection.rds")
@@ -1238,6 +1279,8 @@ gflowui_normalize_graph_sets_manifest <- function(graph_sets) {
       data_type_label = "ASV",
       graph_file = normalizePath(shared_graph_file, mustWork = TRUE),
       k_values = k_vals,
+      n_samples = if (length(run_meta_samples) > 0L) run_meta_samples[[1]] else NA_integer_,
+      n_features = if (length(run_meta_features) > 0L) run_meta_features[[1]] else NA_integer_,
       optimal_k_artifacts = optimal_artifacts
     ))
   }
