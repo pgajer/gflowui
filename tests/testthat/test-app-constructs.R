@@ -479,7 +479,7 @@ test_that("working endpoint table label edits persist immediately", {
   })
 })
 
-test_that("working endpoint table remove deletes the row immediately", {
+test_that("working endpoint table supports hide, restore, and delete", {
   local_projects_data_sandbox()
   reg <- gflowui::list_projects()
   if (!("agp" %in% reg$id)) {
@@ -499,20 +499,51 @@ test_that("working endpoint table remove deletes the row immediately", {
     save_working_endpoint_state(state, ctx = ctx)
     session$flushReact()
 
-    remove_id <- endpoint_working_remove_input_id(82L)
-    do.call(session$setInputs, stats::setNames(list(0L), remove_id))
+    hide_id <- endpoint_working_hide_input_id(82L)
+    do.call(session$setInputs, stats::setNames(list(0L), hide_id))
     session$flushReact()
-    do.call(session$setInputs, stats::setNames(list(1L), remove_id))
+    do.call(session$setInputs, stats::setNames(list(1L), hide_id))
     session$flushReact()
 
     st <- endpoint_panel_state()
     expect_true(is.data.frame(st$working$rows))
-    expect_false(82L %in% st$working$rows$vertex)
+    expect_true(82L %in% st$working$rows$vertex)
+    hit <- which(st$working$rows$vertex == 82L)
+    expect_length(hit, 1L)
+    expect_false(isTRUE(st$working$rows$visible[[hit[[1]]]]))
     expect_true(81L %in% st$working$rows$vertex)
 
     reloaded <- load_working_endpoint_state(ctx)
-    expect_false(82L %in% reloaded$rows$vertex)
+    hit_reload <- which(reloaded$rows$vertex == 82L)
+    expect_length(hit_reload, 1L)
+    expect_false(isTRUE(reloaded$rows$visible[[hit_reload[[1]]]]))
     expect_true(81L %in% reloaded$rows$vertex)
+
+    restore_id <- endpoint_working_restore_input_id(82L)
+    do.call(session$setInputs, stats::setNames(list(0L), restore_id))
+    session$flushReact()
+    do.call(session$setInputs, stats::setNames(list(1L), restore_id))
+    session$flushReact()
+
+    restored <- load_working_endpoint_state(ctx)
+    hit_restored <- which(restored$rows$vertex == 82L)
+    expect_length(hit_restored, 1L)
+    expect_true(isTRUE(restored$rows$visible[[hit_restored[[1]]]]))
+
+    do.call(session$setInputs, stats::setNames(list(0L), hide_id))
+    session$flushReact()
+    do.call(session$setInputs, stats::setNames(list(2L), hide_id))
+    session$flushReact()
+
+    delete_id <- endpoint_working_delete_input_id(82L)
+    do.call(session$setInputs, stats::setNames(list(0L), delete_id))
+    session$flushReact()
+    do.call(session$setInputs, stats::setNames(list(1L), delete_id))
+    session$flushReact()
+
+    deleted <- load_working_endpoint_state(ctx)
+    expect_false(82L %in% deleted$rows$vertex)
+    expect_true(81L %in% deleted$rows$vertex)
   })
 })
 

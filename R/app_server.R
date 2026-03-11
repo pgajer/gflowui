@@ -1062,13 +1062,16 @@ app_server <- function(input, output, session) {
   endpoint_autoselect_done <- shiny::reactiveVal(FALSE)
   endpoint_show_working_set <- shiny::reactiveVal(NA)
   workflow_open_panels <- shiny::reactiveVal(NULL)
-  endpoint_working_remove_counts <- shiny::reactiveVal(structure(integer(0), names = character(0)))
+  endpoint_working_hide_counts <- shiny::reactiveVal(structure(integer(0), names = character(0)))
+  endpoint_working_restore_counts <- shiny::reactiveVal(structure(integer(0), names = character(0)))
+  endpoint_working_delete_counts <- shiny::reactiveVal(structure(integer(0), names = character(0)))
   endpoint_working_label_event_values <- shiny::reactiveVal(structure(character(0), names = character(0)))
   endpoint_dataset_load_counts <- shiny::reactiveVal(structure(integer(0), names = character(0)))
   endpoint_dataset_rename_counts <- shiny::reactiveVal(structure(integer(0), names = character(0)))
   endpoint_dataset_delete_counts <- shiny::reactiveVal(structure(integer(0), names = character(0)))
   endpoint_dataset_default_counts <- shiny::reactiveVal(structure(integer(0), names = character(0)))
   endpoint_datasets_open <- shiny::reactiveVal(FALSE)
+  endpoint_working_scroll_top <- shiny::reactiveVal(0L)
   endpoint_draft_banner_dismissed <- shiny::reactiveVal(FALSE)
   endpoint_pending_load_dataset_id <- shiny::reactiveVal("")
   endpoint_pending_project_action <- shiny::reactiveVal("")
@@ -1083,7 +1086,9 @@ app_server <- function(input, output, session) {
     endpoint_overlay_selection(character(0))
     endpoint_autoselect_done(FALSE)
     endpoint_show_working_set(NA)
-    endpoint_working_remove_counts(structure(integer(0), names = character(0)))
+    endpoint_working_hide_counts(structure(integer(0), names = character(0)))
+    endpoint_working_restore_counts(structure(integer(0), names = character(0)))
+    endpoint_working_delete_counts(structure(integer(0), names = character(0)))
     endpoint_working_label_event_values(structure(character(0), names = character(0)))
     endpoint_dataset_load_counts(structure(integer(0), names = character(0)))
     endpoint_dataset_rename_counts(structure(integer(0), names = character(0)))
@@ -2488,6 +2493,34 @@ app_server <- function(input, output, session) {
     working_endpoint_mark_modified(out)
   }
 
+  set_working_endpoint_visibility_state <- function(state, vertex_id, visible = TRUE) {
+    out <- sanitize_working_endpoint_state(state, ctx = NULL)
+    rows <- if (is.data.frame(out$rows)) out$rows else empty_working_endpoint_rows()
+    vid <- suppressWarnings(as.integer(vertex_id))
+    visible_flag <- isTRUE(visible)
+    if (!is.finite(vid) || vid < 1L || nrow(rows) < 1L) {
+      return(out)
+    }
+    hit <- which(rows$vertex == as.integer(vid))
+    if (length(hit) < 1L) {
+      return(out)
+    }
+    ii <- hit[[1]]
+    rows$visible[[ii]] <- visible_flag
+    rows$updated_at[[ii]] <- .gflowui_now()
+    out$rows <- rows
+    out$updated_at <- .gflowui_now()
+    working_endpoint_mark_modified(out)
+  }
+
+  hide_working_endpoint_vertex_state <- function(state, vertex_id) {
+    set_working_endpoint_visibility_state(state = state, vertex_id = vertex_id, visible = FALSE)
+  }
+
+  restore_working_endpoint_vertex_state <- function(state, vertex_id) {
+    set_working_endpoint_visibility_state(state = state, vertex_id = vertex_id, visible = TRUE)
+  }
+
   remove_working_endpoint_vertex_state <- function(state, vertex_id) {
     out <- sanitize_working_endpoint_state(state, ctx = NULL)
     rows <- if (is.data.frame(out$rows)) out$rows else empty_working_endpoint_rows()
@@ -2569,7 +2602,9 @@ app_server <- function(input, output, session) {
     endpoint_draft_banner_dismissed(FALSE)
     endpoint_pending_load_dataset_id("")
     endpoint_pending_project_action("")
-    endpoint_working_remove_counts(structure(integer(0), names = character(0)))
+    endpoint_working_hide_counts(structure(integer(0), names = character(0)))
+    endpoint_working_restore_counts(structure(integer(0), names = character(0)))
+    endpoint_working_delete_counts(structure(integer(0), names = character(0)))
     endpoint_working_label_event_values(structure(character(0), names = character(0)))
     endpoint_vertex_state$vertex <- NA_integer_
     endpoint_vertex_state$source <- ""
@@ -2584,6 +2619,17 @@ app_server <- function(input, output, session) {
       empty_working_endpoint_rows()
     }
     keep <- rows_df$accepted & rows_df$visible
+    keep[is.na(keep)] <- FALSE
+    rows_df[keep, , drop = FALSE]
+  }
+
+  accepted_hidden_working_rows <- function(working_state) {
+    rows_df <- if (is.list(working_state) && is.data.frame(working_state$rows)) {
+      working_state$rows
+    } else {
+      empty_working_endpoint_rows()
+    }
+    keep <- rows_df$accepted & !rows_df$visible
     keep[is.na(keep)] <- FALSE
     rows_df[keep, , drop = FALSE]
   }
@@ -2608,8 +2654,16 @@ app_server <- function(input, output, session) {
     sprintf("endpoint_working_label_edit_%d", suppressWarnings(as.integer(vertex_id)))
   }
 
-  endpoint_working_remove_input_id <- function(vertex_id) {
-    sprintf("endpoint_working_remove_%d", suppressWarnings(as.integer(vertex_id)))
+  endpoint_working_hide_input_id <- function(vertex_id) {
+    sprintf("endpoint_working_hide_%d", suppressWarnings(as.integer(vertex_id)))
+  }
+
+  endpoint_working_restore_input_id <- function(vertex_id) {
+    sprintf("endpoint_working_restore_%d", suppressWarnings(as.integer(vertex_id)))
+  }
+
+  endpoint_working_delete_input_id <- function(vertex_id) {
+    sprintf("endpoint_working_delete_%d", suppressWarnings(as.integer(vertex_id)))
   }
 
   endpoint_working_select_input_id <- function(vertex_id) {
@@ -2785,7 +2839,16 @@ app_server <- function(input, output, session) {
   })
 
   shiny::observeEvent(input$endpoint_working_select_vertex, {
-    vid <- normalize_selected_endpoint_vertex(input$endpoint_working_select_vertex)
+    event_val <- input$endpoint_working_select_vertex
+    scroll_top <- 0L
+    if (is.list(event_val)) {
+      scroll_top <- suppressWarnings(as.integer(event_val$scrollTop %||% 0L))
+      event_val <- event_val$vertex %||% NA_integer_
+    }
+    if (is.finite(scroll_top) && scroll_top >= 0L) {
+      endpoint_working_scroll_top(as.integer(scroll_top))
+    }
+    vid <- normalize_selected_endpoint_vertex(event_val)
     if (is.finite(vid)) {
       endpoint_vertex_state$vertex <- as.integer(vid)
       endpoint_vertex_state$source <- "working_table"
@@ -4245,11 +4308,11 @@ app_server <- function(input, output, session) {
     st <- endpoint_panel_state()
     working_rows <- accepted_visible_working_rows(if (is.list(st)) st$working else NULL)
     ctx <- if (is.list(st)) st$context else NULL
-    prev_counts <- endpoint_working_remove_counts()
+    prev_counts <- endpoint_working_hide_counts()
     next_counts <- structure(integer(0), names = character(0))
 
     if (nrow(working_rows) < 1L || !is.list(ctx)) {
-      endpoint_working_remove_counts(next_counts)
+      endpoint_working_hide_counts(next_counts)
       return()
     }
 
@@ -4259,7 +4322,81 @@ app_server <- function(input, output, session) {
       if (!is.finite(vid) || vid < 1L) {
         next
       }
-      input_id <- endpoint_working_remove_input_id(vid)
+      input_id <- endpoint_working_hide_input_id(vid)
+      cur_count <- scalar_int(input[[input_id]], default = 0L)
+      has_prev <- input_id %in% names(prev_counts)
+      prev_raw <- if (has_prev) prev_counts[[input_id]] else cur_count
+      prev_count <- scalar_int(prev_raw, default = 0L)
+      if (has_prev && is.finite(cur_count) && cur_count > prev_count) {
+        updated <- hide_working_endpoint_vertex_state(
+          state = if (is.list(st)) st$working else empty_working_endpoint_state(ctx = ctx),
+          vertex_id = vid
+        )
+        save_working_endpoint_state(updated, ctx = ctx)
+        shiny::showNotification(sprintf("Hid working endpoint v%d.", vid), type = "message")
+      }
+      next_counts[[input_id]] <- if (is.finite(cur_count)) as.integer(cur_count) else 0L
+    }
+
+    endpoint_working_hide_counts(next_counts)
+  })
+
+  shiny::observe({
+    st <- endpoint_panel_state()
+    hidden_rows <- accepted_hidden_working_rows(if (is.list(st)) st$working else NULL)
+    ctx <- if (is.list(st)) st$context else NULL
+    prev_counts <- endpoint_working_restore_counts()
+    next_counts <- structure(integer(0), names = character(0))
+
+    if (nrow(hidden_rows) < 1L || !is.list(ctx)) {
+      endpoint_working_restore_counts(next_counts)
+      return()
+    }
+
+    for (ii in seq_len(nrow(hidden_rows))) {
+      rr <- hidden_rows[ii, , drop = FALSE]
+      vid <- suppressWarnings(as.integer(rr$vertex[[1]]))
+      if (!is.finite(vid) || vid < 1L) {
+        next
+      }
+      input_id <- endpoint_working_restore_input_id(vid)
+      cur_count <- scalar_int(input[[input_id]], default = 0L)
+      has_prev <- input_id %in% names(prev_counts)
+      prev_raw <- if (has_prev) prev_counts[[input_id]] else cur_count
+      prev_count <- scalar_int(prev_raw, default = 0L)
+      if (has_prev && is.finite(cur_count) && cur_count > prev_count) {
+        updated <- restore_working_endpoint_vertex_state(
+          state = if (is.list(st)) st$working else empty_working_endpoint_state(ctx = ctx),
+          vertex_id = vid
+        )
+        save_working_endpoint_state(updated, ctx = ctx)
+        shiny::showNotification(sprintf("Restored working endpoint v%d.", vid), type = "message")
+      }
+      next_counts[[input_id]] <- if (is.finite(cur_count)) as.integer(cur_count) else 0L
+    }
+
+    endpoint_working_restore_counts(next_counts)
+  })
+
+  shiny::observe({
+    st <- endpoint_panel_state()
+    hidden_rows <- accepted_hidden_working_rows(if (is.list(st)) st$working else NULL)
+    ctx <- if (is.list(st)) st$context else NULL
+    prev_counts <- endpoint_working_delete_counts()
+    next_counts <- structure(integer(0), names = character(0))
+
+    if (nrow(hidden_rows) < 1L || !is.list(ctx)) {
+      endpoint_working_delete_counts(next_counts)
+      return()
+    }
+
+    for (ii in seq_len(nrow(hidden_rows))) {
+      rr <- hidden_rows[ii, , drop = FALSE]
+      vid <- suppressWarnings(as.integer(rr$vertex[[1]]))
+      if (!is.finite(vid) || vid < 1L) {
+        next
+      }
+      input_id <- endpoint_working_delete_input_id(vid)
       cur_count <- scalar_int(input[[input_id]], default = 0L)
       has_prev <- input_id %in% names(prev_counts)
       prev_raw <- if (has_prev) prev_counts[[input_id]] else cur_count
@@ -4270,12 +4407,12 @@ app_server <- function(input, output, session) {
           vertex_id = vid
         )
         save_working_endpoint_state(updated, ctx = ctx)
-        shiny::showNotification(sprintf("Removed working endpoint v%d.", vid), type = "message")
+        shiny::showNotification(sprintf("Deleted hidden endpoint v%d.", vid), type = "message")
       }
       next_counts[[input_id]] <- if (is.finite(cur_count)) as.integer(cur_count) else 0L
     }
 
-    endpoint_working_remove_counts(next_counts)
+    endpoint_working_delete_counts(next_counts)
   })
 
   shiny::observeEvent(input$endpoint_working_clear, {
@@ -5691,14 +5828,31 @@ app_server <- function(input, output, session) {
     )
   })
 
-  build_endpoint_vertex_inspector_ui <- function(panel_state) {
+  build_endpoint_metrics_table <- function(metrics_tbl) {
+    if (!is.data.frame(metrics_tbl) || nrow(metrics_tbl) < 1L) {
+      return(shiny::p(class = "gf-hint", "No endpoint metrics found for the selected vertex in the current candidate datasets."))
+    }
+    metrics_chr <- metrics_tbl
+    for (cc in names(metrics_chr)) {
+      metrics_chr[[cc]] <- format_endpoint_metric_value(metrics_chr[[cc]])
+    }
+    head_row <- shiny::tags$tr(lapply(names(metrics_chr), function(cc) shiny::tags$th(cc)))
+    body_rows <- lapply(seq_len(nrow(metrics_chr)), function(ii) {
+      shiny::tags$tr(lapply(metrics_chr[ii, , drop = FALSE], function(val) shiny::tags$td(as.character(val[[1]] %||% ""))))
+    })
+    shiny::div(
+      class = "table-responsive gf-endpoint-table-scroll",
+      shiny::tags$table(
+        class = "table table-sm gf-asset-table",
+        shiny::tags$thead(head_row),
+        shiny::tags$tbody(body_rows)
+      )
+    )
+  }
+
+  endpoint_metrics_panel_state <- function(panel_state) {
     rows_df <- if (is.list(panel_state) && is.data.frame(panel_state$rows)) panel_state$rows else data.frame()
-    working_state <- if (is.list(panel_state) && is.list(panel_state$working)) panel_state$working else empty_working_endpoint_state()
-    working_rows <- if (is.data.frame(working_state$rows)) working_state$rows else empty_working_endpoint_rows()
     selected_vid <- selected_endpoint_vertex()
-    selected_source <- as.character(endpoint_vertex_state$source %||% "")
-    rr <- reference_renderer_state()
-    renderer_name <- toupper(as.character(rr$effective %||% rr$requested %||% ""))
     rows_for_metrics <- rows_df
     if (is.data.frame(rows_df) && nrow(rows_df) > 0L && "selected" %in% names(rows_df)) {
       metric_keep <- as.logical(rows_df$selected)
@@ -5715,34 +5869,32 @@ app_server <- function(input, output, session) {
     if ((!is.data.frame(metrics_df) || nrow(metrics_df) < 1L) && is.data.frame(rows_df) && nrow(rows_df) > 0L) {
       metrics_df <- endpoint_metrics_for_vertex(selected_vid, rows_df)
     }
+    metrics_df
+  }
+
+  build_endpoint_candidate_metrics_ui <- function(panel_state) {
+    metrics_df <- endpoint_metrics_panel_state(panel_state)
+    shiny::tags$details(
+      class = "gf-endpoint-metrics-details",
+      shiny::tags$summary("Candidate Metrics"),
+      build_endpoint_metrics_table(metrics_df)
+    )
+  }
+
+  build_endpoint_vertex_inspector_ui <- function(panel_state) {
+    rows_df <- if (is.list(panel_state) && is.data.frame(panel_state$rows)) panel_state$rows else data.frame()
+    working_state <- if (is.list(panel_state) && is.list(panel_state$working)) panel_state$working else empty_working_endpoint_state()
+    working_rows <- if (is.data.frame(working_state$rows)) working_state$rows else empty_working_endpoint_rows()
+    selected_vid <- selected_endpoint_vertex()
+    selected_source <- as.character(endpoint_vertex_state$source %||% "")
+    rr <- reference_renderer_state()
+    renderer_name <- toupper(as.character(rr$effective %||% rr$requested %||% ""))
     label_suggestion <- endpoint_label_profile_suggestion(selected_vid, panel_state = panel_state)
     working_hit <- integer(0)
     if (is.data.frame(working_rows) && nrow(working_rows) > 0L && is.finite(selected_vid)) {
       working_hit <- which(as.integer(working_rows$vertex) == as.integer(selected_vid))
     }
     selected_working_row <- if (length(working_hit) > 0L) working_rows[working_hit[[1]], , drop = FALSE] else NULL
-
-    build_metrics_table <- function(metrics_tbl) {
-      if (!is.data.frame(metrics_tbl) || nrow(metrics_tbl) < 1L) {
-        return(shiny::p(class = "gf-hint", "No endpoint metrics found for the selected vertex in the current candidate datasets."))
-      }
-      metrics_chr <- metrics_tbl
-      for (cc in names(metrics_chr)) {
-        metrics_chr[[cc]] <- format_endpoint_metric_value(metrics_chr[[cc]])
-      }
-      head_row <- shiny::tags$tr(lapply(names(metrics_chr), function(cc) shiny::tags$th(cc)))
-      body_rows <- lapply(seq_len(nrow(metrics_chr)), function(ii) {
-        shiny::tags$tr(lapply(metrics_chr[ii, , drop = FALSE], function(val) shiny::tags$td(as.character(val[[1]] %||% ""))))
-      })
-      shiny::div(
-        class = "table-responsive gf-endpoint-table-scroll",
-        shiny::tags$table(
-          class = "table table-sm gf-asset-table",
-          shiny::tags$thead(head_row),
-          shiny::tags$tbody(body_rows)
-        )
-      )
-    }
 
     build_profile_table <- function(profile_tbl) {
       profile_tbl <- normalize_endpoint_feature_profile(profile_tbl)
@@ -5852,17 +6004,16 @@ app_server <- function(input, output, session) {
           "Clear Working Set",
           class = "btn-light btn-sm gf-btn-inline"
         )
-      ),
-      shiny::tags$details(
-        class = "gf-endpoint-metrics-details",
-        shiny::tags$summary("Candidate Metrics"),
-        build_metrics_table(metrics_df)
       )
     )
   }
 
   output$endpoint_vertex_inspector <- shiny::renderUI({
     build_endpoint_vertex_inspector_ui(endpoint_panel_state())
+  })
+
+  output$endpoint_candidate_metrics <- shiny::renderUI({
+    build_endpoint_candidate_metrics_ui(endpoint_panel_state())
   })
 
   output$workflow_controls <- shiny::renderUI({
@@ -5994,8 +6145,14 @@ app_server <- function(input, output, session) {
 
     build_working_endpoint_table <- function(working_state) {
       rows_df <- accepted_visible_working_rows(working_state)
+      hidden_rows_df <- accepted_hidden_working_rows(working_state)
       working_count <- nrow(rows_df)
+      hidden_count <- nrow(hidden_rows_df)
       show_working_checked <- isTRUE(endpoint_show_working_set_effective(working_state))
+      working_scroll_top <- endpoint_working_scroll_top()
+      if (!is.finite(working_scroll_top) || working_scroll_top < 0L) {
+        working_scroll_top <- 0L
+      }
       status_label <- if (working_endpoint_is_recovered(working_state)) {
         "Recovered Draft"
       } else if (working_endpoint_is_modified(working_state)) {
@@ -6033,97 +6190,163 @@ app_server <- function(input, output, session) {
         )
       )
 
-      if (nrow(rows_df) < 1L) {
-        return(shiny::tagList(
-          header,
-          shiny::p(class = "gf-hint", "Working endpoint set is empty.")
-        ))
-      }
-
-      if (nrow(rows_df) > 250L) {
-        rows_df <- rows_df[seq_len(250L), , drop = FALSE]
-      }
-
-      head_row <- shiny::tags$tr(
-        shiny::tags$th("vertex"),
-        shiny::tags$th("label"),
-        shiny::tags$th("actions")
-      )
-      body_rows <- lapply(seq_len(nrow(rows_df)), function(ii) {
-        rr <- rows_df[ii, , drop = FALSE]
-        vid <- suppressWarnings(as.integer(rr$vertex[[1]]))
-        label_dom_id <- endpoint_working_label_dom_id(vid)
-        label_event_id <- endpoint_working_label_event_id(vid)
-        remove_id <- endpoint_working_remove_input_id(vid)
-        select_id <- endpoint_working_select_input_id(vid)
-        label_value <- normalize_working_endpoint_label(
-          label = rr$label[[1]] %||% "",
-          vertex_id = vid,
-          auto_label = rr$auto_label[[1]] %||% sprintf("v%d", vid)
+      build_visible_rows_table <- function(rows_use) {
+        if (nrow(rows_use) > 250L) {
+          rows_use <- rows_use[seq_len(250L), , drop = FALSE]
+        }
+        head_row <- shiny::tags$tr(
+          shiny::tags$th("vertex"),
+          shiny::tags$th("label"),
+          shiny::tags$th("actions")
         )
-        shiny::tags$tr(
-          class = if (is.finite(selected_vid) && identical(as.integer(selected_vid), as.integer(vid))) "gf-endpoint-working-row-selected" else NULL,
-          shiny::tags$td(
-            class = "gf-endpoint-working-select-cell",
-            shiny::tags$button(
-              type = "button",
-              id = select_id,
-              class = "gf-endpoint-working-select-btn",
-              onclick = sprintf(
-                "Shiny.setInputValue('endpoint_working_select_vertex', %d, {priority: 'event'})",
-                as.integer(vid)
-              ),
-              sprintf("v%d", as.integer(rr$vertex[[1]]))
-            )
-          ),
-          shiny::tags$td(
-            shiny::tags$input(
-              id = label_dom_id,
-              type = "text",
-              value = label_value,
-              class = "form-control form-control-sm gf-endpoint-table-input",
-              onchange = sprintf(
-                "Shiny.setInputValue('%s', this.value, {priority: 'event'})",
-                label_event_id
+        body_rows <- lapply(seq_len(nrow(rows_use)), function(ii) {
+          rr <- rows_use[ii, , drop = FALSE]
+          vid <- suppressWarnings(as.integer(rr$vertex[[1]]))
+          label_dom_id <- endpoint_working_label_dom_id(vid)
+          label_event_id <- endpoint_working_label_event_id(vid)
+          hide_id <- endpoint_working_hide_input_id(vid)
+          select_id <- endpoint_working_select_input_id(vid)
+          label_value <- normalize_working_endpoint_label(
+            label = rr$label[[1]] %||% "",
+            vertex_id = vid,
+            auto_label = rr$auto_label[[1]] %||% sprintf("v%d", vid)
+          )
+          shiny::tags$tr(
+            class = if (is.finite(selected_vid) && identical(as.integer(selected_vid), as.integer(vid))) "gf-endpoint-working-row-selected" else NULL,
+            shiny::tags$td(
+              class = "gf-endpoint-working-select-cell",
+              shiny::tags$button(
+                type = "button",
+                id = select_id,
+                class = "gf-endpoint-working-select-btn",
+                onclick = sprintf(
+                  "(function(btn){var wrap=document.getElementById('endpoint_working_table_scroll');Shiny.setInputValue('endpoint_working_select_vertex',{vertex:%d,scrollTop:(wrap?wrap.scrollTop:0)},{priority:'event'});})(this)",
+                  as.integer(vid)
+                ),
+                sprintf("v%d", as.integer(rr$vertex[[1]]))
+              )
+            ),
+            shiny::tags$td(
+              shiny::tags$input(
+                id = label_dom_id,
+                type = "text",
+                value = label_value,
+                class = "form-control form-control-sm gf-endpoint-table-input",
+                onchange = sprintf(
+                  "Shiny.setInputValue('%s', this.value, {priority: 'event'})",
+                  label_event_id
+                )
+              )
+            ),
+            shiny::tags$td(
+              class = "gf-endpoint-table-actions-cell",
+              shiny::actionButton(
+                hide_id,
+                "Hide",
+                class = "btn-light btn-sm gf-btn-inline gf-endpoint-remove-btn"
               )
             )
+          )
+        })
+
+        shiny::tagList(
+          shiny::div(
+            id = "endpoint_working_table_scroll",
+            class = "table-responsive gf-endpoint-table-scroll",
+            `data-scroll-top` = as.character(as.integer(working_scroll_top)),
+            shiny::tags$table(
+              class = "table table-sm gf-asset-table",
+              shiny::tags$thead(head_row),
+              shiny::tags$tbody(body_rows)
+            )
           ),
-          shiny::tags$td(
-            class = "gf-endpoint-table-actions-cell",
-            shiny::actionButton(
-              remove_id,
-              "Remove",
-              class = "btn-light btn-sm gf-btn-inline gf-endpoint-remove-btn"
+          shiny::tags$script(
+            shiny::HTML(
+              "(function(){var el=document.getElementById('endpoint_working_table_scroll'); if(!el){return;} var y=parseInt(el.dataset.scrollTop||'0',10); if(Number.isFinite(y)){el.scrollTop=y;}})();"
             )
           )
         )
-      })
+      }
 
-      shiny::tagList(
-        header,
-        shiny::div(
-          class = "table-responsive gf-endpoint-table-scroll",
-          shiny::tags$table(
-            class = "table table-sm gf-asset-table",
-            shiny::tags$thead(head_row),
-            shiny::tags$tbody(body_rows)
+      build_hidden_rows_table <- function(rows_use) {
+        if (nrow(rows_use) > 250L) {
+          rows_use <- rows_use[seq_len(250L), , drop = FALSE]
+        }
+        head_row <- shiny::tags$tr(
+          shiny::tags$th("vertex"),
+          shiny::tags$th("label"),
+          shiny::tags$th("actions")
+        )
+        body_rows <- lapply(seq_len(nrow(rows_use)), function(ii) {
+          rr <- rows_use[ii, , drop = FALSE]
+          vid <- suppressWarnings(as.integer(rr$vertex[[1]]))
+          restore_id <- endpoint_working_restore_input_id(vid)
+          delete_id <- endpoint_working_delete_input_id(vid)
+          select_id <- endpoint_working_select_input_id(vid)
+          label_value <- normalize_working_endpoint_label(
+            label = rr$label[[1]] %||% "",
+            vertex_id = vid,
+            auto_label = rr$auto_label[[1]] %||% sprintf("v%d", vid)
+          )
+          shiny::tags$tr(
+            class = if (is.finite(selected_vid) && identical(as.integer(selected_vid), as.integer(vid))) "gf-endpoint-working-row-selected" else NULL,
+            shiny::tags$td(
+              class = "gf-endpoint-working-select-cell",
+              shiny::tags$button(
+                type = "button",
+                id = select_id,
+                class = "gf-endpoint-working-select-btn",
+                onclick = sprintf(
+                  "Shiny.setInputValue('endpoint_working_select_vertex',{vertex:%d,scrollTop:0},{priority:'event'})",
+                  as.integer(vid)
+                ),
+                sprintf("v%d", as.integer(rr$vertex[[1]]))
+              )
+            ),
+            shiny::tags$td(label_value),
+            shiny::tags$td(
+              class = "gf-endpoint-table-actions-cell",
+              shiny::actionButton(
+                restore_id,
+                "Restore",
+                class = "btn-light btn-sm gf-btn-inline"
+              ),
+              shiny::actionButton(
+                delete_id,
+                "Delete",
+                class = "btn-light btn-sm gf-btn-inline gf-endpoint-remove-btn"
+              )
+            )
+          )
+        })
+
+        shiny::tags$details(
+          class = "gf-endpoint-metrics-details",
+          shiny::tags$summary(sprintf("Hidden Endpoints (%d)", as.integer(hidden_count))),
+          shiny::div(
+            class = "table-responsive gf-endpoint-table-scroll",
+            shiny::tags$table(
+              class = "table table-sm gf-asset-table",
+              shiny::tags$thead(head_row),
+              shiny::tags$tbody(body_rows)
+            )
           )
         )
-      )
-    }
+      }
 
-    build_endpoint_compute_placeholder <- function() {
-      shiny::tagList(
-        shiny::div(
-          class = "gf-hint",
-          "The compute section will create embedding-geometry candidates from cached fits and cached endpoint-score bundles."
-        ),
-        shiny::actionButton(
-          "endpoint_update_placeholder",
-          "Compute / Add Candidate...",
-          class = "btn-light gf-btn-wide"
-        )
-      )
+      content <- list()
+      if (nrow(rows_df) > 0L) {
+        content <- c(content, list(build_visible_rows_table(rows_df)))
+      } else {
+        content <- c(content, list(shiny::p(class = "gf-hint", "No visible working endpoints. Hidden endpoints stay available below.")))
+      }
+      if (hidden_count > 0L) {
+        content <- c(content, list(build_hidden_rows_table(hidden_rows_df)))
+      } else if (nrow(rows_df) < 1L) {
+        content <- c(content, list(shiny::p(class = "gf-hint", "Working endpoint set is empty.")))
+      }
+
+      shiny::tagList(header, content)
     }
 
     panels <- list()
@@ -6332,84 +6555,86 @@ app_server <- function(input, output, session) {
               ),
               shiny::div(
                 class = "gf-endpoint-section",
-                shiny::h6(class = "gf-graph-layout-head", "Compute"),
-                build_endpoint_compute_placeholder()
+                shiny::uiOutput("endpoint_candidate_metrics")
               ),
               shiny::hr(),
-              shiny::h6(class = "gf-graph-layout-head", "Endpoint Layout"),
-              shiny::div(
-                class = "gf-graph-row gf-graph-layout-row",
-                shiny::span(class = "gf-graph-row-label", "Label size:"),
-                shiny::sliderInput(
-                  "endpoint_label_size",
-                  label = NULL,
-                  min = 0.4,
-                  max = 3.0,
-                  value = parse_scale_multiplier(input$endpoint_label_size %||% 1, default = 1),
-                  step = 0.1,
-                  width = "205px"
-                ),
-                shiny::span(
-                  class = "gf-graph-dims",
-                  sprintf(
-                    "%.1fx",
-                    parse_scale_multiplier(input$endpoint_label_size %||% 1, default = 1)
-                  )
-                )
-              ),
-              shiny::div(
-                class = "gf-graph-row gf-graph-layout-row",
-                shiny::span(class = "gf-graph-row-label", "Label offset:"),
-                shiny::selectInput(
-                  "endpoint_label_offset",
-                  label = NULL,
-                  choices = stats::setNames(
-                    c(
-                      "0x", "0.50x", "1x", "1.50x", "2x", "2.50x", "3x",
-                      "3.50x", "4x", "4.50x", "5x"
-                    ),
-                    c(
-                      "0x", "0.50x", "1x", "1.50x", "2x", "2.50x", "3x",
-                      "3.50x", "4x", "4.50x", "5x"
+              shiny::tags$details(
+                class = "gf-endpoint-metrics-details",
+                shiny::tags$summary("Endpoint Layout"),
+                shiny::div(
+                  class = "gf-graph-row gf-graph-layout-row",
+                  shiny::span(class = "gf-graph-row-label", "Label size:"),
+                  shiny::sliderInput(
+                    "endpoint_label_size",
+                    label = NULL,
+                    min = 0.4,
+                    max = 3.0,
+                    value = parse_scale_multiplier(input$endpoint_label_size %||% 1, default = 1),
+                    step = 0.1,
+                    width = "205px"
+                  ),
+                  shiny::span(
+                    class = "gf-graph-dims",
+                    sprintf(
+                      "%.1fx",
+                      parse_scale_multiplier(input$endpoint_label_size %||% 1, default = 1)
                     )
-                  ),
-                  selected = as.character(input$endpoint_label_offset %||% "1x"),
-                  width = "170px"
-                )
-              ),
-              shiny::div(
-                class = "gf-graph-row gf-graph-layout-row",
-                shiny::span(class = "gf-graph-row-label", "Marker size:"),
-                shiny::selectInput(
-                  "endpoint_marker_size",
-                  label = NULL,
-                  choices = stats::setNames(
-                    c("0.75x", "1x", "1.25x", "1.50x", "2x", "2.50x", "3x"),
-                    c("0.75x", "1x", "1.25x", "1.50x", "2x", "2.50x", "3x")
-                  ),
-                  selected = as.character(input$endpoint_marker_size %||% "1x"),
-                  width = "170px"
-                )
-              ),
-              shiny::div(
-                class = "gf-graph-row gf-graph-layout-row",
-                shiny::span(class = "gf-graph-row-label", "Marker color:"),
-                shiny::selectInput(
-                  "endpoint_marker_color",
-                  label = NULL,
-                  choices = c(
-                    "Red" = "#ef4444",
-                    "Orange" = "#f97316",
-                    "Gold" = "#eab308",
-                    "Green" = "#22c55e",
-                    "Teal" = "#14b8a6",
-                    "Blue" = "#3b82f6",
-                    "Purple" = "#8b5cf6",
-                    "Pink" = "#ec4899",
-                    "Black" = "#111827"
-                  ),
-                  selected = as.character(input$endpoint_marker_color %||% "#ef4444"),
-                  width = "170px"
+                  )
+                ),
+                shiny::div(
+                  class = "gf-graph-row gf-graph-layout-row",
+                  shiny::span(class = "gf-graph-row-label", "Label offset:"),
+                  shiny::selectInput(
+                    "endpoint_label_offset",
+                    label = NULL,
+                    choices = stats::setNames(
+                      c(
+                        "0x", "0.50x", "1x", "1.50x", "2x", "2.50x", "3x",
+                        "3.50x", "4x", "4.50x", "5x"
+                      ),
+                      c(
+                        "0x", "0.50x", "1x", "1.50x", "2x", "2.50x", "3x",
+                        "3.50x", "4x", "4.50x", "5x"
+                      )
+                    ),
+                    selected = as.character(input$endpoint_label_offset %||% "1x"),
+                    width = "170px"
+                  )
+                ),
+                shiny::div(
+                  class = "gf-graph-row gf-graph-layout-row",
+                  shiny::span(class = "gf-graph-row-label", "Marker size:"),
+                  shiny::selectInput(
+                    "endpoint_marker_size",
+                    label = NULL,
+                    choices = stats::setNames(
+                      c("0.75x", "1x", "1.25x", "1.50x", "2x", "2.50x", "3x"),
+                      c("0.75x", "1x", "1.25x", "1.50x", "2x", "2.50x", "3x")
+                    ),
+                    selected = as.character(input$endpoint_marker_size %||% "1x"),
+                    width = "170px"
+                  )
+                ),
+                shiny::div(
+                  class = "gf-graph-row gf-graph-layout-row",
+                  shiny::span(class = "gf-graph-row-label", "Marker color:"),
+                  shiny::selectInput(
+                    "endpoint_marker_color",
+                    label = NULL,
+                    choices = c(
+                      "Red" = "#ef4444",
+                      "Orange" = "#f97316",
+                      "Gold" = "#eab308",
+                      "Green" = "#22c55e",
+                      "Teal" = "#14b8a6",
+                      "Blue" = "#3b82f6",
+                      "Purple" = "#8b5cf6",
+                      "Pink" = "#ec4899",
+                      "Black" = "#111827"
+                    ),
+                    selected = as.character(input$endpoint_marker_color %||% "#ef4444"),
+                    width = "170px"
+                  )
                 )
               )
             )
