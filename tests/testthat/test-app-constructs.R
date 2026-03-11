@@ -328,7 +328,7 @@ test_that("legacy working current state wins over larger snapshots when shared s
   })
 })
 
-test_that("replayed use-as-working button counts do not overwrite the working set on startup", {
+test_that("replayed load button counts do not overwrite the working set on startup", {
   local_projects_data_sandbox()
   reg <- gflowui::list_projects()
   if (!("agp" %in% reg$id)) {
@@ -351,16 +351,43 @@ test_that("replayed use-as-working button counts do not overwrite the working se
     st <- endpoint_panel_state()
     rows <- if (is.list(st) && is.data.frame(st$rows)) st$rows else data.frame()
     expect_true(nrow(rows) > 0L)
-    use_id <- as.character(rows$use_input_id[[1]] %||% "")
-    expect_true(nzchar(use_id))
+    load_id <- as.character(rows$load_input_id[[1]] %||% "")
+    expect_true(nzchar(load_id))
 
-    endpoint_use_action_counts(structure(integer(0), names = character(0)))
-    do.call(session$setInputs, stats::setNames(list(1L), use_id))
+    endpoint_dataset_load_counts(structure(integer(0), names = character(0)))
+    do.call(session$setInputs, stats::setNames(list(1L), load_id))
     session$flushReact()
 
     st_after <- endpoint_panel_state()
     expect_true(is.data.frame(st_after$working$rows))
     expect_equal(sort(st_after$working$rows$vertex), c(77L, 88L))
+  })
+})
+
+test_that("working endpoint row selection updates the inspector vertex", {
+  local_projects_data_sandbox()
+  reg <- gflowui::list_projects()
+  if (!("agp" %in% reg$id)) {
+    skip("AGP project is not registered in this environment")
+  }
+
+  shiny::testServer(gflowui:::app_server, {
+    open_project("agp")
+    session$flushReact()
+
+    ctx <- current_endpoint_graph_context()
+    expect_true(is.list(ctx))
+
+    state <- empty_working_endpoint_state(ctx = ctx)
+    state <- upsert_working_endpoint_vertex_state(state, 91L)
+    save_working_endpoint_state(state, ctx = ctx)
+    session$flushReact()
+
+    session$setInputs(endpoint_working_select_vertex = 91L)
+    session$flushReact()
+
+    expect_equal(selected_endpoint_vertex(), 91L)
+    expect_equal(endpoint_vertex_state$source, "working_table")
   })
 })
 
@@ -531,8 +558,11 @@ test_that("saving a working snapshot preserves endpoint panel state loading", {
     state <- upsert_working_endpoint_vertex_state(state, 21L)
     save_working_endpoint_state(state, ctx = ctx)
 
-    expect_no_error(save_working_endpoint_snapshot())
+    snap <- NULL
+    expect_no_error(snap <- save_working_endpoint_snapshot())
     session$flushReact()
+    expect_true(is.list(snap))
+    expect_true(isTRUE(snap$ok))
 
     after_candidate_files <- if (dir.exists(candidate_dir)) {
       list.files(candidate_dir, full.names = TRUE)
@@ -552,6 +582,39 @@ test_that("saving a working snapshot preserves endpoint panel state loading", {
     expect_no_error(st <- endpoint_panel_state())
     expect_true(is.data.frame(st$rows))
     expect_true(any(as.character(st$rows$origin) == "workspace"))
+    expect_false(isTRUE(st$working$is_modified))
+  })
+})
+
+test_that("default endpoint dataset loads into working endpoints when no draft exists", {
+  local_projects_data_sandbox()
+  reg <- gflowui::list_projects()
+  if (!("agp" %in% reg$id)) {
+    skip("AGP project is not registered in this environment")
+  }
+
+  shiny::testServer(gflowui:::app_server, {
+    open_project("agp")
+    session$flushReact()
+
+    ctx <- current_endpoint_graph_context()
+    expect_true(is.list(ctx))
+
+    state <- empty_working_endpoint_state(ctx = ctx)
+    state <- upsert_working_endpoint_vertex_state(state, 31L)
+    save_working_endpoint_state(state, ctx = ctx)
+    snap <- save_working_endpoint_snapshot()
+    expect_true(isTRUE(snap$ok))
+
+    unlink(endpoint_working_file(ctx$graph_set_id, ctx$k, ctx$project_id), force = TRUE)
+    save_endpoint_dataset_meta(list(default_dataset_id = snap$dataset_id), ctx = ctx)
+    endpoint_workspace_revision(isolate(endpoint_workspace_revision()) + 1L)
+    session$flushReact()
+
+    st <- endpoint_panel_state()
+    expect_true(is.data.frame(st$working$rows))
+    expect_true(31L %in% st$working$rows$vertex)
+    expect_equal(as.character(st$working$base_dataset_id %||% ""), as.character(snap$dataset_id))
   })
 })
 

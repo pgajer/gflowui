@@ -106,6 +106,7 @@ app_server <- function(input, output, session) {
     }
     stop(sprintf("Neither '%s' nor '%s' is available in gflow.", preferred, legacy), call. = FALSE)
   }
+  endpoint_session_id <- paste(session$token %||% "session", as.integer(Sys.time()), sep = "-")
 
   shiny::observeEvent(list(rv$project.active, rv$project.id), {
     graph_selection_state$set_id <- ""
@@ -1063,6 +1064,14 @@ app_server <- function(input, output, session) {
   workflow_open_panels <- shiny::reactiveVal(NULL)
   endpoint_working_remove_counts <- shiny::reactiveVal(structure(integer(0), names = character(0)))
   endpoint_working_label_event_values <- shiny::reactiveVal(structure(character(0), names = character(0)))
+  endpoint_dataset_load_counts <- shiny::reactiveVal(structure(integer(0), names = character(0)))
+  endpoint_dataset_rename_counts <- shiny::reactiveVal(structure(integer(0), names = character(0)))
+  endpoint_dataset_delete_counts <- shiny::reactiveVal(structure(integer(0), names = character(0)))
+  endpoint_dataset_default_counts <- shiny::reactiveVal(structure(integer(0), names = character(0)))
+  endpoint_datasets_open <- shiny::reactiveVal(FALSE)
+  endpoint_draft_banner_dismissed <- shiny::reactiveVal(FALSE)
+  endpoint_pending_load_dataset_id <- shiny::reactiveVal("")
+  endpoint_pending_project_action <- shiny::reactiveVal("")
   ## Generation counter: incremented whenever an endpoint-label
   ## parameter changes so the renderUI emits a *new* output ID for
   ## the rglwidget, forcing the browser to destroy the old WebGL
@@ -1076,6 +1085,14 @@ app_server <- function(input, output, session) {
     endpoint_show_working_set(NA)
     endpoint_working_remove_counts(structure(integer(0), names = character(0)))
     endpoint_working_label_event_values(structure(character(0), names = character(0)))
+    endpoint_dataset_load_counts(structure(integer(0), names = character(0)))
+    endpoint_dataset_rename_counts(structure(integer(0), names = character(0)))
+    endpoint_dataset_delete_counts(structure(integer(0), names = character(0)))
+    endpoint_dataset_default_counts(structure(integer(0), names = character(0)))
+    endpoint_datasets_open(FALSE)
+    endpoint_draft_banner_dismissed(FALSE)
+    endpoint_pending_load_dataset_id("")
+    endpoint_pending_project_action("")
     workflow_open_panels(NULL)
     rgl_last_output_id(NULL)
     rgl_gen(0L)
@@ -1534,6 +1551,10 @@ app_server <- function(input, output, session) {
       base_dataset_id = NA_character_,
       base_dataset_label = NA_character_,
       base_source_k = suppressWarnings(as.integer(NA_integer_)),
+      is_modified = FALSE,
+      last_snapshot_id = NA_character_,
+      last_snapshot_label = NA_character_,
+      last_session_id = NA_character_,
       rows = empty_working_endpoint_rows(),
       updated_at = .gflowui_now()
     )
@@ -1589,9 +1610,49 @@ app_server <- function(input, output, session) {
     out$base_dataset_id <- as.character(out$base_dataset_id %||% NA_character_)
     out$base_dataset_label <- as.character(out$base_dataset_label %||% NA_character_)
     out$base_source_k <- suppressWarnings(as.integer(out$base_source_k %||% NA_integer_))
+    out$is_modified <- isTRUE(out$is_modified)
+    out$last_snapshot_id <- as.character(out$last_snapshot_id %||% NA_character_)
+    out$last_snapshot_label <- as.character(out$last_snapshot_label %||% NA_character_)
+    out$last_session_id <- as.character(out$last_session_id %||% NA_character_)
     out$rows <- rows
     out$updated_at <- as.character(out$updated_at %||% .gflowui_now())
     out
+  }
+
+  working_endpoint_is_modified <- function(state) {
+    isTRUE(state$is_modified)
+  }
+
+  working_endpoint_mark_clean <- function(state, base_dataset_id = NULL, base_dataset_label = NULL, base_source_k = NULL) {
+    out <- sanitize_working_endpoint_state(state, ctx = NULL)
+    if (!is.null(base_dataset_id)) {
+      out$base_dataset_id <- as.character(base_dataset_id %||% NA_character_)
+    }
+    if (!is.null(base_dataset_label)) {
+      out$base_dataset_label <- as.character(base_dataset_label %||% NA_character_)
+    }
+    if (!is.null(base_source_k)) {
+      out$base_source_k <- suppressWarnings(as.integer(base_source_k %||% NA_integer_))
+    }
+    out$is_modified <- FALSE
+    out$last_session_id <- endpoint_session_id
+    out$updated_at <- .gflowui_now()
+    sanitize_working_endpoint_state(out, ctx = NULL)
+  }
+
+  working_endpoint_mark_modified <- function(state) {
+    out <- sanitize_working_endpoint_state(state, ctx = NULL)
+    out$is_modified <- TRUE
+    out$last_session_id <- endpoint_session_id
+    out$updated_at <- .gflowui_now()
+    sanitize_working_endpoint_state(out, ctx = NULL)
+  }
+
+  working_endpoint_is_recovered <- function(state) {
+    st <- sanitize_working_endpoint_state(state, ctx = NULL)
+    working_endpoint_is_modified(st) &&
+      nzchar(as.character(st$last_session_id %||% "")) &&
+      !identical(as.character(st$last_session_id %||% ""), endpoint_session_id)
   }
 
   read_workspace_endpoint_dataset <- function(path) {
@@ -1617,6 +1678,58 @@ app_server <- function(input, output, session) {
       labels = payload$labels,
       path = as.character(path %||% "")
     )
+  }
+
+  empty_endpoint_dataset_meta <- function(ctx = NULL) {
+    list(
+      version = "1",
+      project_id = as.character(ctx$project_id %||% rv$project.id %||% ""),
+      graph_set_id = as.character(ctx$graph_set_id %||% ""),
+      default_dataset_id = NA_character_,
+      updated_at = .gflowui_now()
+    )
+  }
+
+  sanitize_endpoint_dataset_meta <- function(x, ctx = NULL) {
+    out <- if (is.list(x)) x else empty_endpoint_dataset_meta(ctx = ctx)
+    out$project_id <- as.character(out$project_id %||% ctx$project_id %||% rv$project.id %||% "")
+    out$graph_set_id <- as.character(out$graph_set_id %||% ctx$graph_set_id %||% "")
+    out$default_dataset_id <- as.character(out$default_dataset_id %||% NA_character_)
+    out$updated_at <- as.character(out$updated_at %||% .gflowui_now())
+    out
+  }
+
+  read_endpoint_dataset_meta <- function(ctx) {
+    if (!is.list(ctx)) {
+      return(empty_endpoint_dataset_meta(ctx = ctx))
+    }
+    meta <- read_rds_if_exists(
+      endpoint_dataset_meta_file(
+        graph_set_id = ctx$graph_set_id,
+        k = ctx$k,
+        project_id = ctx$project_id
+      ),
+      default = NULL
+    )
+    sanitize_endpoint_dataset_meta(meta, ctx = ctx)
+  }
+
+  save_endpoint_dataset_meta <- function(meta, ctx) {
+    if (!is.list(ctx)) {
+      return(invisible(FALSE))
+    }
+    out <- sanitize_endpoint_dataset_meta(meta, ctx = ctx)
+    out$updated_at <- .gflowui_now()
+    save_rds_safely(
+      out,
+      endpoint_dataset_meta_file(
+        graph_set_id = ctx$graph_set_id,
+        k = ctx$k,
+        project_id = ctx$project_id
+      )
+    )
+    endpoint_workspace_revision(isolate(endpoint_workspace_revision()) + 1L)
+    invisible(TRUE)
   }
 
   read_external_endpoint_dataset <- function(row_df) {
@@ -2336,7 +2449,7 @@ app_server <- function(input, output, session) {
 
     out$rows <- rows
     out$updated_at <- ts
-    sanitize_working_endpoint_state(out, ctx = NULL)
+    working_endpoint_mark_modified(out)
   }
 
   normalize_working_endpoint_label <- function(label, vertex_id, auto_label = NULL) {
@@ -2372,7 +2485,7 @@ app_server <- function(input, output, session) {
     rows$updated_at[[ii]] <- .gflowui_now()
     out$rows <- rows
     out$updated_at <- .gflowui_now()
-    sanitize_working_endpoint_state(out, ctx = NULL)
+    working_endpoint_mark_modified(out)
   }
 
   remove_working_endpoint_vertex_state <- function(state, vertex_id) {
@@ -2385,7 +2498,7 @@ app_server <- function(input, output, session) {
     rows <- rows[rows$vertex != as.integer(vid), , drop = FALSE]
     out$rows <- rows
     out$updated_at <- .gflowui_now()
-    sanitize_working_endpoint_state(out, ctx = NULL)
+    working_endpoint_mark_modified(out)
   }
 
   read_endpoint_dataset_from_row <- function(row_df) {
@@ -2428,11 +2541,11 @@ app_server <- function(input, output, session) {
   })
 
   endpoint_workspace_revision <- shiny::reactiveVal(0L)
-  endpoint_use_action_counts <- shiny::reactiveVal(structure(integer(0), names = character(0)))
   endpoint_vertex_state <- shiny::reactiveValues(
     vertex = NA_integer_,
     source = ""
   )
+  endpoint_vertex_input_source_override <- shiny::reactiveVal("")
 
   endpoint_context_key <- shiny::reactive({
     ctx <- current_endpoint_graph_context()
@@ -2448,12 +2561,19 @@ app_server <- function(input, output, session) {
     }
     endpoint_overlay_selection(character(0))
     endpoint_autoselect_done(FALSE)
-    endpoint_use_action_counts(structure(integer(0), names = character(0)))
+    endpoint_dataset_load_counts(structure(integer(0), names = character(0)))
+    endpoint_dataset_rename_counts(structure(integer(0), names = character(0)))
+    endpoint_dataset_delete_counts(structure(integer(0), names = character(0)))
+    endpoint_dataset_default_counts(structure(integer(0), names = character(0)))
     endpoint_show_working_set(NA)
+    endpoint_draft_banner_dismissed(FALSE)
+    endpoint_pending_load_dataset_id("")
+    endpoint_pending_project_action("")
     endpoint_working_remove_counts(structure(integer(0), names = character(0)))
     endpoint_working_label_event_values(structure(character(0), names = character(0)))
     endpoint_vertex_state$vertex <- NA_integer_
     endpoint_vertex_state$source <- ""
+    endpoint_vertex_input_source_override("")
     shiny::updateNumericInput(session, "endpoint_vertex_id", value = NA)
   }, ignoreInit = TRUE)
 
@@ -2490,6 +2610,10 @@ app_server <- function(input, output, session) {
 
   endpoint_working_remove_input_id <- function(vertex_id) {
     sprintf("endpoint_working_remove_%d", suppressWarnings(as.integer(vertex_id)))
+  }
+
+  endpoint_working_select_input_id <- function(vertex_id) {
+    sprintf("endpoint_working_select_%d", suppressWarnings(as.integer(vertex_id)))
   }
 
   shiny::observe({
@@ -2619,6 +2743,7 @@ app_server <- function(input, output, session) {
         }
         endpoint_vertex_state$vertex <- as.integer(vid)
         endpoint_vertex_state$source <- "plotly"
+        endpoint_vertex_input_source_override("plotly")
         shiny::updateNumericInput(session, "endpoint_vertex_id", value = as.integer(vid))
       },
       ignoreInit = TRUE
@@ -2630,22 +2755,44 @@ app_server <- function(input, output, session) {
     if (is.null(raw_val) || (length(raw_val) > 0L && all(is.na(raw_val)))) {
       endpoint_vertex_state$vertex <- NA_integer_
       endpoint_vertex_state$source <- ""
+      endpoint_vertex_input_source_override("")
       return()
     }
 
     vid <- normalize_selected_endpoint_vertex(raw_val)
+    source_override <- as.character(endpoint_vertex_input_source_override() %||% "")
+    if (nzchar(source_override)) {
+      endpoint_vertex_input_source_override("")
+    }
     if (is.finite(vid)) {
       endpoint_vertex_state$vertex <- as.integer(vid)
-      endpoint_vertex_state$source <- "manual"
+      endpoint_vertex_state$source <- if (nzchar(source_override)) source_override else "manual"
     } else {
       endpoint_vertex_state$vertex <- NA_integer_
-      endpoint_vertex_state$source <- "manual"
+      endpoint_vertex_state$source <- if (nzchar(source_override)) source_override else "manual"
     }
   }, ignoreInit = FALSE)
+
+  shiny::observe({
+    vv <- input$endpoint_datasets_open
+    if (!is.null(vv)) {
+      endpoint_datasets_open(isTRUE(vv))
+    }
+  })
 
   selected_endpoint_vertex <- shiny::reactive({
     normalize_selected_endpoint_vertex(endpoint_vertex_state$vertex)
   })
+
+  shiny::observeEvent(input$endpoint_working_select_vertex, {
+    vid <- normalize_selected_endpoint_vertex(input$endpoint_working_select_vertex)
+    if (is.finite(vid)) {
+      endpoint_vertex_state$vertex <- as.integer(vid)
+      endpoint_vertex_state$source <- "working_table"
+      endpoint_vertex_input_source_override("working_table")
+      shiny::updateNumericInput(session, "endpoint_vertex_id", value = as.integer(vid))
+    }
+  }, ignoreInit = TRUE)
 
   add_selected_vertex_to_working_set <- function() {
     ctx <- current_endpoint_graph_context()
@@ -2743,7 +2890,10 @@ app_server <- function(input, output, session) {
         dataset_id = key,
         key = key,
         input_id = sprintf("endpoint_dataset_%s", key),
-        use_input_id = sprintf("endpoint_use_%s", key),
+        load_input_id = sprintf("endpoint_load_%s", key),
+        rename_input_id = sprintf("endpoint_rename_%s", key),
+        delete_input_id = sprintf("endpoint_delete_%s", key),
+        default_input_id = sprintf("endpoint_default_%s", key),
         source_type = "workspace",
         origin = as.character(ds$origin %||% "workspace"),
         label = as.character(ds$label %||% key),
@@ -2758,6 +2908,11 @@ app_server <- function(input, output, session) {
         per_k_file = "",
         workspace_file = as.character(ds$path %||% files[[ii]]),
         created_at = as.character(ds$created_at %||% ""),
+        can_load = TRUE,
+        can_rename = TRUE,
+        can_delete = TRUE,
+        can_set_default = TRUE,
+        is_default = FALSE,
         stringsAsFactors = FALSE
       )
     })
@@ -2775,7 +2930,10 @@ app_server <- function(input, output, session) {
       dataset_id = character(0),
       key = character(0),
       input_id = character(0),
-      use_input_id = character(0),
+      load_input_id = character(0),
+      rename_input_id = character(0),
+      delete_input_id = character(0),
+      default_input_id = character(0),
       source_type = character(0),
       origin = character(0),
       label = character(0),
@@ -2794,6 +2952,11 @@ app_server <- function(input, output, session) {
       created_at = character(0),
       autoselect = logical(0),
       sort_quantile = numeric(0),
+      can_load = logical(0),
+      can_rename = logical(0),
+      can_delete = logical(0),
+      can_set_default = logical(0),
+      is_default = logical(0),
       stringsAsFactors = FALSE
     )
   }
@@ -2825,7 +2988,10 @@ app_server <- function(input, output, session) {
     x$dataset_id <- as.character(x$dataset_id)
     x$key <- as.character(x$key)
     x$input_id <- as.character(x$input_id)
-    x$use_input_id <- as.character(x$use_input_id)
+    x$load_input_id <- as.character(x$load_input_id)
+    x$rename_input_id <- as.character(x$rename_input_id)
+    x$delete_input_id <- as.character(x$delete_input_id)
+    x$default_input_id <- as.character(x$default_input_id)
     x$source_type <- as.character(x$source_type)
     x$origin <- as.character(x$origin)
     x$label <- as.character(x$label)
@@ -2844,6 +3010,11 @@ app_server <- function(input, output, session) {
     x$created_at <- as.character(x$created_at)
     x$autoselect <- as.logical(x$autoselect)
     x$sort_quantile <- suppressWarnings(as.numeric(x$sort_quantile))
+    x$can_load <- as.logical(x$can_load)
+    x$can_rename <- as.logical(x$can_rename)
+    x$can_delete <- as.logical(x$can_delete)
+    x$can_set_default <- as.logical(x$can_set_default)
+    x$is_default <- as.logical(x$is_default)
     rownames(x) <- NULL
     x
   }
@@ -2893,7 +3064,10 @@ app_server <- function(input, output, session) {
         dataset_id = key,
         key = key,
         input_id = sprintf("endpoint_dataset_%s", key),
-        use_input_id = sprintf("endpoint_use_%s", key),
+        load_input_id = sprintf("endpoint_load_%s", key),
+        rename_input_id = sprintf("endpoint_rename_%s", key),
+        delete_input_id = sprintf("endpoint_delete_%s", key),
+        default_input_id = sprintf("endpoint_default_%s", key),
         source_type = "external_rds",
         origin = "sweep",
         label = sprintf("Embedding Geometry (%s / 1 / ssr=1)", q_label),
@@ -2912,6 +3086,11 @@ app_server <- function(input, output, session) {
         created_at = as.character(created_at %||% ""),
         autoselect = identical(qv, 0.98) && is.finite(current_k) && identical(as.integer(source_k), as.integer(current_k)),
         sort_quantile = qv,
+        can_load = TRUE,
+        can_rename = FALSE,
+        can_delete = FALSE,
+        can_set_default = TRUE,
+        is_default = FALSE,
         stringsAsFactors = FALSE
       )
     }
@@ -3043,7 +3222,10 @@ app_server <- function(input, output, session) {
           dataset_id = key,
           key = key,
           input_id = as.character(rr$input_id[[1]] %||% sprintf("endpoint_dataset_%s", key)),
-          use_input_id = sprintf("endpoint_use_%s", key),
+          load_input_id = sprintf("endpoint_load_%s", key),
+          rename_input_id = sprintf("endpoint_rename_%s", key),
+          delete_input_id = sprintf("endpoint_delete_%s", key),
+          default_input_id = sprintf("endpoint_default_%s", key),
           source_type = "manifest",
           origin = "manifest",
           label = label,
@@ -3062,6 +3244,11 @@ app_server <- function(input, output, session) {
           per_k_file = as.character(rr$per_k_file[[1]] %||% ""),
           workspace_file = "",
           created_at = as.character(ep_run$created_at %||% ""),
+          can_load = TRUE,
+          can_rename = FALSE,
+          can_delete = FALSE,
+          can_set_default = TRUE,
+          is_default = FALSE,
           stringsAsFactors = FALSE
         )
         idx <- idx + 1L
@@ -3109,6 +3296,10 @@ app_server <- function(input, output, session) {
         base_dataset_id = as.character(obj$source_dataset_id %||% NA_character_),
         base_dataset_label = as.character(obj$label %||% obj$dataset_id %||% NA_character_),
         base_source_k = suppressWarnings(as.integer(obj$source_k %||% obj$k %||% NA_integer_)),
+        is_modified = FALSE,
+        last_snapshot_id = as.character(obj$dataset_id %||% NA_character_),
+        last_snapshot_label = as.character(obj$label %||% obj$dataset_id %||% NA_character_),
+        last_session_id = as.character(obj$last_session_id %||% NA_character_),
         rows = rows,
         updated_at = as.character(obj$created_at %||% .gflowui_now())
       ),
@@ -3203,7 +3394,9 @@ app_server <- function(input, output, session) {
 
   load_working_endpoint_state <- function(ctx) {
     if (!is.list(ctx)) {
-      return(empty_working_endpoint_state(ctx = ctx))
+      st <- empty_working_endpoint_state(ctx = ctx)
+      attr(st, "state_exists") <- FALSE
+      return(st)
     }
     path <- endpoint_working_file(
       graph_set_id = ctx$graph_set_id,
@@ -3212,10 +3405,14 @@ app_server <- function(input, output, session) {
     )
     obj <- read_rds_if_exists(path, default = NULL)
     if (is.list(obj)) {
-      return(sanitize_working_endpoint_state(obj, ctx = ctx))
+      st <- sanitize_working_endpoint_state(obj, ctx = ctx)
+      attr(st, "state_exists") <- TRUE
+      return(st)
     }
     legacy_states <- legacy_working_endpoint_state_candidates(ctx)
-    pick_best_working_endpoint_state(legacy_states, ctx = ctx)
+    st <- pick_best_working_endpoint_state(legacy_states, ctx = ctx)
+    attr(st, "state_exists") <- length(legacy_states) > 0L
+    st
   }
 
   save_working_endpoint_state <- function(state, ctx) {
@@ -3229,6 +3426,7 @@ app_server <- function(input, output, session) {
     )
     cleaned <- sanitize_working_endpoint_state(state, ctx = ctx)
     cleaned$updated_at <- .gflowui_now()
+    cleaned$last_session_id <- endpoint_session_id
     save_rds_safely(cleaned, path)
     endpoint_workspace_revision(isolate(endpoint_workspace_revision()) + 1L)
     invisible(TRUE)
@@ -3268,6 +3466,10 @@ app_server <- function(input, output, session) {
         base_dataset_id = as.character(row$dataset_id[[1]] %||% ""),
         base_dataset_label = as.character(row$label[[1]] %||% row$dataset_id[[1]] %||% ""),
         base_source_k = suppressWarnings(as.integer(row$k[[1]] %||% NA_integer_)),
+        is_modified = FALSE,
+        last_snapshot_id = as.character(row$dataset_id[[1]] %||% ""),
+        last_snapshot_label = as.character(row$label[[1]] %||% row$dataset_id[[1]] %||% ""),
+        last_session_id = endpoint_session_id,
         rows = rows,
         updated_at = .gflowui_now()
       ),
@@ -3289,8 +3491,9 @@ app_server <- function(input, output, session) {
     save_working_endpoint_state(state, ctx = current_endpoint_graph_context())
     endpoint_overlay_selection(character(0))
     endpoint_show_working_set(TRUE)
+    endpoint_draft_banner_dismissed(FALSE)
     shiny::showNotification(
-      sprintf("Working endpoints initialized from '%s'.", as.character(rows$label[[hit[[1]]]] %||% dataset_id)),
+      sprintf("Working endpoints loaded from '%s'.", as.character(rows$label[[hit[[1]]]] %||% dataset_id)),
       type = "message"
     )
     invisible(TRUE)
@@ -3301,14 +3504,14 @@ app_server <- function(input, output, session) {
     working <- if (is.list(st)) st$working else NULL
     ctx <- current_endpoint_graph_context()
     if (!is.list(ctx) || !is.list(working)) {
-      return(invisible(FALSE))
+      return(invisible(list(ok = FALSE)))
     }
     rows <- if (is.data.frame(working$rows)) working$rows else empty_working_endpoint_rows()
     keep <- rows$accepted & rows$visible
     rows <- rows[keep, , drop = FALSE]
     if (nrow(rows) < 1L) {
       shiny::showNotification("Working endpoint set is empty.", type = "warning")
-      return(invisible(FALSE))
+      return(invisible(list(ok = FALSE)))
     }
     stamp <- format(Sys.time(), "%Y%m%d_%H%M%S")
     dataset_id <- sanitize_token_id(
@@ -3332,6 +3535,7 @@ app_server <- function(input, output, session) {
         as.character(ctx$k)
       ),
       source_dataset_id = as.character(working$base_dataset_id %||% ""),
+      last_session_id = endpoint_session_id,
       vertices = as.integer(rows$vertex),
       labels = as.character(rows$label)
     )
@@ -3353,9 +3557,18 @@ app_server <- function(input, output, session) {
     )
     save_rds_safely(out, candidate_path)
     save_rds_safely(out, snapshot_path)
+    cleaned_working <- working_endpoint_mark_clean(
+      working,
+      base_dataset_id = dataset_id,
+      base_dataset_label = label,
+      base_source_k = ctx$k
+    )
+    cleaned_working$last_snapshot_id <- dataset_id
+    cleaned_working$last_snapshot_label <- label
+    save_working_endpoint_state(cleaned_working, ctx = ctx)
     endpoint_workspace_revision(isolate(endpoint_workspace_revision()) + 1L)
-    shiny::showNotification(sprintf("Saved working snapshot '%s'.", label), type = "message")
-    invisible(TRUE)
+    shiny::showNotification(sprintf("Saved snapshot '%s'.", label), type = "message")
+    invisible(list(ok = TRUE, dataset_id = dataset_id, label = label, state = cleaned_working))
   }
 
   endpoint_panel_state <- shiny::reactive({
@@ -3366,7 +3579,9 @@ app_server <- function(input, output, session) {
       return(list(
         rows = data.frame(),
         working = empty_working_endpoint_state(ctx = ctx),
-        context = NULL
+        context = NULL,
+        meta = empty_endpoint_dataset_meta(ctx = ctx),
+        draft_banner = NULL
       ))
     }
 
@@ -3393,11 +3608,29 @@ app_server <- function(input, output, session) {
       rows <- rows[!duplicated(as.character(rows$dataset_id)), , drop = FALSE]
     }
 
+    meta <- read_endpoint_dataset_meta(ctx)
     working <- load_working_endpoint_state(ctx = ctx)
+    working_state_exists <- isTRUE(attr(working, "state_exists", exact = TRUE))
+
+    if (!working_state_exists && is.data.frame(rows) && nrow(rows) > 0L) {
+      default_id <- as.character(meta$default_dataset_id %||% "")
+      default_hit <- which(as.character(rows$dataset_id) == default_id)
+      if (length(default_hit) > 0L) {
+        working <- working_endpoint_state_from_dataset(rows[default_hit[[1]], , drop = FALSE])
+      }
+    }
 
     if (!is.data.frame(rows) || nrow(rows) < 1L) {
-      return(list(rows = data.frame(), working = working, context = ctx))
+      draft_banner <- if (working_endpoint_is_recovered(working) && !isTRUE(endpoint_draft_banner_dismissed())) {
+        list(kind = "recovered")
+      } else {
+        NULL
+      }
+      return(list(rows = data.frame(), working = working, context = ctx, meta = meta, draft_banner = draft_banner))
     }
+
+    default_id <- as.character(meta$default_dataset_id %||% "")
+    rows$is_default <- as.character(rows$dataset_id) == default_id
 
     current_k <- suppressWarnings(as.integer(ctx$k %||% NA_integer_))
     k_distance_rank <- if (is.finite(current_k) && "k" %in% names(rows)) {
@@ -3427,6 +3660,7 @@ app_server <- function(input, output, session) {
     }
     ord <- order(
       !(as.character(rows$dataset_id) == as.character(working$base_dataset_id %||% "")),
+      !as.logical(rows$is_default),
       !current_k_match,
       k_distance_rank,
       autoselect_rank,
@@ -3439,9 +3673,247 @@ app_server <- function(input, output, session) {
     rows <- rows[ord, , drop = FALSE]
     rows$selected <- as.character(rows$dataset_id) %in% endpoint_overlay_selection()
     rows$is_working_source <- as.character(rows$dataset_id) == as.character(working$base_dataset_id %||% "")
+    draft_banner <- if (working_endpoint_is_recovered(working) && !isTRUE(endpoint_draft_banner_dismissed())) {
+      list(kind = "recovered")
+    } else {
+      NULL
+    }
 
-    list(rows = rows, working = working, context = ctx)
+    list(rows = rows, working = working, context = ctx, meta = meta, draft_banner = draft_banner)
   })
+
+  endpoint_dataset_row_by_id <- function(dataset_id, panel_state = NULL) {
+    st <- if (is.list(panel_state)) panel_state else endpoint_panel_state()
+    rows <- if (is.list(st) && is.data.frame(st$rows)) st$rows else data.frame()
+    if (nrow(rows) < 1L) {
+      return(NULL)
+    }
+    hit <- which(as.character(rows$dataset_id) == as.character(dataset_id))
+    if (length(hit) < 1L) {
+      return(NULL)
+    }
+    rows[hit[[1]], , drop = FALSE]
+  }
+
+  working_endpoint_has_content <- function(state) {
+    is.list(state) && is.data.frame(state$rows) && nrow(state$rows) > 0L
+  }
+
+  working_endpoint_needs_replace_prompt <- function(state) {
+    working_endpoint_is_modified(state)
+  }
+
+  save_workspace_endpoint_dataset_object <- function(row_df, updater) {
+    if (!is.data.frame(row_df) || nrow(row_df) < 1L || !is.function(updater)) {
+      return(invisible(FALSE))
+    }
+    workspace_file <- as.character(row_df$workspace_file[[1]] %||% "")
+    if (!nzchar(workspace_file) || !file.exists(workspace_file)) {
+      return(invisible(FALSE))
+    }
+    obj <- read_rds_if_exists(workspace_file, default = NULL)
+    if (!is.list(obj)) {
+      return(invisible(FALSE))
+    }
+    obj <- updater(obj)
+    save_rds_safely(obj, workspace_file)
+    ctx <- current_endpoint_graph_context()
+    if (is.list(ctx)) {
+      snap_file <- file.path(
+        endpoint_snapshot_dir(
+          graph_set_id = ctx$graph_set_id,
+          k = ctx$k,
+          project_id = ctx$project_id
+        ),
+        basename(workspace_file)
+      )
+      if (file.exists(snap_file)) {
+        save_rds_safely(obj, snap_file)
+      }
+    }
+    endpoint_workspace_revision(isolate(endpoint_workspace_revision()) + 1L)
+    invisible(TRUE)
+  }
+
+  rename_workspace_endpoint_dataset <- function(dataset_id, label) {
+    row <- endpoint_dataset_row_by_id(dataset_id)
+    if (!is.data.frame(row) || nrow(row) < 1L || !isTRUE(row$can_rename[[1]])) {
+      return(invisible(FALSE))
+    }
+    label_use <- trimws(as.character(label %||% ""))
+    if (!nzchar(label_use)) {
+      return(invisible(FALSE))
+    }
+    save_workspace_endpoint_dataset_object(row, function(obj) {
+      obj$label <- label_use
+      obj
+    })
+    st <- endpoint_panel_state()
+    working <- if (is.list(st)) st$working else NULL
+    ctx <- if (is.list(st)) st$context else NULL
+    if (is.list(ctx) &&
+        is.list(working) &&
+        identical(as.character(working$base_dataset_id %||% ""), as.character(dataset_id))) {
+      working$base_dataset_label <- label_use
+      save_working_endpoint_state(working, ctx = ctx)
+    }
+    meta <- if (is.list(st)) st$meta else NULL
+    if (is.list(ctx) &&
+        is.list(meta) &&
+        identical(as.character(meta$default_dataset_id %||% ""), as.character(dataset_id))) {
+      save_endpoint_dataset_meta(meta, ctx = ctx)
+    }
+    shiny::showNotification(sprintf("Renamed endpoint dataset to '%s'.", label_use), type = "message")
+    invisible(TRUE)
+  }
+
+  delete_workspace_endpoint_dataset <- function(dataset_id) {
+    st <- endpoint_panel_state()
+    row <- endpoint_dataset_row_by_id(dataset_id, panel_state = st)
+    ctx <- if (is.list(st)) st$context else NULL
+    if (!is.data.frame(row) || nrow(row) < 1L || !isTRUE(row$can_delete[[1]]) || !is.list(ctx)) {
+      return(invisible(FALSE))
+    }
+    workspace_file <- as.character(row$workspace_file[[1]] %||% "")
+    if (nzchar(workspace_file) && file.exists(workspace_file)) {
+      unlink(workspace_file, force = TRUE)
+    }
+    snap_file <- file.path(
+      endpoint_snapshot_dir(
+        graph_set_id = ctx$graph_set_id,
+        k = ctx$k,
+        project_id = ctx$project_id
+      ),
+      basename(workspace_file)
+    )
+    if (nzchar(snap_file) && file.exists(snap_file)) {
+      unlink(snap_file, force = TRUE)
+    }
+    meta <- if (is.list(st)) st$meta else empty_endpoint_dataset_meta(ctx = ctx)
+    if (identical(as.character(meta$default_dataset_id %||% ""), as.character(dataset_id))) {
+      meta$default_dataset_id <- NA_character_
+      save_endpoint_dataset_meta(meta, ctx = ctx)
+    }
+    working <- if (is.list(st)) st$working else NULL
+    if (is.list(working) &&
+        identical(as.character(working$base_dataset_id %||% ""), as.character(dataset_id))) {
+      working$base_dataset_id <- NA_character_
+      working$base_dataset_label <- NA_character_
+      working$base_source_k <- NA_integer_
+      save_working_endpoint_state(working, ctx = ctx)
+    } else {
+      endpoint_workspace_revision(isolate(endpoint_workspace_revision()) + 1L)
+    }
+    shiny::showNotification(sprintf("Deleted endpoint dataset '%s'.", as.character(row$label[[1]] %||% dataset_id)), type = "message")
+    invisible(TRUE)
+  }
+
+  set_default_endpoint_dataset <- function(dataset_id) {
+    st <- endpoint_panel_state()
+    ctx <- if (is.list(st)) st$context else NULL
+    row <- endpoint_dataset_row_by_id(dataset_id, panel_state = st)
+    if (!is.list(ctx) || !is.data.frame(row) || nrow(row) < 1L) {
+      return(invisible(FALSE))
+    }
+    meta <- if (is.list(st)) st$meta else empty_endpoint_dataset_meta(ctx = ctx)
+    meta$default_dataset_id <- as.character(dataset_id)
+    save_endpoint_dataset_meta(meta, ctx = ctx)
+    shiny::showNotification(sprintf("Set '%s' as the default endpoint dataset.", as.character(row$label[[1]] %||% dataset_id)), type = "message")
+    invisible(TRUE)
+  }
+
+  show_endpoint_dataset_load_modal <- function(dataset_id) {
+    row <- endpoint_dataset_row_by_id(dataset_id)
+    if (!is.data.frame(row) || nrow(row) < 1L) {
+      return(invisible(FALSE))
+    }
+    endpoint_pending_load_dataset_id(as.character(dataset_id))
+    shiny::showModal(
+      shiny::modalDialog(
+        title = "Replace Working Endpoints",
+        easyClose = FALSE,
+        shiny::p(sprintf(
+          "The current working endpoint draft has unsaved modifications. What do you want to do before loading '%s'?",
+          as.character(row$label[[1]] %||% dataset_id)
+        )),
+        footer = shiny::tagList(
+          shiny::modalButton("Cancel"),
+          shiny::actionButton("endpoint_replace_working_set", "Replace Working Set", class = "btn-secondary"),
+          shiny::actionButton("endpoint_snapshot_replace_working_set", "Save Snapshot And Replace", class = "btn-primary")
+        )
+      )
+    )
+    invisible(TRUE)
+  }
+
+  maybe_load_endpoint_dataset <- function(dataset_id) {
+    st <- endpoint_panel_state()
+    working <- if (is.list(st)) st$working else NULL
+    if (working_endpoint_needs_replace_prompt(working)) {
+      show_endpoint_dataset_load_modal(dataset_id)
+      return(invisible(FALSE))
+    }
+    use_endpoint_dataset_as_working_set(dataset_id)
+  }
+
+  discard_working_endpoint_draft <- function() {
+    st <- endpoint_panel_state()
+    ctx <- if (is.list(st)) st$context else NULL
+    rows <- if (is.list(st) && is.data.frame(st$rows)) st$rows else data.frame()
+    working <- if (is.list(st)) st$working else empty_working_endpoint_state(ctx = ctx)
+    if (!is.list(ctx)) {
+      return(invisible(FALSE))
+    }
+    target <- NULL
+    base_id <- as.character(working$base_dataset_id %||% "")
+    if (nzchar(base_id) && nrow(rows) > 0L) {
+      hit <- which(as.character(rows$dataset_id) == base_id)
+      if (length(hit) > 0L) {
+        target <- rows[hit[[1]], , drop = FALSE]
+      }
+    }
+    if (is.null(target) && nrow(rows) > 0L) {
+      meta <- if (is.list(st)) st$meta else empty_endpoint_dataset_meta(ctx = ctx)
+      default_id <- as.character(meta$default_dataset_id %||% "")
+      if (nzchar(default_id)) {
+        hit <- which(as.character(rows$dataset_id) == default_id)
+        if (length(hit) > 0L) {
+          target <- rows[hit[[1]], , drop = FALSE]
+        }
+      }
+    }
+    next_state <- if (is.data.frame(target) && nrow(target) > 0L) {
+      working_endpoint_state_from_dataset(target)
+    } else {
+      working_endpoint_mark_clean(empty_working_endpoint_state(ctx = ctx))
+    }
+    save_working_endpoint_state(next_state, ctx = ctx)
+    endpoint_show_working_set(nrow(accepted_visible_working_rows(next_state)) > 0L)
+    endpoint_draft_banner_dismissed(TRUE)
+    shiny::showNotification("Discarded the recovered working draft.", type = "message")
+    invisible(TRUE)
+  }
+
+  show_endpoint_project_action_modal <- function(action = c("save_project", "exit_project")) {
+    action <- match.arg(action)
+    endpoint_pending_project_action(action)
+    title <- if (identical(action, "exit_project")) "Unsaved Working Endpoints" else "Save Working Draft"
+    keep_label <- if (identical(action, "exit_project")) "Keep Draft And Exit" else "Keep Draft And Save Project"
+    snapshot_label <- if (identical(action, "exit_project")) "Save Snapshot And Exit" else "Save Snapshot And Save Project"
+    shiny::showModal(
+      shiny::modalDialog(
+        title = title,
+        easyClose = FALSE,
+        shiny::p("The current working endpoints draft has unsaved modifications."),
+        footer = shiny::tagList(
+          shiny::modalButton("Cancel"),
+          shiny::actionButton("endpoint_project_keep_draft", keep_label, class = "btn-secondary"),
+          shiny::actionButton("endpoint_project_snapshot_then_continue", snapshot_label, class = "btn-primary")
+        )
+      )
+    )
+    invisible(TRUE)
+  }
 
   shiny::observeEvent(endpoint_panel_state(), {
     if (!isTRUE(rv$project.active) || isTRUE(endpoint_autoselect_done())) {
@@ -3510,14 +3982,23 @@ app_server <- function(input, output, session) {
     rows <- if (is.list(st) && is.data.frame(st$rows)) st$rows else data.frame()
     if (nrow(rows) < 1L) {
       endpoint_overlay_selection(character(0))
-      endpoint_use_action_counts(structure(integer(0), names = character(0)))
+      endpoint_dataset_load_counts(structure(integer(0), names = character(0)))
+      endpoint_dataset_rename_counts(structure(integer(0), names = character(0)))
+      endpoint_dataset_delete_counts(structure(integer(0), names = character(0)))
+      endpoint_dataset_default_counts(structure(integer(0), names = character(0)))
       return()
     }
 
     prev <- endpoint_overlay_selection()
     sel <- character(0)
-    use_counts_prev <- endpoint_use_action_counts()
-    use_counts_next <- structure(integer(0), names = character(0))
+    load_counts_prev <- endpoint_dataset_load_counts()
+    load_counts_next <- structure(integer(0), names = character(0))
+    rename_counts_prev <- endpoint_dataset_rename_counts()
+    rename_counts_next <- structure(integer(0), names = character(0))
+    delete_counts_prev <- endpoint_dataset_delete_counts()
+    delete_counts_next <- structure(integer(0), names = character(0))
+    default_counts_prev <- endpoint_dataset_default_counts()
+    default_counts_next <- structure(integer(0), names = character(0))
 
     for (ii in seq_len(nrow(rows))) {
       in_id <- as.character(rows$input_id[[ii]] %||% "")
@@ -3531,23 +4012,180 @@ app_server <- function(input, output, session) {
         }
       }
 
-      use_id <- as.character(rows$use_input_id[[ii]] %||% "")
-      if (nzchar(use_id) && nzchar(key)) {
-        cur_count <- scalar_int(input[[use_id]], default = 0L)
-        has_prev <- key %in% names(use_counts_prev)
-        prev_raw <- if (has_prev) use_counts_prev[[key]] else cur_count
+      load_id <- as.character(rows$load_input_id[[ii]] %||% "")
+      if (nzchar(load_id) && nzchar(key)) {
+        cur_count <- scalar_int(input[[load_id]], default = 0L)
+        has_prev <- key %in% names(load_counts_prev)
+        prev_raw <- if (has_prev) load_counts_prev[[key]] else cur_count
         prev_count <- scalar_int(prev_raw, default = 0L)
         if (has_prev && is.finite(cur_count) && cur_count > prev_count) {
-          use_endpoint_dataset_as_working_set(key)
-          sel <- c(sel, key)
+          maybe_load_endpoint_dataset(key)
         }
-        use_counts_next[[key]] <- if (is.finite(cur_count)) as.integer(cur_count) else 0L
+        load_counts_next[[key]] <- if (is.finite(cur_count)) as.integer(cur_count) else 0L
+      }
+
+      rename_id <- as.character(rows$rename_input_id[[ii]] %||% "")
+      if (nzchar(rename_id) && nzchar(key)) {
+        cur_count <- scalar_int(input[[rename_id]], default = 0L)
+        has_prev <- key %in% names(rename_counts_prev)
+        prev_raw <- if (has_prev) rename_counts_prev[[key]] else cur_count
+        prev_count <- scalar_int(prev_raw, default = 0L)
+        if (has_prev && is.finite(cur_count) && cur_count > prev_count) {
+          endpoint_pending_load_dataset_id(key)
+          shiny::showModal(
+            shiny::modalDialog(
+              title = "Rename Endpoint Dataset",
+              easyClose = FALSE,
+              shiny::textInput(
+                "endpoint_dataset_rename_value",
+                "Dataset name",
+                value = as.character(rows$label[[ii]] %||% key)
+              ),
+              footer = shiny::tagList(
+                shiny::modalButton("Cancel"),
+                shiny::actionButton("endpoint_dataset_rename_confirm", "Rename", class = "btn-primary")
+              )
+            )
+          )
+        }
+        rename_counts_next[[key]] <- if (is.finite(cur_count)) as.integer(cur_count) else 0L
+      }
+
+      delete_id <- as.character(rows$delete_input_id[[ii]] %||% "")
+      if (nzchar(delete_id) && nzchar(key)) {
+        cur_count <- scalar_int(input[[delete_id]], default = 0L)
+        has_prev <- key %in% names(delete_counts_prev)
+        prev_raw <- if (has_prev) delete_counts_prev[[key]] else cur_count
+        prev_count <- scalar_int(prev_raw, default = 0L)
+        if (has_prev && is.finite(cur_count) && cur_count > prev_count) {
+          endpoint_pending_load_dataset_id(key)
+          shiny::showModal(
+            shiny::modalDialog(
+              title = "Delete Endpoint Dataset",
+              easyClose = FALSE,
+              shiny::p(sprintf("Delete '%s'?", as.character(rows$label[[ii]] %||% key))),
+              footer = shiny::tagList(
+                shiny::modalButton("Cancel"),
+                shiny::actionButton("endpoint_dataset_delete_confirm", "Delete", class = "btn-danger")
+              )
+            )
+          )
+        }
+        delete_counts_next[[key]] <- if (is.finite(cur_count)) as.integer(cur_count) else 0L
+      }
+
+      default_id <- as.character(rows$default_input_id[[ii]] %||% "")
+      if (nzchar(default_id) && nzchar(key)) {
+        cur_count <- scalar_int(input[[default_id]], default = 0L)
+        has_prev <- key %in% names(default_counts_prev)
+        prev_raw <- if (has_prev) default_counts_prev[[key]] else cur_count
+        prev_count <- scalar_int(prev_raw, default = 0L)
+        if (has_prev && is.finite(cur_count) && cur_count > prev_count) {
+          set_default_endpoint_dataset(key)
+        }
+        default_counts_next[[key]] <- if (is.finite(cur_count)) as.integer(cur_count) else 0L
       }
     }
 
     endpoint_overlay_selection(unique(sel))
-    endpoint_use_action_counts(use_counts_next)
+    endpoint_dataset_load_counts(load_counts_next)
+    endpoint_dataset_rename_counts(rename_counts_next)
+    endpoint_dataset_delete_counts(delete_counts_next)
+    endpoint_dataset_default_counts(default_counts_next)
   })
+
+  shiny::observeEvent(input$endpoint_replace_working_set, {
+    dataset_id <- as.character(endpoint_pending_load_dataset_id() %||% "")
+    shiny::removeModal()
+    if (nzchar(dataset_id)) {
+      use_endpoint_dataset_as_working_set(dataset_id)
+    }
+    endpoint_pending_load_dataset_id("")
+  }, ignoreInit = TRUE)
+
+  shiny::observeEvent(input$endpoint_snapshot_replace_working_set, {
+    dataset_id <- as.character(endpoint_pending_load_dataset_id() %||% "")
+    shiny::removeModal()
+    snap <- save_working_endpoint_snapshot()
+    if (is.list(snap) && isTRUE(snap$ok) && nzchar(dataset_id)) {
+      use_endpoint_dataset_as_working_set(dataset_id)
+    }
+    endpoint_pending_load_dataset_id("")
+  }, ignoreInit = TRUE)
+
+  shiny::observeEvent(input$endpoint_dataset_rename_confirm, {
+    dataset_id <- as.character(endpoint_pending_load_dataset_id() %||% "")
+    new_label <- as.character(input$endpoint_dataset_rename_value %||% "")
+    shiny::removeModal()
+    if (nzchar(dataset_id)) {
+      rename_workspace_endpoint_dataset(dataset_id, new_label)
+    }
+    endpoint_pending_load_dataset_id("")
+  }, ignoreInit = TRUE)
+
+  shiny::observeEvent(input$endpoint_dataset_delete_confirm, {
+    dataset_id <- as.character(endpoint_pending_load_dataset_id() %||% "")
+    shiny::removeModal()
+    if (nzchar(dataset_id)) {
+      delete_workspace_endpoint_dataset(dataset_id)
+    }
+    endpoint_pending_load_dataset_id("")
+  }, ignoreInit = TRUE)
+
+  shiny::observeEvent(input$endpoint_recovered_continue, {
+    endpoint_draft_banner_dismissed(TRUE)
+  }, ignoreInit = TRUE)
+
+  shiny::observeEvent(input$endpoint_recovered_save_snapshot, {
+    endpoint_draft_banner_dismissed(TRUE)
+    save_working_endpoint_snapshot()
+  }, ignoreInit = TRUE)
+
+  shiny::observeEvent(input$endpoint_recovered_discard, {
+    discard_working_endpoint_draft()
+  }, ignoreInit = TRUE)
+
+  shiny::observeEvent(input$endpoint_project_keep_draft, {
+    action <- as.character(endpoint_pending_project_action() %||% "")
+    shiny::removeModal()
+    endpoint_pending_project_action("")
+    if (identical(action, "save_project")) {
+      ok <- save_current_project()
+      if (isTRUE(ok)) {
+        shiny::showNotification(
+          sprintf("Project '%s' saved.", rv$project.name %||% "Untitled Project"),
+          type = "message"
+        )
+      } else {
+        shiny::showNotification("Unable to save current project.", type = "error")
+      }
+    } else if (identical(action, "exit_project")) {
+      close_project()
+    }
+  }, ignoreInit = TRUE)
+
+  shiny::observeEvent(input$endpoint_project_snapshot_then_continue, {
+    action <- as.character(endpoint_pending_project_action() %||% "")
+    shiny::removeModal()
+    snap <- save_working_endpoint_snapshot()
+    endpoint_pending_project_action("")
+    if (!is.list(snap) || !isTRUE(snap$ok)) {
+      return()
+    }
+    if (identical(action, "save_project")) {
+      ok <- save_current_project()
+      if (isTRUE(ok)) {
+        shiny::showNotification(
+          sprintf("Project '%s' saved.", rv$project.name %||% "Untitled Project"),
+          type = "message"
+        )
+      } else {
+        shiny::showNotification("Unable to save current project.", type = "error")
+      }
+    } else if (identical(action, "exit_project")) {
+      close_project()
+    }
+  }, ignoreInit = TRUE)
 
   shiny::observe({
     st <- endpoint_panel_state()
@@ -3645,7 +4283,12 @@ app_server <- function(input, output, session) {
     if (!is.list(ctx)) {
       return()
     }
-    save_working_endpoint_state(empty_working_endpoint_state(ctx = ctx), ctx = ctx)
+    st <- endpoint_panel_state()
+    current <- if (is.list(st)) st$working else empty_working_endpoint_state(ctx = ctx)
+    cleared <- working_endpoint_mark_modified(current)
+    cleared$rows <- empty_working_endpoint_rows()
+    save_working_endpoint_state(cleared, ctx = ctx)
+    endpoint_draft_banner_dismissed(FALSE)
     shiny::showNotification("Working endpoint set cleared.", type = "message")
   }, ignoreInit = TRUE)
 
@@ -5053,6 +5696,7 @@ app_server <- function(input, output, session) {
     working_state <- if (is.list(panel_state) && is.list(panel_state$working)) panel_state$working else empty_working_endpoint_state()
     working_rows <- if (is.data.frame(working_state$rows)) working_state$rows else empty_working_endpoint_rows()
     selected_vid <- selected_endpoint_vertex()
+    selected_source <- as.character(endpoint_vertex_state$source %||% "")
     rr <- reference_renderer_state()
     renderer_name <- toupper(as.character(rr$effective %||% rr$requested %||% ""))
     rows_for_metrics <- rows_df
@@ -5190,11 +5834,17 @@ app_server <- function(input, output, session) {
       } else {
         NULL
       },
+      shiny::tags$details(
+        class = "gf-endpoint-metrics-details",
+        open = if (identical(selected_source, "working_table")) "open" else NULL,
+        shiny::tags$summary("Feature Profile"),
+        build_profile_table(label_suggestion$profile)
+      ),
       shiny::div(
         class = "gf-endpoint-actions",
         shiny::actionButton(
           "endpoint_working_snapshot",
-          "Save Working Set",
+          "Save Snapshot",
           class = "btn-light btn-sm gf-btn-inline"
         ),
         shiny::actionButton(
@@ -5207,11 +5857,6 @@ app_server <- function(input, output, session) {
         class = "gf-endpoint-metrics-details",
         shiny::tags$summary("Candidate Metrics"),
         build_metrics_table(metrics_df)
-      ),
-      shiny::tags$details(
-        class = "gf-endpoint-metrics-details",
-        shiny::tags$summary("Feature Profile"),
-        build_profile_table(label_suggestion$profile)
       )
     )
   }
@@ -5247,26 +5892,44 @@ app_server <- function(input, output, session) {
 
     build_endpoint_candidate_table <- function(rows_df) {
       if (!is.data.frame(rows_df) || nrow(rows_df) < 1L) {
-        return(shiny::p(class = "gf-hint", "No endpoint candidates found for the current graph."))
+        return(shiny::p(class = "gf-hint", "No endpoint datasets found for the current graph set."))
+      }
+
+      endpoint_dataset_display_label <- function(label, k_value) {
+        label_use <- as.character(label %||% "")
+        k_use <- suppressWarnings(as.integer(k_value))
+        if (!nzchar(label_use) || !is.finite(k_use)) {
+          return(label_use)
+        }
+        sub(sprintf("\\s*\\(k=%d\\)$", as.integer(k_use)), "", label_use)
       }
 
       head_row <- shiny::tags$tr(
-        shiny::tags$th(""),
+        shiny::tags$th("show"),
+        shiny::tags$th("loaded"),
         shiny::tags$th("dataset"),
         shiny::tags$th("method"),
-        shiny::tags$th("source k"),
+        shiny::tags$th("k"),
         shiny::tags$th("n"),
         shiny::tags$th("origin"),
-        shiny::tags$th("")
+        shiny::tags$th("actions")
       )
       body_rows <- lapply(seq_len(nrow(rows_df)), function(ii) {
         rr <- rows_df[ii, , drop = FALSE]
         in_id <- as.character(rr$input_id[[1]] %||% "")
-        use_id <- as.character(rr$use_input_id[[1]] %||% "")
+        load_id <- as.character(rr$load_input_id[[1]] %||% "")
+        rename_id <- as.character(rr$rename_input_id[[1]] %||% "")
+        delete_id <- as.character(rr$delete_input_id[[1]] %||% "")
+        default_id <- as.character(rr$default_input_id[[1]] %||% "")
         checked <- isTRUE(rr$selected[[1]])
         restored_checked <- isTRUE(shiny::restoreInput(id = in_id, default = checked))
-        working_badge <- if (isTRUE(rr$is_working_source[[1]])) {
-          shiny::tags$span(class = "badge bg-dark", "working")
+        loaded_mark <- if (isTRUE(rr$is_working_source[[1]])) {
+          "\u2713"
+        } else {
+          ""
+        }
+        default_badge <- if (isTRUE(rr$is_default[[1]])) {
+          shiny::tags$span(class = "badge bg-secondary", "default")
         } else {
           NULL
         }
@@ -5278,31 +5941,53 @@ app_server <- function(input, output, session) {
               checked = if (isTRUE(restored_checked)) "checked" else NULL
             )
           ),
+          shiny::tags$td(class = "gf-endpoint-loaded-col", loaded_mark),
           shiny::tags$td(
-            shiny::div(as.character(rr$label[[1]] %||% "")),
-            shiny::div(class = "gf-hint", as.character(rr$parameter_summary[[1]] %||% "")),
-            working_badge
+            shiny::div(endpoint_dataset_display_label(rr$label[[1]] %||% "", rr$k[[1]])),
+            default_badge
           ),
           shiny::tags$td(as.character(rr$method[[1]] %||% "")),
           shiny::tags$td(as.character(rr$k_display[[1]] %||% "")),
           shiny::tags$td(as.character(rr$n_endpoints[[1]] %||% "")),
           shiny::tags$td(as.character(rr$origin[[1]] %||% "")),
           shiny::tags$td(
-            shiny::actionButton(
-              use_id,
-              "Use as Working Set",
+            class = "gf-endpoint-table-actions-cell",
+            if (isTRUE(rr$can_load[[1]])) shiny::actionButton(
+              load_id,
+              "Load",
+              class = "btn-light btn-sm gf-btn-inline"
+            ),
+            if (isTRUE(rr$can_rename[[1]])) shiny::actionButton(
+              rename_id,
+              "Rename",
+              class = "btn-light btn-sm gf-btn-inline"
+            ),
+            if (isTRUE(rr$can_delete[[1]])) shiny::actionButton(
+              delete_id,
+              "Delete",
+              class = "btn-light btn-sm gf-btn-inline"
+            ),
+            if (isTRUE(rr$can_set_default[[1]]) && !isTRUE(rr$is_default[[1]])) shiny::actionButton(
+              default_id,
+              "Set Default",
               class = "btn-light btn-sm gf-btn-inline"
             )
           )
         )
       })
 
-      shiny::div(
-        class = "table-responsive gf-endpoint-table-scroll",
-        shiny::tags$table(
-          class = "table table-sm gf-asset-table",
-          shiny::tags$thead(head_row),
-          shiny::tags$tbody(body_rows)
+      shiny::tagList(
+        shiny::div(
+          class = "gf-hint",
+          "Saved endpoint sets live here. Checkboxes control graph overlays; actions load or manage datasets."
+        ),
+        shiny::div(
+          class = "table-responsive gf-endpoint-table-scroll",
+          shiny::tags$table(
+            class = "table table-sm gf-asset-table",
+            shiny::tags$thead(head_row),
+            shiny::tags$tbody(body_rows)
+          )
         )
       )
     }
@@ -5311,12 +5996,31 @@ app_server <- function(input, output, session) {
       rows_df <- accepted_visible_working_rows(working_state)
       working_count <- nrow(rows_df)
       show_working_checked <- isTRUE(endpoint_show_working_set_effective(working_state))
+      status_label <- if (working_endpoint_is_recovered(working_state)) {
+        "Recovered Draft"
+      } else if (working_endpoint_is_modified(working_state)) {
+        "Modified"
+      } else {
+        "Clean"
+      }
+      status_class <- if (working_endpoint_is_recovered(working_state)) {
+        "gf-endpoint-status-badge gf-endpoint-status-recovered"
+      } else if (working_endpoint_is_modified(working_state)) {
+        "gf-endpoint-status-badge gf-endpoint-status-modified"
+      } else {
+        "gf-endpoint-status-badge gf-endpoint-status-clean"
+      }
+      selected_vid <- selected_endpoint_vertex()
 
       header <- shiny::div(
         class = "gf-endpoint-header-row",
-        shiny::h6(
-          class = "gf-graph-layout-head gf-endpoint-section-head",
-          sprintf("Working Endpoints (%d)", as.integer(working_count))
+        shiny::div(
+          class = "gf-endpoint-header-main",
+          shiny::h6(
+            class = "gf-graph-layout-head gf-endpoint-section-head",
+            sprintf("Working Endpoints (%d)", as.integer(working_count))
+          ),
+          shiny::tags$span(class = status_class, status_label)
         ),
         shiny::tags$label(
           class = "gf-endpoint-inline-check",
@@ -5351,13 +6055,27 @@ app_server <- function(input, output, session) {
         label_dom_id <- endpoint_working_label_dom_id(vid)
         label_event_id <- endpoint_working_label_event_id(vid)
         remove_id <- endpoint_working_remove_input_id(vid)
+        select_id <- endpoint_working_select_input_id(vid)
         label_value <- normalize_working_endpoint_label(
           label = rr$label[[1]] %||% "",
           vertex_id = vid,
           auto_label = rr$auto_label[[1]] %||% sprintf("v%d", vid)
         )
         shiny::tags$tr(
-          shiny::tags$td(sprintf("v%d", as.integer(rr$vertex[[1]]))),
+          class = if (is.finite(selected_vid) && identical(as.integer(selected_vid), as.integer(vid))) "gf-endpoint-working-row-selected" else NULL,
+          shiny::tags$td(
+            class = "gf-endpoint-working-select-cell",
+            shiny::tags$button(
+              type = "button",
+              id = select_id,
+              class = "gf-endpoint-working-select-btn",
+              onclick = sprintf(
+                "Shiny.setInputValue('endpoint_working_select_vertex', %d, {priority: 'event'})",
+                as.integer(vid)
+              ),
+              sprintf("v%d", as.integer(rr$vertex[[1]]))
+            )
+          ),
           shiny::tags$td(
             shiny::tags$input(
               id = label_dom_id,
@@ -5576,6 +6294,20 @@ app_server <- function(input, output, session) {
             "Endpoints",
             value = "workflow_endpoint_structure",
             shiny::tagList(
+              if (is.list(endpoint_panel$draft_banner)) {
+                shiny::div(
+                  class = "gf-endpoint-section gf-endpoint-draft-banner",
+                  shiny::div(class = "gf-hint", "Recovered unsaved working draft."),
+                  shiny::div(
+                    class = "gf-endpoint-actions",
+                    shiny::actionButton("endpoint_recovered_continue", "Continue Editing", class = "btn-light btn-sm gf-btn-inline"),
+                    shiny::actionButton("endpoint_recovered_save_snapshot", "Save Snapshot", class = "btn-light btn-sm gf-btn-inline"),
+                    shiny::actionButton("endpoint_recovered_discard", "Discard Draft", class = "btn-light btn-sm gf-btn-inline")
+                  )
+                )
+              } else {
+                NULL
+              },
               shiny::div(
                 class = "gf-endpoint-section",
                 build_working_endpoint_table(endpoint_working)
@@ -5588,9 +6320,12 @@ app_server <- function(input, output, session) {
               shiny::div(
                 class = "gf-endpoint-section",
                 shiny::tags$details(
+                  id = "endpoint_datasets_details",
                   class = "gf-endpoint-metrics-details gf-endpoint-candidates-details",
+                  open = if (isTRUE(endpoint_datasets_open())) "open" else NULL,
+                  ontoggle = "Shiny.setInputValue('endpoint_datasets_open', this.open, {priority: 'event'})",
                   shiny::tags$summary(
-                    sprintf("Candidate Datasets (%d)", as.integer(nrow(endpoint_rows)))
+                    sprintf("Endpoint Datasets (%d)", as.integer(nrow(endpoint_rows)))
                   ),
                   build_endpoint_candidate_table(endpoint_rows)
                 )
@@ -6034,6 +6769,12 @@ app_server <- function(input, output, session) {
   }, ignoreInit = TRUE)
 
   shiny::observeEvent(input$save_project, {
+    st <- endpoint_panel_state()
+    working <- if (is.list(st)) st$working else NULL
+    if (working_endpoint_needs_replace_prompt(working)) {
+      show_endpoint_project_action_modal("save_project")
+      return()
+    }
     ok <- save_current_project()
     if (isTRUE(ok)) {
       shiny::showNotification(
@@ -6050,6 +6791,13 @@ app_server <- function(input, output, session) {
 
   shiny::observeEvent(input$exit_project, {
     if (!isTRUE(rv$project.active)) {
+      return()
+    }
+
+    st <- endpoint_panel_state()
+    working <- if (is.list(st)) st$working else NULL
+    if (working_endpoint_needs_replace_prompt(working)) {
+      show_endpoint_project_action_modal("exit_project")
       return()
     }
 

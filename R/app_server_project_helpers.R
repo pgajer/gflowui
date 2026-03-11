@@ -343,6 +343,14 @@ gflowui_make_server_project_helpers <- function(
     file.path(base, "snapshots")
   }
 
+  endpoint_dataset_meta_file <- function(graph_set_id, k, project_id = rv$project.id) {
+    base <- endpoint_state_graph_dir(graph_set_id = graph_set_id, project_id = project_id)
+    if (!nzchar(base)) {
+      return("")
+    }
+    file.path(base, "datasets.meta.rds")
+  }
+
   read_rds_if_exists <- function(path, default = NULL) {
     pp <- scalar_chr(path, default = "")
     if (!nzchar(pp) || !file.exists(pp)) {
@@ -575,6 +583,7 @@ gflowui_make_server_project_helpers <- function(
     endpoint_working_dir = endpoint_working_dir,
     endpoint_working_file = endpoint_working_file,
     endpoint_snapshot_dir = endpoint_snapshot_dir,
+    endpoint_dataset_meta_file = endpoint_dataset_meta_file,
     read_rds_if_exists = read_rds_if_exists,
     save_rds_safely = save_rds_safely,
     load_or_init_active_manifest = load_or_init_active_manifest,

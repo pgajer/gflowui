@@ -544,8 +544,38 @@ body {
   margin-bottom: 0.45rem;
 }
 
+.gf-endpoint-header-main {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
 .gf-endpoint-section-head {
   margin-bottom: 0;
+}
+
+.gf-endpoint-status-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.1rem 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.gf-endpoint-status-clean {
+  background: #e5efe7;
+  color: #315140;
+}
+
+.gf-endpoint-status-modified {
+  background: #f6e8c8;
+  color: #77581a;
+}
+
+.gf-endpoint-status-recovered {
+  background: #f3dedd;
+  color: #7f2f2f;
 }
 
 .gf-endpoint-inline-check {
@@ -599,6 +629,10 @@ body {
   margin-top: 0.45rem;
 }
 
+.gf-endpoint-metrics-details + .gf-endpoint-actions {
+  margin-top: 0.75rem;
+}
+
 .gf-endpoint-metrics-details summary {
   cursor: pointer;
   color: #4f5b55;
@@ -619,14 +653,50 @@ body {
   white-space: nowrap;
 }
 
+.gf-endpoint-working-row-selected {
+  background: rgba(17, 24, 39, 0.06);
+}
+
+.gf-endpoint-working-select-cell {
+  width: 1%;
+}
+
+.gf-endpoint-working-select-btn {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  color: #1f2937;
+  cursor: pointer;
+  text-align: left;
+}
+
+.gf-endpoint-working-select-btn:hover {
+  text-decoration: underline;
+}
+
 .gf-endpoint-table-actions-cell {
   white-space: nowrap;
   width: 1%;
   vertical-align: middle;
 }
 
+.gf-endpoint-loaded-col {
+  text-align: center;
+  width: 1%;
+  white-space: nowrap;
+}
+
 .gf-endpoint-remove-btn {
   min-width: 72px;
+}
+
+.gf-endpoint-draft-banner {
+  border: 1px solid #d7d1bb;
+  border-radius: 0.6rem;
+  padding: 0.75rem;
+  background: rgba(215, 209, 187, 0.18);
 }
 
 @keyframes gf-fadein {
