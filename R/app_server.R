@@ -5124,11 +5124,11 @@ app_server <- function(input, output, session) {
     }
 
     suggestion_label <- as.character(label_suggestion$label %||% "")
-    suggestion_label <- suggestion_label[nzchar(suggestion_label)]
+    suggestion_label <- suggestion_label[!is.na(suggestion_label) & nzchar(suggestion_label) & !identical(toupper(suggestion_label), "NA")]
     sample_id_text <- as.character(label_suggestion$sample_id %||% "")
-    sample_id_text <- sample_id_text[nzchar(sample_id_text)]
+    sample_id_text <- sample_id_text[!is.na(sample_id_text) & nzchar(sample_id_text) & !identical(toupper(sample_id_text), "NA")]
     source_detail_text <- as.character(label_suggestion$source_detail %||% "")
-    source_detail_text <- source_detail_text[nzchar(source_detail_text)]
+    source_detail_text <- source_detail_text[!is.na(source_detail_text) & nzchar(source_detail_text) & !identical(toupper(source_detail_text), "NA")]
 
     shiny::tagList(
       shiny::div(
