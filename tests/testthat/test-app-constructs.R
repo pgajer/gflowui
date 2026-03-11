@@ -135,6 +135,31 @@ test_that("renderer selection survives transient NULL during UI rebuild", {
   })
 })
 
+test_that("legacy html renderer state is normalized to plotly", {
+  skip_if_not_installed("plotly")
+  local_projects_data_sandbox()
+
+  reg <- gflowui::list_projects()
+  if (!("agp" %in% reg$id)) {
+    skip("AGP project is not registered in this environment")
+  }
+
+  shiny::testServer(gflowui:::app_server, {
+    open_project("agp")
+    session$flushReact()
+
+    session$setInputs(graph_layout_renderer = "html")
+    session$flushReact()
+
+    rr <- reference_renderer_state()
+    gs <- graph_structure_state()
+    expect_equal(rr$requested, "plotly")
+    expect_equal(rr$effective, "plotly")
+    expect_match(rr$mode_note %||% "", "Legacy HTML renderer setting detected", fixed = TRUE)
+    expect_equal(gs$renderer_selected, "plotly")
+  })
+})
+
 test_that("working-set-first endpoint defaults activate the saved working overlay", {
   local_projects_data_sandbox()
   reg <- gflowui::list_projects()
