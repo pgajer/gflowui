@@ -78,6 +78,19 @@ app_server <- function(input, output, session) {
     }
     default_use[[1]]
   }
+  normalize_live_renderer_choice <- function(x, default = "plotly") {
+    val <- tolower(trimws(as.character(x %||% default)))
+    if (identical(val, "rgl")) {
+      val <- "rglwidget"
+    }
+    if (identical(val, "html")) {
+      val <- "plotly"
+    }
+    if (!(val %in% c("rglwidget", "plotly"))) {
+      val <- as.character(default %||% "plotly")
+    }
+    val
+  }
 
   shiny::observeEvent(list(rv$project.active, rv$project.id), {
     graph_selection_state$set_id <- ""
@@ -91,11 +104,8 @@ app_server <- function(input, output, session) {
   }, ignoreInit = FALSE)
 
   shiny::observe({
-    renderer_val <- tolower(trimws(as.character(input$graph_layout_renderer %||% "")))
-    if (identical(renderer_val, "rgl")) {
-      renderer_val <- "rglwidget"
-    }
-    if (renderer_val %in% c("rglwidget", "html", "plotly")) {
+    renderer_val <- normalize_live_renderer_choice(input$graph_layout_renderer, default = "")
+    if (renderer_val %in% c("rglwidget", "plotly")) {
       graph_layout_state$renderer <- renderer_val
     }
 
@@ -838,7 +848,7 @@ app_server <- function(input, output, session) {
     }
     make_default <- isTRUE(input$graph_update_make_default)
     layout_presets <- list(
-      renderer = tolower(as.character(input$graph_layout_renderer %||% "plotly")),
+      renderer = normalize_live_renderer_choice(input$graph_layout_renderer, default = "plotly"),
       vertex_layout = tolower(as.character(input$graph_layout_vertex %||% "point")),
       vertex_size = as.character(input$graph_layout_size %||% "1.0x"),
       color_by = as.character(input$graph_layout_color_by %||% "vertex_degree"),
@@ -3999,15 +4009,10 @@ app_server <- function(input, output, session) {
       spec$k_ref <- suppressWarnings(as.integer(st$k_actual))
     }
 
-    requested <- tolower(trimws(as.character(
-      input$graph_layout_renderer %||% graph_layout_state$renderer %||% "rglwidget"
+    requested_raw <- tolower(trimws(as.character(
+      input$graph_layout_renderer %||% graph_layout_state$renderer %||% "plotly"
     )))
-    if (identical(requested, "rgl")) {
-      requested <- "rglwidget"
-    }
-    if (!requested %in% c("rglwidget", "html", "plotly")) {
-      requested <- "rglwidget"
-    }
+    requested <- normalize_live_renderer_choice(requested_raw, default = "plotly")
 
     layout_presets <- if (is.list(spec$graph_set$layout_assets$presets)) spec$graph_set$layout_assets$presets else list()
     src_key_raw <- as.character(
@@ -4112,60 +4117,28 @@ app_server <- function(input, output, session) {
       }
     }
 
-    html_candidates <- if (isTRUE(use_solid_color)) {
-      character(0)
-    } else if (is.list(manifest) && is.list(spec)) {
-      discover_reference_html_candidates(
-        manifest = manifest,
-        spec = spec,
-        color_label = color_label,
-        extra_tokens = c(vertex_mode, size_label, requested),
-        requested_renderer = requested,
-        vertex_mode = vertex_mode,
-        size_label = size_label
-      )
-    } else {
-      character(0)
-    }
-
-    project_root <- as.character(manifest$project_root %||% NA_character_)
-    html_choices <- html_candidate_choices(html_candidates, project_root = project_root)
-    html_selected <- if (length(html_choices) > 0L) unname(html_choices)[1] else ""
-
     plotly_ready <- requireNamespace("plotly", quietly = TRUE)
     rgl_ready <- requireNamespace("rgl", quietly = TRUE)
     effective <- requested
     note <- NULL
 
+    if (identical(requested_raw, "html")) {
+      note <- "Legacy HTML renderer setting detected; showing Plotly."
+    }
+
     if (identical(requested, "rglwidget")) {
       if (isTRUE(rgl_ready)) {
         effective <- "rglwidget"
-      } else if (length(html_choices) > 0L) {
-        effective <- "html"
-        note <- "RGL mode requested, but `rgl` is unavailable. Showing HTML fallback."
       } else if (isTRUE(plotly_ready)) {
         effective <- "plotly"
-        note <- "RGL mode requested, but `rgl` is unavailable. Showing Plotly fallback."
-      } else {
-        effective <- "none"
-        note <- "RGL mode requested, but `rgl` is unavailable and no fallback renderer is ready."
-      }
-    } else if (identical(requested, "html")) {
-      if (length(html_choices) > 0L) {
-        effective <- "html"
-      } else if (isTRUE(rgl_ready)) {
-        effective <- "rglwidget"
-        note <- "HTML mode requested, but no HTML assets were found. Showing RGL fallback."
-      } else if (isTRUE(plotly_ready)) {
-        effective <- "plotly"
-        note <- "HTML mode requested, but no HTML assets were found. Showing Plotly fallback."
-      } else {
-        effective <- "none"
-        note <- "HTML mode requested, but no HTML assets were found and no interactive renderer is available."
-      }
-      if (isTRUE(use_solid_color)) {
         note <- paste(
-          c(note, "Solid-color rendering is interactive-only; showing a live renderer."),
+          c(note, "RGL mode requested, but `rgl` is unavailable. Showing Plotly fallback."),
+          collapse = " "
+        )
+      } else {
+        effective <- "none"
+        note <- paste(
+          c(note, "RGL mode requested, but `rgl` is unavailable and no fallback renderer is ready."),
           collapse = " "
         )
       }
@@ -4174,55 +4147,16 @@ app_server <- function(input, output, session) {
         effective <- "plotly"
       } else if (isTRUE(rgl_ready)) {
         effective <- "rglwidget"
-        note <- "Plotly is unavailable. Showing RGL fallback."
-      } else if (length(html_choices) > 0L) {
-        effective <- "html"
-        note <- "Plotly is unavailable. Showing HTML fallback."
+        note <- paste(c(note, "Plotly is unavailable. Showing RGL fallback."), collapse = " ")
       } else {
         effective <- "none"
-        note <- "Plotly is unavailable and no fallback renderer is available."
-      }
-    }
-
-    if (identical(component_mode, "lcc") && identical(effective, "html")) {
-      if (isTRUE(rgl_ready)) {
-        effective <- "rglwidget"
         note <- paste(
-          c(note, "Main connected component filtering is interactive-only; showing RGL."),
-          collapse = " "
-        )
-      } else if (isTRUE(plotly_ready)) {
-        effective <- "plotly"
-        note <- paste(
-          c(note, "Main connected component filtering is interactive-only; showing Plotly."),
-          collapse = " "
-        )
-      } else {
-        note <- paste(
-          c(note, "Main connected component filtering is unavailable in HTML mode."),
+          c(note, "Plotly is unavailable and no fallback renderer is available."),
           collapse = " "
         )
       }
-      note <- trimws(gsub("\\s+", " ", note))
     }
-
-    html_url <- ""
-    html_url_error <- ""
-    if (identical(effective, "html") && nzchar(html_selected)) {
-      url_res <- tryCatch(
-        list(url = local_html_resource_url(html_selected), error = NULL),
-        error = function(e) list(url = "", error = conditionMessage(e))
-      )
-      html_url <- as.character(url_res$url %||% "")
-      if (length(html_url) < 1L || !nzchar(html_url[[1]])) {
-        html_url <- ""
-      } else {
-        html_url <- html_url[[1]]
-      }
-      if (!is.null(url_res$error) && nzchar(as.character(url_res$error)[[1]])) {
-        html_url_error <- as.character(url_res$error)[[1]]
-      }
-    }
+    note <- trimws(gsub("\\s+", " ", as.character(note %||% "")))
 
     list(
       st = st,
@@ -4230,10 +4164,10 @@ app_server <- function(input, output, session) {
       effective = effective,
       rgl_ready = rgl_ready,
       plotly_ready = plotly_ready,
-      html_choices = html_choices,
-      html_selected = html_selected,
-      html_url = html_url,
-      html_url_error = html_url_error,
+      html_choices = character(0),
+      html_selected = "",
+      html_url = "",
+      html_url_error = "",
       mode_note = note,
       color_mode = if (isTRUE(use_solid_color)) "solid" else "source",
       src_key = src_key,
@@ -4977,18 +4911,13 @@ app_server <- function(input, output, session) {
       default = graph_solid_color_default
     )
 
-    renderer_selected <- tolower(as.character(
+    renderer_selected <- normalize_live_renderer_choice(
       input$graph_layout_renderer %||%
         graph_layout_state$renderer %||%
         layout_presets$renderer %||%
-        "rglwidget"
-    ))
-    if (identical(renderer_selected, "rgl")) {
-      renderer_selected <- "rglwidget"
-    }
-    if (!renderer_selected %in% c("rglwidget", "html", "plotly")) {
-      renderer_selected <- "rglwidget"
-    }
+        "plotly",
+      default = "plotly"
+    )
     vertex_layout_default <- default_vertex_layout_for_graph(
       preset = layout_presets$vertex_layout %||% "point",
       n_vertices = n_samples
@@ -5616,7 +5545,7 @@ app_server <- function(input, output, session) {
             shiny::selectInput(
               "graph_layout_renderer",
               label = NULL,
-              choices = c("RGL" = "rglwidget", "HTML" = "html", "Plotly" = "plotly"),
+              choices = c("Plotly" = "plotly", "RGL" = "rglwidget"),
               selected = graph_ui$renderer_selected,
               width = "180px"
             )
@@ -6227,7 +6156,6 @@ app_server <- function(input, output, session) {
     mode_label <- switch(
       rr$effective,
       rglwidget = "RGL",
-      html = "HTML",
       plotly = "Plotly",
       none = "none",
       "unknown"
@@ -6235,19 +6163,13 @@ app_server <- function(input, output, session) {
     req_label <- switch(
       rr$requested,
       rglwidget = "RGL",
-      html = "HTML",
       plotly = "Plotly",
       rr$requested
     )
-    suffix <- if (identical(rr$effective, "html")) {
-      sprintf(" (%d html)", length(rr$html_choices))
-    } else {
-      ""
-    }
 
     shiny::span(
       class = "gf-chip",
-      sprintf("3D renderer: %s [%s]%s", mode_label, req_label, suffix)
+      sprintf("3D renderer: %s [%s]", mode_label, req_label)
     )
   })
 
@@ -6273,18 +6195,6 @@ app_server <- function(input, output, session) {
   output$workspace_view <- shiny::renderUI({
     rr <- reference_renderer_state()
     st <- rr$st
-    html_url <- as.character(rr$html_url %||% "")
-    if (length(html_url) < 1L || !nzchar(html_url[[1]])) {
-      html_url <- ""
-    } else {
-      html_url <- html_url[[1]]
-    }
-    html_error <- as.character(rr$html_url_error %||% "")
-    if (length(html_error) < 1L || !nzchar(html_error[[1]])) {
-      html_error <- ""
-    } else {
-      html_error <- html_error[[1]]
-    }
     mode_note <- as.character(rr$mode_note %||% "")
     if (length(mode_note) < 1L || !nzchar(mode_note[[1]])) {
       mode_note <- ""
@@ -6418,32 +6328,6 @@ app_server <- function(input, output, session) {
           build_rgl_legend(rr, st)
         )
       }
-    } else if (identical(rr$effective, "html")) {
-      if (nzchar(html_error) || !nzchar(html_url)) {
-        shiny::div(
-          class = "gf-viewer-canvas",
-          shiny::div(
-            class = "gf-viewer-overlay",
-            shiny::h3("Graph View"),
-            shiny::p(
-              if (nzchar(html_error)) {
-                sprintf("Failed to load HTML asset: %s", html_error)
-              } else {
-                "No HTML asset selected."
-              }
-            )
-          )
-        )
-      } else {
-        shiny::div(
-          class = "gf-html-frame-wrap",
-          shiny::tags$iframe(
-            class = "gf-html-frame",
-            src = html_url,
-            loading = "lazy"
-          )
-        )
-      }
     } else if (identical(rr$effective, "plotly")) {
       if (!isTRUE(rr$plotly_ready)) {
         shiny::div(
@@ -6463,7 +6347,7 @@ app_server <- function(input, output, session) {
         shiny::div(
           class = "gf-viewer-overlay",
           shiny::h3("Graph View"),
-          shiny::p("No renderer is available. Install `rgl`/`plotly` or register HTML assets.")
+          shiny::p("No renderer is available. Install `rgl` or `plotly`.")
         )
       )
     }
