@@ -178,7 +178,7 @@ test_that("discover_project_artifacts finds agp_restart outputs", {
 })
 
 
-test_that("register_project normalizes graph-set metadata and infers layout variants", {
+test_that("register_project normalizes graph-set metadata and ignores legacy html variants", {
   db_dir <- tempfile("gflowui-projects-meta-")
   dir.create(db_dir, recursive = TRUE, showWarnings = FALSE)
 
@@ -230,18 +230,10 @@ test_that("register_project normalizes graph-set metadata and infers layout vari
   expect_equal(gs$layout_assets$presets$color_by, "vertex_degree")
   expect_equal(gs$layout_assets$presets$vertex_color, "#111827")
   expect_true(is.list(gs$layout_assets$variants))
-  expect_true(length(gs$layout_assets$variants) >= 1L)
+  expect_length(gs$layout_assets$variants, 0L)
   expect_true(is.list(gs$layout_assets$grip_layouts))
   expect_true(length(gs$layout_assets$grip_layouts) >= 1L)
   expect_true(any(vapply(gs$layout_assets$grip_layouts, function(x) identical(as.integer(x$k), 7L), logical(1))))
-
-  vv <- gs$layout_assets$variants[[1]]
-  expect_equal(vv$renderer, "html")
-  expect_equal(vv$vertex_layout, "point")
-  expect_equal(vv$vertex_size, "1.5x")
-  expect_equal(vv$color_by, "degree_k07")
-  expect_equal(vv$k, 7L)
-  expect_true(file.exists(vv$path))
 })
 
 

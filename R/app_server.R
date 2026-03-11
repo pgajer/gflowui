@@ -91,6 +91,21 @@ app_server <- function(input, output, session) {
     }
     val
   }
+  resolve_gflow_plot3d_fn <- function(base_name) {
+    if (!requireNamespace("gflow", quietly = TRUE)) {
+      stop("Package 'gflow' is required for 3D graph rendering.", call. = FALSE)
+    }
+    ns <- asNamespace("gflow")
+    preferred <- sprintf("%s.widget", base_name)
+    legacy <- sprintf("%s.html", base_name)
+    if (exists(preferred, envir = ns, inherits = FALSE)) {
+      return(get(preferred, envir = ns, inherits = FALSE))
+    }
+    if (exists(legacy, envir = ns, inherits = FALSE)) {
+      return(get(legacy, envir = ns, inherits = FALSE))
+    }
+    stop(sprintf("Neither '%s' nor '%s' is available in gflow.", preferred, legacy), call. = FALSE)
+  }
 
   shiny::observeEvent(list(rv$project.active, rv$project.id), {
     graph_selection_state$set_id <- ""
@@ -571,60 +586,6 @@ app_server <- function(input, output, session) {
     artifacts
   }
 
-  discover_layout_variants_for_graph <- function(graph_path, set_id = "", k_values = integer(0)) {
-    gp <- as.character(graph_path %||% "")
-    if (!nzchar(gp) || !file.exists(gp)) {
-      return(list())
-    }
-
-    root <- dirname(gp)
-    html_files <- list.files(
-      root,
-      recursive = TRUE,
-      full.names = TRUE,
-      pattern = "\\.html?$",
-      ignore.case = TRUE
-    )
-    html_files <- html_files[file.exists(html_files)]
-    if (length(html_files) < 1L) {
-      return(list())
-    }
-    if (length(html_files) > 300L) {
-      html_files <- html_files[seq_len(300L)]
-    }
-
-    sid <- tolower(as.character(set_id %||% ""))
-    graph_token <- tolower(tools::file_path_sans_ext(basename(gp)))
-    k_vals <- suppressWarnings(as.integer(k_values))
-    k_vals <- k_vals[is.finite(k_vals)]
-
-    score_one <- function(path) {
-      low <- tolower(path)
-      base <- tolower(basename(path))
-      sc <- 0
-      if (nzchar(sid) && (grepl(sid, low, fixed = TRUE) || grepl(sub("^top", "hv", sid), low, fixed = TRUE))) {
-        sc <- sc + 4
-      }
-      if (nzchar(graph_token) && grepl(graph_token, low, fixed = TRUE)) {
-        sc <- sc + 3
-      }
-      if (length(k_vals) > 0L && any(vapply(k_vals, function(k) grepl(sprintf("k0*%d", k), base, perl = TRUE), logical(1)))) {
-        sc <- sc + 3
-      }
-      if (grepl("index\\.html?$", base, ignore.case = TRUE)) {
-        sc <- sc + 1
-      }
-      sc
-    }
-
-    ord <- order(-vapply(html_files, score_one, numeric(1)), nchar(html_files), html_files)
-    html_files <- html_files[ord]
-    if (length(html_files) > 120L) {
-      html_files <- html_files[seq_len(120L)]
-    }
-    gflowui_infer_layout_variants(html_files)
-  }
-
   default_grip_layout_params <- function() {
     list(
       dim = 3L,
@@ -1038,19 +999,9 @@ app_server <- function(input, output, session) {
       )
       optimal_artifacts <- merge_named_artifact_map(existing_optimal, generated_optimal)
 
-      existing_variants <- if (is.list(graph_obj$layout_assets) && is.list(graph_obj$layout_assets$variants)) {
-        graph_obj$layout_assets$variants
-      } else {
-        list()
-      }
-      legacy_variant_paths <- c(graph_obj$html_file, graph_obj$html_files, graph_obj$html_candidates)
-      legacy_variants <- gflowui_infer_layout_variants(legacy_variant_paths)
-      discovered_variants <- discover_layout_variants_for_graph(
-        graph_path = graph_path,
-        set_id = set_id,
-        k_values = k_vals
-      )
-      layout_variants <- c(existing_variants, legacy_variants, discovered_variants)
+      layout_assets <- if (is.list(graph_obj$layout_assets)) graph_obj$layout_assets else list()
+      layout_assets$presets <- layout_presets
+      layout_assets$variants <- list()
 
       graph_set <- list(
         id = set_id,
@@ -1062,7 +1013,7 @@ app_server <- function(input, output, session) {
         n_samples = if (is.null(data_state()$data)) NA_integer_ else nrow(data_state()$data),
         n_features = if (is.null(data_state()$data)) NA_integer_ else ncol(data_state()$data),
         optimal_k_artifacts = optimal_artifacts,
-        layout_assets = list(presets = layout_presets, variants = layout_variants),
+        layout_assets = layout_assets,
         selected_k = suppressWarnings(as.integer(pull_from_graph_obj(graph_obj, "selected.k") %||% NA_integer_)),
         selection_method = as.character(pull_from_graph_obj(graph_obj, "selected.k.source") %||% "external"),
         source = "external_rds",
@@ -4122,10 +4073,6 @@ app_server <- function(input, output, session) {
     effective <- requested
     note <- NULL
 
-    if (identical(requested_raw, "html")) {
-      note <- "Legacy HTML renderer setting detected; showing Plotly."
-    }
-
     if (identical(requested, "rglwidget")) {
       if (isTRUE(rgl_ready)) {
         effective <- "rglwidget"
@@ -4164,10 +4111,6 @@ app_server <- function(input, output, session) {
       effective = effective,
       rgl_ready = rgl_ready,
       plotly_ready = plotly_ready,
-      html_choices = character(0),
-      html_selected = "",
-      html_url = "",
-      html_url_error = "",
       mode_note = note,
       color_mode = if (isTRUE(use_solid_color)) "solid" else "source",
       src_key = src_key,
@@ -4722,7 +4665,8 @@ app_server <- function(input, output, session) {
       }
 
       make_plain_widget <- function(base_color = "gray70") {
-        gflow::plot3D.plain.html(
+        plot_fn <- resolve_gflow_plot3d_fn("plot3D.plain")
+        plot_fn(
           X = coords_view,
           radius = if (identical(vertex_mode, "sphere")) sphere_radius else NULL,
           size = point_size,
@@ -4745,7 +4689,7 @@ app_server <- function(input, output, session) {
         vv <- pal_info$values
         cltr_col_tbl <- pal_info$colors
         tryCatch(
-          gflow::plot3D.cltrs.html(
+          resolve_gflow_plot3d_fn("plot3D.cltrs")(
             X = coords_view,
             cltr = vv,
             cltr.col.tbl = cltr_col_tbl,
@@ -4766,7 +4710,7 @@ app_server <- function(input, output, session) {
           make_plain_widget()
         } else {
           tryCatch(
-              gflow::plot3D.cont.html(
+              resolve_gflow_plot3d_fn("plot3D.cont")(
                 X = coords_view,
                 y = vv,
                 subset = rep(TRUE, nn_view),
@@ -5661,15 +5605,21 @@ app_server <- function(input, output, session) {
               shiny::div(
                 class = "gf-graph-row gf-graph-layout-row",
                 shiny::span(class = "gf-graph-row-label", "Label size:"),
-                shiny::selectInput(
+                shiny::sliderInput(
                   "endpoint_label_size",
                   label = NULL,
-                  choices = stats::setNames(
-                    c("0.75x", "1x", "1.25x", "1.50x", "2x", "2.5x", "3.0x"),
-                    c("0.75x", "1x", "1.25x", "1.50x", "2x", "2.5x", "3.0x")
-                  ),
-                  selected = as.character(input$endpoint_label_size %||% "1x"),
-                  width = "170px"
+                  min = 0.4,
+                  max = 3.0,
+                  value = parse_scale_multiplier(input$endpoint_label_size %||% 1, default = 1),
+                  step = 0.1,
+                  width = "205px"
+                ),
+                shiny::span(
+                  class = "gf-graph-dims",
+                  sprintf(
+                    "%.1fx",
+                    parse_scale_multiplier(input$endpoint_label_size %||% 1, default = 1)
+                  )
                 )
               ),
               shiny::div(

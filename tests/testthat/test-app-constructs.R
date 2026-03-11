@@ -155,7 +155,6 @@ test_that("legacy html renderer state is normalized to plotly", {
     gs <- graph_structure_state()
     expect_equal(rr$requested, "plotly")
     expect_equal(rr$effective, "plotly")
-    expect_match(rr$mode_note %||% "", "Legacy HTML renderer setting detected", fixed = TRUE)
     expect_equal(gs$renderer_selected, "plotly")
   })
 })
