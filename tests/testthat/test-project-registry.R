@@ -120,12 +120,22 @@ test_that("discover_project_artifacts finds agp_restart outputs", {
 
   dir.create(file.path(base, "shared_graphs_all_asv"), recursive = TRUE, showWarnings = FALSE)
   saveRDS(list(dummy = TRUE), file.path(base, "shared_graphs_all_asv", "iknn.selection.rds"))
+  saveRDS(
+    list(asv.samples = 24378L, asv.features = 955L, sample_set.count = 24378L),
+    file.path(base, "run.metadata.rds")
+  )
 
   dir.create(file.path(base, "top20"), recursive = TRUE, showWarnings = FALSE)
   utils::write.csv(
     data.frame(k.requested = c(7L, 12L, 30L)),
     file.path(base, "top20", "k.status.csv"),
     row.names = FALSE
+  )
+
+  dir.create(file.path(base, "graph3d_html", "all"), recursive = TRUE, showWarnings = FALSE)
+  saveRDS(
+    matrix(seq_len(18), nrow = 6, ncol = 3),
+    file.path(base, "graph3d_html", "all", "k07.layout3d.rds")
   )
 
   bench_dir <- file.path(base, "ibs_ibd_benchmark_k071230")
@@ -153,7 +163,12 @@ test_that("discover_project_artifacts finds agp_restart outputs", {
   shared <- discovered$graph_sets[[which(vapply(discovered$graph_sets, function(x) identical(x$id, "shared_all_asv"), logical(1)))[1]]]
   expect_equal(shared$data_type_id, "shared_all_asv")
   expect_equal(shared$data_type_label, "ASV")
+  expect_equal(shared$n_samples, 24378L)
+  expect_equal(shared$n_features, 955L)
   expect_true(is.list(shared$layout_assets$presets))
+  expect_true(is.list(shared$layout_assets$grip_layouts))
+  expect_true(length(shared$layout_assets$grip_layouts) >= 1L)
+  expect_true(any(vapply(shared$layout_assets$grip_layouts, function(x) identical(as.integer(x$k), 7L), logical(1))))
   expect_true(any(vapply(discovered$condexp_sets, function(x) identical(x$id, "ibs_ibd_benchmark_k071230"), logical(1))))
   bench <- discovered$condexp_sets[[which(vapply(discovered$condexp_sets, function(x) identical(x$id, "ibs_ibd_benchmark_k071230"), logical(1)))[1]]]
   expect_equal(sort(bench$outcomes), c("ibd", "ibs"))
@@ -213,6 +228,7 @@ test_that("register_project normalizes graph-set metadata and infers layout vari
   expect_true(is.list(gs$layout_assets$presets))
   expect_equal(gs$layout_assets$presets$renderer, "rglwidget")
   expect_equal(gs$layout_assets$presets$color_by, "vertex_degree")
+  expect_equal(gs$layout_assets$presets$vertex_color, "#111827")
   expect_true(is.list(gs$layout_assets$variants))
   expect_true(length(gs$layout_assets$variants) >= 1L)
   expect_true(is.list(gs$layout_assets$grip_layouts))
@@ -226,4 +242,29 @@ test_that("register_project normalizes graph-set metadata and infers layout vari
   expect_equal(vv$color_by, "degree_k07")
   expect_equal(vv$k, 7L)
   expect_true(file.exists(vv$path))
+})
+
+
+test_that("normalize_graph_set_manifest preserves solid-color presets", {
+  root <- tempfile("solid-color-preset-")
+  dir.create(root, recursive = TRUE, showWarnings = FALSE)
+  on.exit(unlink(root, recursive = TRUE, force = TRUE), add = TRUE)
+
+  graph_file <- file.path(root, "graph_set.rds")
+  saveRDS(list(dummy = TRUE), graph_file)
+
+  gs <- gflowui:::gflowui_normalize_graph_set_manifest(list(
+    id = "set_a",
+    label = "Set A",
+    graph_file = graph_file,
+    layout_assets = list(
+      presets = list(
+        color_by = "solid_color",
+        vertex_color = "#374151"
+      )
+    )
+  ))
+
+  expect_equal(gs$layout_assets$presets$color_by, "solid_color")
+  expect_equal(gs$layout_assets$presets$vertex_color, "#374151")
 })

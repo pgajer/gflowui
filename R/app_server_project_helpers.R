@@ -266,6 +266,117 @@ gflowui_make_server_project_helpers <- function(
     list(reg = reg, idx = idx, row = reg[idx, , drop = FALSE])
   }
 
+  sanitize_path_token <- function(x, fallback = "na") {
+    token <- tolower(gsub("[^a-zA-Z0-9]+", "_", as.character(x %||% "")))
+    token <- gsub("^_+|_+$", "", token)
+    if (!nzchar(token)) {
+      token <- fallback
+    }
+    token
+  }
+
+  project_state_dir <- function(project_id = rv$project.id) {
+    id <- scalar_chr(project_id, default = "")
+    if (!nzchar(id)) {
+      return("")
+    }
+    file.path(gflowui_projects_data_dir(), "projects", id)
+  }
+
+  endpoint_state_graph_dir <- function(graph_set_id, k = NULL, project_id = rv$project.id) {
+    project_dir <- project_state_dir(project_id = project_id)
+    if (!nzchar(project_dir) || !nzchar(scalar_chr(graph_set_id, default = ""))) {
+      return("")
+    }
+    file.path(
+      project_dir,
+      "endpoint_state",
+      sprintf("graph_set=%s", sanitize_path_token(graph_set_id, fallback = "unknown"))
+    )
+  }
+
+  endpoint_state_legacy_k_dir <- function(graph_set_id, k, project_id = rv$project.id) {
+    base <- endpoint_state_graph_dir(graph_set_id = graph_set_id, project_id = project_id)
+    kk <- scalar_int(k, default = NA_integer_)
+    if (!nzchar(base) || !is.finite(kk) || kk < 1L) {
+      return("")
+    }
+    file.path(base, sprintf("k=%03d", as.integer(kk)))
+  }
+
+  endpoint_state_legacy_k_dirs <- function(graph_set_id, project_id = rv$project.id) {
+    base <- endpoint_state_graph_dir(graph_set_id = graph_set_id, project_id = project_id)
+    if (!nzchar(base) || !dir.exists(base)) {
+      return(character(0))
+    }
+    dirs <- list.dirs(base, recursive = FALSE, full.names = TRUE)
+    dirs <- dirs[grepl("^k=[0-9]+$", basename(dirs))]
+    normalizePath(dirs[file.exists(dirs) | dir.exists(dirs)], mustWork = FALSE)
+  }
+
+  endpoint_candidates_dir <- function(graph_set_id, k, project_id = rv$project.id) {
+    base <- endpoint_state_graph_dir(graph_set_id = graph_set_id, project_id = project_id)
+    if (!nzchar(base)) {
+      return("")
+    }
+    file.path(base, "candidates")
+  }
+
+  endpoint_working_dir <- function(graph_set_id, k, project_id = rv$project.id) {
+    base <- endpoint_state_graph_dir(graph_set_id = graph_set_id, project_id = project_id)
+    if (!nzchar(base)) {
+      return("")
+    }
+    file.path(base, "working")
+  }
+
+  endpoint_working_file <- function(graph_set_id, k, project_id = rv$project.id) {
+    base <- endpoint_working_dir(graph_set_id = graph_set_id, k = k, project_id = project_id)
+    if (!nzchar(base)) {
+      return("")
+    }
+    file.path(base, "current.rds")
+  }
+
+  endpoint_snapshot_dir <- function(graph_set_id, k, project_id = rv$project.id) {
+    base <- endpoint_working_dir(graph_set_id = graph_set_id, k = k, project_id = project_id)
+    if (!nzchar(base)) {
+      return("")
+    }
+    file.path(base, "snapshots")
+  }
+
+  read_rds_if_exists <- function(path, default = NULL) {
+    pp <- scalar_chr(path, default = "")
+    if (!nzchar(pp) || !file.exists(pp)) {
+      return(default)
+    }
+    tryCatch(readRDS(pp), error = function(e) default)
+  }
+
+  save_rds_safely <- function(object, path) {
+    pp <- scalar_chr(path, default = "")
+    if (!nzchar(pp)) {
+      stop("Path must be a non-empty string.", call. = FALSE)
+    }
+    dir.create(dirname(pp), recursive = TRUE, showWarnings = FALSE)
+    tmp <- tempfile(pattern = "gflowui-", tmpdir = dirname(pp), fileext = ".rds")
+    on.exit({
+      if (file.exists(tmp)) {
+        unlink(tmp, force = TRUE)
+      }
+    }, add = TRUE)
+    saveRDS(object, file = tmp)
+    moved <- file.rename(tmp, pp)
+    if (!moved) {
+      moved <- file.copy(tmp, pp, overwrite = TRUE)
+    }
+    if (!moved) {
+      stop("Could not persist RDS file.", call. = FALSE)
+    }
+    normalizePath(pp, mustWork = FALSE)
+  }
+
   load_or_init_active_manifest <- function(ctx) {
     reg <- ctx$reg
     idx <- ctx$idx
@@ -460,6 +571,17 @@ gflowui_make_server_project_helpers <- function(
     active_registry_row = active_registry_row,
     active_manifest = active_manifest,
     active_project_context = active_project_context,
+    sanitize_path_token = sanitize_path_token,
+    project_state_dir = project_state_dir,
+    endpoint_state_graph_dir = endpoint_state_graph_dir,
+    endpoint_state_legacy_k_dir = endpoint_state_legacy_k_dir,
+    endpoint_state_legacy_k_dirs = endpoint_state_legacy_k_dirs,
+    endpoint_candidates_dir = endpoint_candidates_dir,
+    endpoint_working_dir = endpoint_working_dir,
+    endpoint_working_file = endpoint_working_file,
+    endpoint_snapshot_dir = endpoint_snapshot_dir,
+    read_rds_if_exists = read_rds_if_exists,
+    save_rds_safely = save_rds_safely,
     load_or_init_active_manifest = load_or_init_active_manifest,
     save_active_manifest = save_active_manifest,
     upsert_active_graph_set = upsert_active_graph_set,
