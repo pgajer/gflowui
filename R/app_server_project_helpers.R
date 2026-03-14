@@ -351,6 +351,58 @@ gflowui_make_server_project_helpers <- function(
     file.path(base, "datasets.meta.rds")
   }
 
+  arm_state_graph_dir <- function(graph_set_id, k = NULL, project_id = rv$project.id) {
+    project_dir <- project_state_dir(project_id = project_id)
+    if (!nzchar(project_dir) || !nzchar(scalar_chr(graph_set_id, default = ""))) {
+      return("")
+    }
+    file.path(
+      project_dir,
+      "arm_state",
+      sprintf("graph_set=%s", sanitize_path_token(graph_set_id, fallback = "unknown"))
+    )
+  }
+
+  arm_candidates_dir <- function(graph_set_id, k, project_id = rv$project.id) {
+    base <- arm_state_graph_dir(graph_set_id = graph_set_id, project_id = project_id)
+    if (!nzchar(base)) {
+      return("")
+    }
+    file.path(base, "candidates")
+  }
+
+  arm_working_dir <- function(graph_set_id, k, project_id = rv$project.id) {
+    base <- arm_state_graph_dir(graph_set_id = graph_set_id, project_id = project_id)
+    if (!nzchar(base)) {
+      return("")
+    }
+    file.path(base, "working")
+  }
+
+  arm_working_file <- function(graph_set_id, k, project_id = rv$project.id) {
+    base <- arm_working_dir(graph_set_id = graph_set_id, k = k, project_id = project_id)
+    if (!nzchar(base)) {
+      return("")
+    }
+    file.path(base, "current.rds")
+  }
+
+  arm_snapshot_dir <- function(graph_set_id, k, project_id = rv$project.id) {
+    base <- arm_working_dir(graph_set_id = graph_set_id, k = k, project_id = project_id)
+    if (!nzchar(base)) {
+      return("")
+    }
+    file.path(base, "snapshots")
+  }
+
+  arm_dataset_meta_file <- function(graph_set_id, k, project_id = rv$project.id) {
+    base <- arm_state_graph_dir(graph_set_id = graph_set_id, project_id = project_id)
+    if (!nzchar(base)) {
+      return("")
+    }
+    file.path(base, "datasets.meta.rds")
+  }
+
   read_rds_if_exists <- function(path, default = NULL) {
     pp <- scalar_chr(path, default = "")
     if (!nzchar(pp) || !file.exists(pp)) {
@@ -584,6 +636,12 @@ gflowui_make_server_project_helpers <- function(
     endpoint_working_file = endpoint_working_file,
     endpoint_snapshot_dir = endpoint_snapshot_dir,
     endpoint_dataset_meta_file = endpoint_dataset_meta_file,
+    arm_state_graph_dir = arm_state_graph_dir,
+    arm_candidates_dir = arm_candidates_dir,
+    arm_working_dir = arm_working_dir,
+    arm_working_file = arm_working_file,
+    arm_snapshot_dir = arm_snapshot_dir,
+    arm_dataset_meta_file = arm_dataset_meta_file,
     read_rds_if_exists = read_rds_if_exists,
     save_rds_safely = save_rds_safely,
     load_or_init_active_manifest = load_or_init_active_manifest,
