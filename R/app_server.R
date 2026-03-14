@@ -42,6 +42,7 @@ app_server <- function(input, output, session) {
     set_id = "",
     k = NA_integer_
   )
+  reference_plot_camera <- shiny::reactiveVal(NULL)
   graph_layout_state <- shiny::reactiveValues(
     renderer = NA_character_,
     vertex_layout = "point",
@@ -1119,6 +1120,7 @@ app_server <- function(input, output, session) {
     arm_pending_load_dataset_id("")
     arm_selected_id("")
     arm_draft_banner_dismissed(FALSE)
+    reference_plot_camera(NULL)
     workflow_open_panels(NULL)
     rgl_last_output_id(NULL)
     rgl_gen(0L)
@@ -2806,6 +2808,41 @@ app_server <- function(input, output, session) {
       )
     }
 
+    extract_plotly_camera_state <- function(event_data) {
+      if (is.null(event_data)) {
+        return(NULL)
+      }
+      if (is.list(event_data) && !is.null(event_data[["scene.camera"]]) && is.list(event_data[["scene.camera"]])) {
+        return(event_data[["scene.camera"]])
+      }
+      if (is.list(event_data) && !is.null(event_data$scene) && is.list(event_data$scene) &&
+          !is.null(event_data$scene$camera) && is.list(event_data$scene$camera)) {
+        return(event_data$scene$camera)
+      }
+      eye_x <- suppressWarnings(as.numeric(event_data[["scene.camera.eye.x"]] %||% NA_real_))
+      eye_y <- suppressWarnings(as.numeric(event_data[["scene.camera.eye.y"]] %||% NA_real_))
+      eye_z <- suppressWarnings(as.numeric(event_data[["scene.camera.eye.z"]] %||% NA_real_))
+      center_x <- suppressWarnings(as.numeric(event_data[["scene.camera.center.x"]] %||% NA_real_))
+      center_y <- suppressWarnings(as.numeric(event_data[["scene.camera.center.y"]] %||% NA_real_))
+      center_z <- suppressWarnings(as.numeric(event_data[["scene.camera.center.z"]] %||% NA_real_))
+      up_x <- suppressWarnings(as.numeric(event_data[["scene.camera.up.x"]] %||% NA_real_))
+      up_y <- suppressWarnings(as.numeric(event_data[["scene.camera.up.y"]] %||% NA_real_))
+      up_z <- suppressWarnings(as.numeric(event_data[["scene.camera.up.z"]] %||% NA_real_))
+      if (!all(is.finite(c(eye_x, eye_y, eye_z)))) {
+        return(NULL)
+      }
+      camera <- list(
+        eye = list(x = eye_x, y = eye_y, z = eye_z)
+      )
+      if (all(is.finite(c(center_x, center_y, center_z)))) {
+        camera$center <- list(x = center_x, y = center_y, z = center_z)
+      }
+      if (all(is.finite(c(up_x, up_y, up_z)))) {
+        camera$up <- list(x = up_x, y = up_y, z = up_z)
+      }
+      camera
+    }
+
     reference_plotly_click_event <- shiny::reactive({
       rr <- reference_renderer_state()
       if (!is.list(rr) || !identical(as.character(rr$effective %||% ""), "plotly")) {
@@ -2813,6 +2850,16 @@ app_server <- function(input, output, session) {
       }
       parse_plotly_event_input(
         sprintf("plotly_click-%s", reference_plotly_source)
+      )
+    })
+
+    reference_plotly_relayout_event <- shiny::reactive({
+      rr <- reference_renderer_state()
+      if (!is.list(rr) || !identical(as.character(rr$effective %||% ""), "plotly")) {
+        return(NULL)
+      }
+      parse_plotly_event_input(
+        sprintf("plotly_relayout-%s", reference_plotly_source)
       )
     })
 
@@ -2829,6 +2876,17 @@ app_server <- function(input, output, session) {
         endpoint_vertex_state$source <- "plotly"
         endpoint_vertex_input_source_override("plotly")
         shiny::updateNumericInput(session, "endpoint_vertex_id", value = as.integer(vid))
+      },
+      ignoreInit = TRUE
+    )
+
+    shiny::observeEvent(
+      reference_plotly_relayout_event(),
+      {
+        camera <- extract_plotly_camera_state(reference_plotly_relayout_event())
+        if (is.list(camera)) {
+          reference_plot_camera(camera)
+        }
       },
       ignoreInit = TRUE
     )
@@ -5550,8 +5608,15 @@ app_server <- function(input, output, session) {
     list(input$arm_endpoint_a, input$arm_endpoint_b, input$arm_thickening_method,
          input$arm_corridor_rel_tol, input$arm_corridor_abs_tol, input$arm_tube_radius),
     {
-      arm_preview_variant(NULL)
-      arm_preview_layout_open(FALSE)
+      current_preview <- isolate(arm_preview_variant())
+      if (!is.list(current_preview)) {
+        return()
+      }
+      preview <- build_arm_preview_from_inputs(show_error = FALSE)
+      if (is.list(preview)) {
+        arm_preview_variant(preview)
+        arm_selected_id(as.character(preview$arm_id %||% ""))
+      }
       arm_preview_revision(isolate(arm_preview_revision()) + 1L)
     },
     ignoreInit = TRUE
@@ -6314,12 +6379,15 @@ app_server <- function(input, output, session) {
             plotly::layout(
               title = list(text = "No points to display for selected color source."),
               scene = list(
+                uirevision = "reference-scene",
                 xaxis = list(visible = FALSE),
                 yaxis = list(visible = FALSE),
                 zaxis = list(visible = FALSE)
               )
             )
-        return(plotly::event_register(p_empty, "plotly_click"))
+        p_empty <- plotly::event_register(p_empty, "plotly_click")
+        p_empty <- plotly::event_register(p_empty, "plotly_relayout")
+        return(p_empty)
       }
 
       plot_data <- data.frame(
@@ -6714,6 +6782,7 @@ app_server <- function(input, output, session) {
         }
       }
 
+      camera_use <- reference_plot_camera() %||% list(eye = list(x = 1.6, y = 1.55, z = 1.2))
       p <- p %>%
         plotly::layout(
           margin = list(l = 0, r = 0, b = 0, t = 10),
@@ -6731,13 +6800,16 @@ app_server <- function(input, output, session) {
             list(orientation = "h")
           },
           scene = list(
+            uirevision = "reference-scene",
             xaxis = list(title = "", showgrid = FALSE, zeroline = FALSE, visible = FALSE),
             yaxis = list(title = "", showgrid = FALSE, zeroline = FALSE, visible = FALSE),
             zaxis = list(title = "", showgrid = FALSE, zeroline = FALSE, visible = FALSE),
-            camera = list(eye = list(x = 1.6, y = 1.55, z = 1.2))
+            camera = camera_use
           )
         )
-      plotly::event_register(p, "plotly_click")
+      p <- plotly::event_register(p, "plotly_click")
+      p <- plotly::event_register(p, "plotly_relayout")
+      p
     })
   }
 
