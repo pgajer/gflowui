@@ -1061,6 +1061,17 @@ app_server <- function(input, output, session) {
   endpoint_overlay_selection <- shiny::reactiveVal(character(0))
   endpoint_autoselect_done <- shiny::reactiveVal(FALSE)
   endpoint_show_working_set <- shiny::reactiveVal(NA)
+  arm_session_id <- paste(session$token %||% "session", "arm", as.integer(Sys.time()), sep = "-")
+  arm_workspace_revision <- shiny::reactiveVal(0L)
+  arm_overlay_selection <- shiny::reactiveVal(character(0))
+  arm_show_working_set <- shiny::reactiveVal(NA)
+  arm_datasets_open <- shiny::reactiveVal(FALSE)
+  arm_preview_layout_open <- shiny::reactiveVal(FALSE)
+  arm_preview_variant <- shiny::reactiveVal(NULL)
+  arm_preview_revision <- shiny::reactiveVal(0L)
+  arm_pending_load_dataset_id <- shiny::reactiveVal("")
+  arm_selected_id <- shiny::reactiveVal("")
+  arm_draft_banner_dismissed <- shiny::reactiveVal(FALSE)
   workflow_open_panels <- shiny::reactiveVal(NULL)
   endpoint_working_hide_counts <- shiny::reactiveVal(structure(integer(0), names = character(0)))
   endpoint_working_restore_counts <- shiny::reactiveVal(structure(integer(0), names = character(0)))
@@ -1098,19 +1109,38 @@ app_server <- function(input, output, session) {
     endpoint_draft_banner_dismissed(FALSE)
     endpoint_pending_load_dataset_id("")
     endpoint_pending_project_action("")
+    arm_workspace_revision(0L)
+    arm_overlay_selection(character(0))
+    arm_show_working_set(NA)
+    arm_datasets_open(FALSE)
+    arm_preview_layout_open(FALSE)
+    arm_preview_variant(NULL)
+    arm_preview_revision(0L)
+    arm_pending_load_dataset_id("")
+    arm_selected_id("")
+    arm_draft_banner_dismissed(FALSE)
     workflow_open_panels(NULL)
     rgl_last_output_id(NULL)
     rgl_gen(0L)
   }, ignoreInit = TRUE)
   shiny::observeEvent(
     list(input$endpoint_label_size, input$endpoint_label_offset,
-         input$endpoint_marker_size, input$endpoint_marker_color),
+         input$endpoint_marker_size, input$endpoint_marker_color,
+         input$arm_label_size, input$arm_tube_opacity, input$arm_path_width,
+         input$arm_vertex_size, input$arm_color,
+         input$arm_preview_path_color, input$arm_preview_body_color,
+         input$arm_preview_body_opacity, input$arm_preview_path_width,
+         input$arm_preview_body_size, input$arm_center_marker_color,
+         input$arm_center_marker_size),
     {
       rgl_gen(shiny::isolate(rgl_gen()) + 1L)
     },
     ignoreInit = TRUE
   )
   shiny::observeEvent(endpoint_overlay_selection(), {
+    rgl_gen(shiny::isolate(rgl_gen()) + 1L)
+  }, ignoreInit = TRUE)
+  shiny::observeEvent(list(arm_overlay_selection(), arm_show_working_set(), arm_preview_revision()), {
     rgl_gen(shiny::isolate(rgl_gen()) + 1L)
   }, ignoreInit = TRUE)
 
@@ -4480,6 +4510,1231 @@ app_server <- function(input, output, session) {
     list(vertices = vertices_all, labels = label_lookup)
   })
 
+  current_arm_graph_context <- shiny::reactive({
+    ctx <- current_endpoint_graph_context()
+    if (is.list(ctx)) ctx else NULL
+  })
+
+  arm_context_key <- shiny::reactive({
+    ctx <- current_arm_graph_context()
+    if (!is.list(ctx)) {
+      return("")
+    }
+    sprintf("%s|%s", ctx$project_id, ctx$graph_set_id)
+  })
+
+  shiny::observeEvent(arm_context_key(), {
+    if (!nzchar(arm_context_key())) {
+      return()
+    }
+    arm_workspace_revision(isolate(arm_workspace_revision()) + 1L)
+    arm_overlay_selection(character(0))
+    arm_show_working_set(NA)
+    arm_datasets_open(FALSE)
+    arm_preview_layout_open(FALSE)
+    arm_preview_variant(NULL)
+    arm_preview_revision(isolate(arm_preview_revision()) + 1L)
+    arm_pending_load_dataset_id("")
+    arm_selected_id("")
+    arm_draft_banner_dismissed(FALSE)
+  }, ignoreInit = TRUE)
+
+  arm_graph_data <- shiny::reactive({
+    st <- reference_view_state()
+    if (!is.list(st) || !is.null(st$error) || !is.list(st$adj_list)) {
+      return(NULL)
+    }
+    list(
+      adj_list = st$adj_list,
+      weight_list = st$weight_list %||% lapply(st$adj_list, function(nb) rep(1, length(nb %||% integer(0)))),
+      coords = st$coords,
+      k = suppressWarnings(as.integer(st$k_actual %||% NA_integer_))
+    )
+  })
+
+  arm_virtual_endpoints <- shiny::reactive({
+    gd <- arm_graph_data()
+    if (!is.list(gd) || !is.matrix(gd$coords)) {
+      return(data.frame())
+    }
+    center_vertex <- closest_vertex_to_centroid(gd$coords)
+    if (!is.finite(center_vertex)) {
+      return(data.frame())
+    }
+    data.frame(
+      key = "virtual:center",
+      label = "CENTER",
+      vertex = as.integer(center_vertex),
+      is_virtual = TRUE,
+      stringsAsFactors = FALSE
+    )
+  })
+
+  working_endpoint_choice_rows <- shiny::reactive({
+    st <- endpoint_panel_state()
+    rows <- if (is.list(st) && is.list(st$working)) accepted_visible_working_rows(st$working) else empty_working_endpoint_rows()
+    if (!is.data.frame(rows) || nrow(rows) < 1L) {
+      return(data.frame())
+    }
+    rows
+  })
+
+  arm_builder_endpoint_choices <- shiny::reactive({
+    ep_rows <- working_endpoint_choice_rows()
+    out <- c()
+    virt <- arm_virtual_endpoints()
+    if (is.data.frame(virt) && nrow(virt) > 0L) {
+      out <- c(out, stats::setNames(as.character(virt$key), as.character(virt$label)))
+    }
+    if (is.data.frame(ep_rows) && nrow(ep_rows) > 0L) {
+      ep_labels <- vapply(seq_len(nrow(ep_rows)), function(ii) {
+        rr <- ep_rows[ii, , drop = FALSE]
+        lbl <- as.character(rr$label[[1]] %||% sprintf("v%d", rr$vertex[[1]]))
+        sprintf("%s (v%d)", lbl, as.integer(rr$vertex[[1]]))
+      }, character(1))
+      ep_vals <- sprintf("vertex:%d", suppressWarnings(as.integer(ep_rows$vertex)))
+      out <- c(out, stats::setNames(ep_vals, ep_labels))
+    }
+    out
+  })
+
+  resolve_arm_endpoint_choice <- function(choice_value) {
+    choice_chr <- as.character(choice_value %||% "")
+    if (!nzchar(choice_chr)) {
+      return(NULL)
+    }
+    if (identical(choice_chr, "virtual:center")) {
+      virt <- arm_virtual_endpoints()
+      if (!is.data.frame(virt) || nrow(virt) < 1L) {
+        return(NULL)
+      }
+      return(list(
+        key = as.character(virt$key[[1]]),
+        label = as.character(virt$label[[1]]),
+        vertex = suppressWarnings(as.integer(virt$vertex[[1]])),
+        is_virtual = TRUE
+      ))
+    }
+    if (startsWith(choice_chr, "vertex:")) {
+      vid <- suppressWarnings(as.integer(sub("^vertex:", "", choice_chr)))
+      ep_rows <- working_endpoint_choice_rows()
+      label_use <- sprintf("v%d", as.integer(vid))
+      if (is.data.frame(ep_rows) && nrow(ep_rows) > 0L && is.finite(vid)) {
+        hit <- which(suppressWarnings(as.integer(ep_rows$vertex)) == as.integer(vid))
+        if (length(hit) > 0L) {
+          label_use <- as.character(ep_rows$label[[hit[[1]]]] %||% label_use)
+        }
+      }
+      return(list(
+        key = sprintf("v%d", as.integer(vid)),
+        label = label_use,
+        vertex = as.integer(vid),
+        is_virtual = FALSE
+      ))
+    }
+    NULL
+  }
+
+  read_workspace_arm_dataset <- function(path) {
+    obj <- read_rds_if_exists(path, default = NULL)
+    if (!is.list(obj)) {
+      return(NULL)
+    }
+    rows <- sanitize_working_arm_state(
+      list(
+        rows = if (is.data.frame(obj$rows)) obj$rows else empty_working_arm_rows(),
+        project_id = as.character(obj$project_id %||% ""),
+        graph_set_id = as.character(obj$graph_set_id %||% ""),
+        k = suppressWarnings(as.integer(obj$source_k %||% obj$k %||% NA_integer_))
+      )
+    )$rows
+    list(
+      dataset_id = as.character(obj$dataset_id %||% tools::file_path_sans_ext(basename(path))),
+      label = as.character(obj$label %||% obj$dataset_id %||% basename(path)),
+      method = as.character(obj$method %||% "working_snapshot"),
+      origin = as.character(obj$origin %||% "workspace"),
+      graph_set_id = as.character(obj$graph_set_id %||% ""),
+      k = suppressWarnings(as.integer(obj$source_k %||% obj$k %||% NA_integer_)),
+      created_at = as.character(obj$created_at %||% ""),
+      parameter_summary = as.character(obj$parameter_summary %||% "workspace arm dataset"),
+      source_dataset_id = as.character(obj$source_dataset_id %||% ""),
+      rows = rows,
+      path = as.character(path %||% "")
+    )
+  }
+
+  empty_arm_candidate_rows <- function() {
+    data.frame(
+      dataset_id = character(0),
+      key = character(0),
+      source_type = character(0),
+      origin = character(0),
+      label = character(0),
+      method = character(0),
+      k = integer(0),
+      k_display = character(0),
+      n_arms = integer(0),
+      parameter_summary = character(0),
+      workspace_file = character(0),
+      created_at = character(0),
+      can_load = logical(0),
+      can_rename = logical(0),
+      can_delete = logical(0),
+      can_set_default = logical(0),
+      is_default = logical(0),
+      stringsAsFactors = FALSE
+    )
+  }
+
+  normalize_arm_candidate_rows <- function(x) {
+    template <- empty_arm_candidate_rows()
+    if (!is.data.frame(x) || nrow(x) < 1L) {
+      return(template[0, , drop = FALSE])
+    }
+    missing_cols <- setdiff(names(template), names(x))
+    if (length(missing_cols) > 0L) {
+      for (cc in missing_cols) {
+        x[[cc]] <- template[[cc]]
+      }
+    }
+    x <- x[, names(template), drop = FALSE]
+    x$dataset_id <- as.character(x$dataset_id)
+    x$key <- as.character(x$key)
+    x$source_type <- as.character(x$source_type)
+    x$origin <- as.character(x$origin)
+    x$label <- as.character(x$label)
+    x$method <- as.character(x$method)
+    x$k <- suppressWarnings(as.integer(x$k))
+    x$k_display <- as.character(x$k_display)
+    x$n_arms <- suppressWarnings(as.integer(x$n_arms))
+    x$parameter_summary <- as.character(x$parameter_summary)
+    x$workspace_file <- as.character(x$workspace_file)
+    x$created_at <- as.character(x$created_at)
+    x$can_load <- as.logical(x$can_load)
+    x$can_rename <- as.logical(x$can_rename)
+    x$can_delete <- as.logical(x$can_delete)
+    x$can_set_default <- as.logical(x$can_set_default)
+    x$is_default <- as.logical(x$is_default)
+    rownames(x) <- NULL
+    x
+  }
+
+  arm_candidate_workspace_files <- function(ctx) {
+    if (!is.list(ctx)) {
+      return(character(0))
+    }
+    candidate_dir <- arm_candidates_dir(
+      graph_set_id = ctx$graph_set_id,
+      k = ctx$k,
+      project_id = ctx$project_id
+    )
+    if (!nzchar(candidate_dir) || !dir.exists(candidate_dir)) {
+      return(character(0))
+    }
+    normalizePath(
+      list.files(candidate_dir, pattern = "\\.rds$", full.names = TRUE),
+      mustWork = FALSE
+    )
+  }
+
+  load_workspace_arm_candidates <- function(ctx) {
+    files <- arm_candidate_workspace_files(ctx)
+    if (length(files) < 1L) {
+      return(empty_arm_candidate_rows())
+    }
+    rows <- lapply(seq_along(files), function(ii) {
+      ds <- read_workspace_arm_dataset(files[[ii]])
+      if (!is.list(ds) || !identical(as.character(ds$graph_set_id %||% ""), as.character(ctx$graph_set_id))) {
+        return(NULL)
+      }
+      key <- sanitize_token_id(ds$dataset_id, fallback = sprintf("arm_dataset_%d", ii))
+      data.frame(
+        dataset_id = key,
+        key = key,
+        source_type = "workspace",
+        origin = as.character(ds$origin %||% "workspace"),
+        label = as.character(ds$label %||% key),
+        method = as.character(ds$method %||% "working_snapshot"),
+        k = suppressWarnings(as.integer(ds$k %||% NA_integer_)),
+        k_display = if (is.finite(suppressWarnings(as.integer(ds$k)))) as.character(as.integer(ds$k)) else "-",
+        n_arms = if (is.data.frame(ds$rows)) nrow(ds$rows) else 0L,
+        parameter_summary = as.character(ds$parameter_summary %||% "workspace arm dataset"),
+        workspace_file = as.character(ds$path %||% files[[ii]]),
+        created_at = as.character(ds$created_at %||% ""),
+        can_load = TRUE,
+        can_rename = TRUE,
+        can_delete = TRUE,
+        can_set_default = TRUE,
+        is_default = FALSE,
+        stringsAsFactors = FALSE
+      )
+    })
+    rows <- rows[!vapply(rows, is.null, logical(1))]
+    if (length(rows) < 1L) {
+      return(empty_arm_candidate_rows())
+    }
+    out <- do.call(rbind, rows)
+    rownames(out) <- NULL
+    normalize_arm_candidate_rows(out)
+  }
+
+  read_arm_dataset_rows_from_row <- function(row_df) {
+    if (!is.data.frame(row_df) || nrow(row_df) < 1L) {
+      return(empty_working_arm_rows())
+    }
+    row <- row_df[1, , drop = FALSE]
+    if (!identical(as.character(row$source_type[[1]] %||% "workspace"), "workspace")) {
+      return(empty_working_arm_rows())
+    }
+    ds <- read_workspace_arm_dataset(as.character(row$workspace_file[[1]] %||% ""))
+    if (!is.list(ds) || !is.data.frame(ds$rows)) {
+      return(empty_working_arm_rows())
+    }
+    sanitize_working_arm_state(list(rows = ds$rows), ctx = NULL)$rows
+  }
+
+  read_arm_dataset_meta <- function(ctx) {
+    if (!is.list(ctx)) {
+      return(empty_arm_dataset_meta(ctx = ctx))
+    }
+    meta <- read_rds_if_exists(
+      arm_dataset_meta_file(
+        graph_set_id = ctx$graph_set_id,
+        k = ctx$k,
+        project_id = ctx$project_id
+      ),
+      default = NULL
+    )
+    sanitize_arm_dataset_meta(meta, ctx = ctx)
+  }
+
+  save_arm_dataset_meta <- function(meta, ctx) {
+    if (!is.list(ctx)) {
+      return(invisible(FALSE))
+    }
+    out <- sanitize_arm_dataset_meta(meta, ctx = ctx)
+    out$updated_at <- .gflowui_now()
+    save_rds_safely(
+      out,
+      arm_dataset_meta_file(
+        graph_set_id = ctx$graph_set_id,
+        k = ctx$k,
+        project_id = ctx$project_id
+      )
+    )
+    arm_workspace_revision(isolate(arm_workspace_revision()) + 1L)
+    invisible(TRUE)
+  }
+
+  load_working_arm_state <- function(ctx) {
+    if (!is.list(ctx)) {
+      st <- empty_working_arm_state(ctx = ctx)
+      attr(st, "state_exists") <- FALSE
+      return(st)
+    }
+    obj <- read_rds_if_exists(
+      arm_working_file(
+        graph_set_id = ctx$graph_set_id,
+        k = ctx$k,
+        project_id = ctx$project_id
+      ),
+      default = NULL
+    )
+    if (is.list(obj)) {
+      st <- sanitize_working_arm_state(obj, ctx = ctx)
+      attr(st, "state_exists") <- TRUE
+      return(st)
+    }
+    st <- empty_working_arm_state(ctx = ctx)
+    attr(st, "state_exists") <- FALSE
+    st
+  }
+
+  save_working_arm_state <- function(state, ctx) {
+    if (!is.list(ctx)) {
+      return(invisible(FALSE))
+    }
+    cleaned <- sanitize_working_arm_state(state, ctx = ctx)
+    cleaned$updated_at <- .gflowui_now()
+    cleaned$last_session_id <- arm_session_id
+    save_rds_safely(
+      cleaned,
+      arm_working_file(
+        graph_set_id = ctx$graph_set_id,
+        k = ctx$k,
+        project_id = ctx$project_id
+      )
+    )
+    arm_workspace_revision(isolate(arm_workspace_revision()) + 1L)
+    invisible(TRUE)
+  }
+
+  working_arm_state_from_dataset <- function(row_df) {
+    ctx <- current_arm_graph_context()
+    if (!is.list(ctx) || !is.data.frame(row_df) || nrow(row_df) < 1L) {
+      return(empty_working_arm_state(ctx = ctx))
+    }
+    row <- row_df[1, , drop = FALSE]
+    rows <- read_arm_dataset_rows_from_row(row)
+    sanitize_working_arm_state(
+      list(
+        version = "1",
+        project_id = ctx$project_id,
+        graph_set_id = ctx$graph_set_id,
+        k = ctx$k,
+        base_dataset_id = as.character(row$dataset_id[[1]] %||% ""),
+        base_dataset_label = as.character(row$label[[1]] %||% row$dataset_id[[1]] %||% ""),
+        base_source_k = suppressWarnings(as.integer(row$k[[1]] %||% NA_integer_)),
+        is_modified = FALSE,
+        last_snapshot_id = as.character(row$dataset_id[[1]] %||% NA_character_),
+        last_snapshot_label = as.character(row$label[[1]] %||% NA_character_),
+        last_session_id = arm_session_id,
+        rows = rows,
+        updated_at = .gflowui_now()
+      ),
+      ctx = ctx
+    )
+  }
+
+  use_arm_dataset_as_working_set <- function(dataset_id) {
+    st <- arm_panel_state()
+    rows <- if (is.list(st) && is.data.frame(st$rows)) st$rows else data.frame()
+    hit <- which(as.character(rows$dataset_id) == as.character(dataset_id))
+    if (length(hit) < 1L) {
+      return(invisible(FALSE))
+    }
+    next_state <- working_arm_state_from_dataset(rows[hit[[1]], , drop = FALSE])
+    save_working_arm_state(next_state, ctx = current_arm_graph_context())
+    arm_show_working_set(TRUE)
+    arm_overlay_selection(character(0))
+    arm_preview_layout_open(FALSE)
+    arm_preview_variant(NULL)
+    arm_preview_revision(isolate(arm_preview_revision()) + 1L)
+    arm_selected_id("")
+    shiny::showNotification(
+      sprintf("Working arms loaded from '%s'.", as.character(rows$label[[hit[[1]]]] %||% dataset_id)),
+      type = "message"
+    )
+    invisible(TRUE)
+  }
+
+  save_workspace_arm_dataset_object <- function(row_df, updater) {
+    if (!is.data.frame(row_df) || nrow(row_df) < 1L || !is.function(updater)) {
+      return(invisible(FALSE))
+    }
+    workspace_file <- as.character(row_df$workspace_file[[1]] %||% "")
+    if (!nzchar(workspace_file) || !file.exists(workspace_file)) {
+      return(invisible(FALSE))
+    }
+    obj <- read_rds_if_exists(workspace_file, default = NULL)
+    if (!is.list(obj)) {
+      return(invisible(FALSE))
+    }
+    obj <- updater(obj)
+    save_rds_safely(obj, workspace_file)
+    ctx <- current_arm_graph_context()
+    if (is.list(ctx)) {
+      snap_file <- file.path(
+        arm_snapshot_dir(
+          graph_set_id = ctx$graph_set_id,
+          k = ctx$k,
+          project_id = ctx$project_id
+        ),
+        basename(workspace_file)
+      )
+      if (file.exists(snap_file)) {
+        save_rds_safely(obj, snap_file)
+      }
+    }
+    arm_workspace_revision(isolate(arm_workspace_revision()) + 1L)
+    invisible(TRUE)
+  }
+
+  arm_dataset_row_by_id <- function(dataset_id, panel_state = NULL) {
+    st <- if (is.list(panel_state)) panel_state else arm_panel_state()
+    rows <- if (is.list(st) && is.data.frame(st$rows)) st$rows else data.frame()
+    hit <- which(as.character(rows$dataset_id) == as.character(dataset_id))
+    if (length(hit) < 1L) {
+      return(NULL)
+    }
+    rows[hit[[1]], , drop = FALSE]
+  }
+
+  rename_workspace_arm_dataset <- function(dataset_id, label) {
+    row <- arm_dataset_row_by_id(dataset_id)
+    if (!is.data.frame(row) || nrow(row) < 1L || !isTRUE(row$can_rename[[1]])) {
+      return(invisible(FALSE))
+    }
+    label_use <- trimws(as.character(label %||% ""))
+    if (!nzchar(label_use)) {
+      return(invisible(FALSE))
+    }
+    save_workspace_arm_dataset_object(row, function(obj) {
+      obj$label <- label_use
+      obj
+    })
+    st <- arm_panel_state()
+    working <- if (is.list(st)) st$working else NULL
+    ctx <- if (is.list(st)) st$context else NULL
+    if (is.list(ctx) &&
+        is.list(working) &&
+        identical(as.character(working$base_dataset_id %||% ""), as.character(dataset_id))) {
+      working$base_dataset_label <- label_use
+      save_working_arm_state(working, ctx = ctx)
+    }
+    shiny::showNotification(sprintf("Renamed arm dataset to '%s'.", label_use), type = "message")
+    invisible(TRUE)
+  }
+
+  delete_workspace_arm_dataset <- function(dataset_id) {
+    st <- arm_panel_state()
+    row <- arm_dataset_row_by_id(dataset_id, panel_state = st)
+    ctx <- if (is.list(st)) st$context else NULL
+    if (!is.data.frame(row) || nrow(row) < 1L || !isTRUE(row$can_delete[[1]]) || !is.list(ctx)) {
+      return(invisible(FALSE))
+    }
+    workspace_file <- as.character(row$workspace_file[[1]] %||% "")
+    if (nzchar(workspace_file) && file.exists(workspace_file)) {
+      unlink(workspace_file, force = TRUE)
+    }
+    snap_file <- file.path(
+      arm_snapshot_dir(
+        graph_set_id = ctx$graph_set_id,
+        k = ctx$k,
+        project_id = ctx$project_id
+      ),
+      basename(workspace_file)
+    )
+    if (nzchar(snap_file) && file.exists(snap_file)) {
+      unlink(snap_file, force = TRUE)
+    }
+    meta <- if (is.list(st)) st$meta else empty_arm_dataset_meta(ctx = ctx)
+    if (identical(as.character(meta$default_dataset_id %||% ""), as.character(dataset_id))) {
+      meta$default_dataset_id <- NA_character_
+      save_arm_dataset_meta(meta, ctx = ctx)
+    }
+    working <- if (is.list(st)) st$working else NULL
+    if (is.list(working) &&
+        identical(as.character(working$base_dataset_id %||% ""), as.character(dataset_id))) {
+      working$base_dataset_id <- NA_character_
+      working$base_dataset_label <- NA_character_
+      working$base_source_k <- NA_integer_
+      save_working_arm_state(working, ctx = ctx)
+    } else {
+      arm_workspace_revision(isolate(arm_workspace_revision()) + 1L)
+    }
+    shiny::showNotification(sprintf("Deleted arm dataset '%s'.", as.character(row$label[[1]] %||% dataset_id)), type = "message")
+    invisible(TRUE)
+  }
+
+  set_default_arm_dataset <- function(dataset_id) {
+    st <- arm_panel_state()
+    ctx <- if (is.list(st)) st$context else NULL
+    row <- arm_dataset_row_by_id(dataset_id, panel_state = st)
+    if (!is.list(ctx) || !is.data.frame(row) || nrow(row) < 1L) {
+      return(invisible(FALSE))
+    }
+    meta <- if (is.list(st)) st$meta else empty_arm_dataset_meta(ctx = ctx)
+    meta$default_dataset_id <- as.character(dataset_id)
+    save_arm_dataset_meta(meta, ctx = ctx)
+    shiny::showNotification(sprintf("Set '%s' as the default arm dataset.", as.character(row$label[[1]] %||% dataset_id)), type = "message")
+    invisible(TRUE)
+  }
+
+  upsert_working_arm_variant_state <- function(state, variant, source_type = "manual", source_dataset_id = "") {
+    out <- sanitize_working_arm_state(state, ctx = NULL)
+    rows <- if (is.data.frame(out$rows)) out$rows else empty_working_arm_rows()
+    one <- working_arm_rows_from_variant(
+      variant = variant,
+      source_type = source_type,
+      source_dataset_id = source_dataset_id
+    )
+    if (nrow(one) < 1L) {
+      return(out)
+    }
+    hit <- which(as.character(rows$arm_id) == as.character(one$arm_id[[1]]))
+    if (length(hit) < 1L) {
+      rows <- rbind(rows, one)
+    } else {
+      ii <- hit[[1]]
+      rows[ii, names(one)] <- one[1, names(one), drop = FALSE]
+    }
+    out$rows <- rows
+    out$updated_at <- .gflowui_now()
+    working_arm_mark_modified(out, session_id = arm_session_id)
+  }
+
+  update_working_arm_label_state <- function(state, arm_id, label) {
+    out <- sanitize_working_arm_state(state, ctx = NULL)
+    rows <- if (is.data.frame(out$rows)) out$rows else empty_working_arm_rows()
+    hit <- which(as.character(rows$arm_id) == as.character(arm_id))
+    if (length(hit) < 1L) {
+      return(out)
+    }
+    ii <- hit[[1]]
+    label_use <- trimws(as.character(label %||% ""))
+    if (!nzchar(label_use)) {
+      label_use <- as.character(rows$family_label[[ii]] %||% rows$label[[ii]] %||% rows$arm_id[[ii]])
+    }
+    rows$label[[ii]] <- label_use
+    rows$updated_at[[ii]] <- .gflowui_now()
+    out$rows <- rows
+    out$updated_at <- .gflowui_now()
+    working_arm_mark_modified(out, session_id = arm_session_id)
+  }
+
+  set_working_arm_visibility_state <- function(state, arm_id, visible = TRUE) {
+    out <- sanitize_working_arm_state(state, ctx = NULL)
+    rows <- if (is.data.frame(out$rows)) out$rows else empty_working_arm_rows()
+    hit <- which(as.character(rows$arm_id) == as.character(arm_id))
+    if (length(hit) < 1L) {
+      return(out)
+    }
+    ii <- hit[[1]]
+    rows$visible[[ii]] <- isTRUE(visible)
+    rows$updated_at[[ii]] <- .gflowui_now()
+    out$rows <- rows
+    out$updated_at <- .gflowui_now()
+    working_arm_mark_modified(out, session_id = arm_session_id)
+  }
+
+  hide_working_arm_state <- function(state, arm_id) {
+    set_working_arm_visibility_state(state = state, arm_id = arm_id, visible = FALSE)
+  }
+
+  restore_working_arm_state <- function(state, arm_id) {
+    set_working_arm_visibility_state(state = state, arm_id = arm_id, visible = TRUE)
+  }
+
+  remove_working_arm_state <- function(state, arm_id) {
+    out <- sanitize_working_arm_state(state, ctx = NULL)
+    rows <- if (is.data.frame(out$rows)) out$rows else empty_working_arm_rows()
+    rows <- rows[as.character(rows$arm_id) != as.character(arm_id), , drop = FALSE]
+    out$rows <- rows
+    out$updated_at <- .gflowui_now()
+    working_arm_mark_modified(out, session_id = arm_session_id)
+  }
+
+  save_working_arm_snapshot <- function() {
+    st <- arm_panel_state()
+    working <- if (is.list(st)) st$working else NULL
+    ctx <- current_arm_graph_context()
+    if (!is.list(ctx) || !is.list(working)) {
+      return(invisible(list(ok = FALSE)))
+    }
+    rows <- accepted_visible_working_arm_rows(working)
+    if (nrow(rows) < 1L) {
+      shiny::showNotification("Working arm set is empty.", type = "warning")
+      return(invisible(list(ok = FALSE)))
+    }
+    stamp <- format(Sys.time(), "%Y%m%d_%H%M%S")
+    dataset_id <- sanitize_token_id(
+      sprintf("working_%s_k%03d_%s", ctx$graph_set_id, as.integer(ctx$k), stamp),
+      fallback = sprintf("working_arm_snapshot_%s", stamp)
+    )
+    label <- sprintf("Arm snapshot %s", format(Sys.time(), "%Y-%m-%d %H:%M"))
+    out <- list(
+      version = "1",
+      dataset_id = dataset_id,
+      label = label,
+      method = "working_snapshot",
+      origin = "workspace",
+      project_id = as.character(ctx$project_id),
+      graph_set_id = as.character(ctx$graph_set_id),
+      k = as.integer(ctx$k),
+      source_k = as.integer(ctx$k),
+      created_at = .gflowui_now(),
+      parameter_summary = sprintf(
+        "snapshot from %s | source k=%s",
+        as.character(working$base_dataset_label %||% working$base_dataset_id %||% "working arms"),
+        as.character(ctx$k)
+      ),
+      source_dataset_id = as.character(working$base_dataset_id %||% ""),
+      last_session_id = arm_session_id,
+      rows = rows
+    )
+    candidate_path <- file.path(
+      arm_candidates_dir(
+        graph_set_id = ctx$graph_set_id,
+        k = ctx$k,
+        project_id = ctx$project_id
+      ),
+      sprintf("%s.rds", dataset_id)
+    )
+    snapshot_path <- file.path(
+      arm_snapshot_dir(
+        graph_set_id = ctx$graph_set_id,
+        k = ctx$k,
+        project_id = ctx$project_id
+      ),
+      sprintf("%s.rds", dataset_id)
+    )
+    save_rds_safely(out, candidate_path)
+    save_rds_safely(out, snapshot_path)
+    cleaned <- working_arm_mark_clean(
+      working,
+      base_dataset_id = dataset_id,
+      base_dataset_label = label,
+      base_source_k = ctx$k,
+      session_id = arm_session_id
+    )
+    cleaned$last_snapshot_id <- dataset_id
+    cleaned$last_snapshot_label <- label
+    save_working_arm_state(cleaned, ctx = ctx)
+    shiny::showNotification(sprintf("Saved arm snapshot '%s'.", label), type = "message")
+    invisible(list(ok = TRUE, dataset_id = dataset_id, label = label, state = cleaned))
+  }
+
+  arm_panel_state <- shiny::reactive({
+    arm_workspace_revision()
+    ctx <- current_arm_graph_context()
+    if (!is.list(ctx)) {
+      return(list(
+        rows = empty_arm_candidate_rows(),
+        working = empty_working_arm_state(ctx = ctx),
+        context = NULL,
+        meta = empty_arm_dataset_meta(ctx = ctx),
+        draft_banner = NULL
+      ))
+    }
+    rows <- load_workspace_arm_candidates(ctx)
+    meta <- read_arm_dataset_meta(ctx)
+    working <- load_working_arm_state(ctx)
+    working_state_exists <- isTRUE(attr(working, "state_exists", exact = TRUE))
+    if (!working_state_exists && is.data.frame(rows) && nrow(rows) > 0L) {
+      default_id <- as.character(meta$default_dataset_id %||% "")
+      hit <- which(as.character(rows$dataset_id) == default_id)
+      if (length(hit) > 0L) {
+        working <- working_arm_state_from_dataset(rows[hit[[1]], , drop = FALSE])
+      }
+    }
+    if (is.data.frame(rows) && nrow(rows) > 0L) {
+      rows$is_default <- as.character(rows$dataset_id) == as.character(meta$default_dataset_id %||% "")
+      rows$selected <- as.character(rows$dataset_id) %in% arm_overlay_selection()
+      rows$is_working_source <- as.character(rows$dataset_id) == as.character(working$base_dataset_id %||% "")
+      current_k <- suppressWarnings(as.integer(ctx$k %||% NA_integer_))
+      ord <- order(
+        !(as.character(rows$dataset_id) == as.character(working$base_dataset_id %||% "")),
+        !as.logical(rows$is_default),
+        abs(suppressWarnings(as.integer(rows$k)) - current_k),
+        as.character(rows$label),
+        na.last = TRUE
+      )
+      rows <- rows[ord, , drop = FALSE]
+    }
+    draft_banner <- if (working_arm_is_recovered(working, session_id = arm_session_id) && !isTRUE(arm_draft_banner_dismissed())) {
+      list(kind = "recovered")
+    } else {
+      NULL
+    }
+    list(rows = rows, working = working, context = ctx, meta = meta, draft_banner = draft_banner)
+  })
+
+  working_arm_has_content <- function(state) {
+    is.list(state) && is.data.frame(state$rows) && nrow(state$rows) > 0L
+  }
+
+  working_arm_needs_replace_prompt <- function(state) {
+    working_arm_is_modified(state)
+  }
+
+  show_arm_dataset_load_modal <- function(dataset_id) {
+    row <- arm_dataset_row_by_id(dataset_id)
+    if (!is.data.frame(row) || nrow(row) < 1L) {
+      return(invisible(FALSE))
+    }
+    arm_pending_load_dataset_id(as.character(dataset_id))
+    shiny::showModal(
+      shiny::modalDialog(
+        title = "Replace Working Arms",
+        easyClose = FALSE,
+        shiny::p(sprintf(
+          "The current working arm draft has unsaved modifications. What do you want to do before loading '%s'?",
+          as.character(row$label[[1]] %||% dataset_id)
+        )),
+        footer = shiny::tagList(
+          shiny::modalButton("Cancel"),
+          shiny::actionButton("arm_replace_working_set", "Replace Working Set", class = "btn-secondary"),
+          shiny::actionButton("arm_snapshot_replace_working_set", "Save Snapshot And Replace", class = "btn-primary")
+        )
+      )
+    )
+    invisible(TRUE)
+  }
+
+  maybe_load_arm_dataset <- function(dataset_id) {
+    st <- arm_panel_state()
+    working <- if (is.list(st)) st$working else NULL
+    if (working_arm_needs_replace_prompt(working)) {
+      show_arm_dataset_load_modal(dataset_id)
+      return(invisible(FALSE))
+    }
+    use_arm_dataset_as_working_set(dataset_id)
+  }
+
+  discard_working_arm_draft <- function() {
+    st <- arm_panel_state()
+    ctx <- if (is.list(st)) st$context else NULL
+    rows <- if (is.list(st) && is.data.frame(st$rows)) st$rows else empty_arm_candidate_rows()
+    working <- if (is.list(st)) st$working else empty_working_arm_state(ctx = ctx)
+    if (!is.list(ctx)) {
+      return(invisible(FALSE))
+    }
+    target <- NULL
+    base_id <- as.character(working$base_dataset_id %||% "")
+    if (nzchar(base_id) && nrow(rows) > 0L) {
+      hit <- which(as.character(rows$dataset_id) == base_id)
+      if (length(hit) > 0L) {
+        target <- rows[hit[[1]], , drop = FALSE]
+      }
+    }
+    if (is.null(target) && nrow(rows) > 0L) {
+      default_id <- as.character(st$meta$default_dataset_id %||% "")
+      hit <- which(as.character(rows$dataset_id) == default_id)
+      if (length(hit) > 0L) {
+        target <- rows[hit[[1]], , drop = FALSE]
+      }
+    }
+    next_state <- if (is.data.frame(target) && nrow(target) > 0L) {
+      working_arm_state_from_dataset(target)
+    } else {
+      working_arm_mark_clean(empty_working_arm_state(ctx = ctx), session_id = arm_session_id)
+    }
+    save_working_arm_state(next_state, ctx = ctx)
+    arm_show_working_set(nrow(accepted_visible_working_arm_rows(next_state)) > 0L)
+    arm_draft_banner_dismissed(TRUE)
+    shiny::showNotification("Discarded the recovered working arm draft.", type = "message")
+    invisible(TRUE)
+  }
+
+  decode_arm_row <- function(row_df) {
+    if (!is.data.frame(row_df) || nrow(row_df) < 1L) {
+      return(NULL)
+    }
+    rr <- row_df[1, , drop = FALSE]
+    list(
+      arm_id = as.character(rr$arm_id[[1]] %||% ""),
+      family_id = as.character(rr$family_id[[1]] %||% ""),
+      label = as.character(rr$label[[1]] %||% ""),
+      family_label = as.character(rr$family_label[[1]] %||% ""),
+      endpoint_a = suppressWarnings(as.integer(rr$endpoint_a[[1]] %||% NA_integer_)),
+      endpoint_b = suppressWarnings(as.integer(rr$endpoint_b[[1]] %||% NA_integer_)),
+      endpoint_a_label = as.character(rr$endpoint_a_label[[1]] %||% ""),
+      endpoint_b_label = as.character(rr$endpoint_b_label[[1]] %||% ""),
+      path_method = as.character(rr$path_method[[1]] %||% "weighted_shortest_path"),
+      thickening_method = as.character(rr$thickening_method[[1]] %||% "path_only"),
+      path_vertices = decode_arm_integer_json(rr$path_vertices_json[[1]] %||% "[]"),
+      arm_vertices = decode_arm_integer_json(rr$arm_vertices_json[[1]] %||% "[]"),
+      arm_coords = decode_arm_numeric_json(rr$arm_coords_json[[1]] %||% "[]"),
+      parameter_summary = as.character(rr$parameter_summary[[1]] %||% ""),
+      params = decode_arm_params_json(rr$params_json[[1]] %||% "{}"),
+      source_k = suppressWarnings(as.integer(rr$source_k[[1]] %||% NA_integer_)),
+      is_preview = FALSE
+    )
+  }
+
+  arm_show_working_set_effective <- function(working_state) {
+    working_rows <- accepted_visible_working_arm_rows(working_state)
+    if (nrow(working_rows) < 1L) {
+      return(FALSE)
+    }
+    pref <- arm_show_working_set()
+    if (isFALSE(pref)) {
+      return(FALSE)
+    }
+    TRUE
+  }
+
+  arm_overlay_active <- shiny::reactive({
+    st <- arm_panel_state()
+    rows <- if (is.list(st) && is.data.frame(st$rows)) st$rows else empty_arm_candidate_rows()
+    working <- if (is.list(st)) st$working else empty_working_arm_state()
+    arms <- list()
+    virtual_markers <- list()
+    idx_out <- 1L
+    add_virtual_marker <- function(vertex, label = "CENTER", source = "builder") {
+      vv <- suppressWarnings(as.integer(vertex))
+      if (!is.finite(vv) || vv < 1L) {
+        return(invisible(NULL))
+      }
+      key <- sprintf("%s|%d|%s", as.character(source %||% "builder"), as.integer(vv), as.character(label %||% "CENTER"))
+      virtual_markers[[key]] <<- list(
+        vertex = as.integer(vv),
+        label = as.character(label %||% "CENTER"),
+        source = as.character(source %||% "builder")
+      )
+      invisible(NULL)
+    }
+    if (is.data.frame(rows) && nrow(rows) > 0L) {
+      selected <- intersect(arm_overlay_selection(), as.character(rows$dataset_id))
+      if (length(selected) > 0L) {
+        rows_sel <- rows[rows$dataset_id %in% selected, , drop = FALSE]
+        for (ii in seq_len(nrow(rows_sel))) {
+          ds_rows <- read_arm_dataset_rows_from_row(rows_sel[ii, , drop = FALSE])
+          if (!is.data.frame(ds_rows) || nrow(ds_rows) < 1L) {
+            next
+          }
+          for (jj in seq_len(nrow(ds_rows))) {
+            one <- decode_arm_row(ds_rows[jj, , drop = FALSE])
+            if (is.list(one)) {
+              one$source_dataset_id <- as.character(rows_sel$dataset_id[[ii]])
+              arms[[idx_out]] <- one
+              idx_out <- idx_out + 1L
+            }
+          }
+        }
+      }
+    }
+    if (isTRUE(arm_show_working_set_effective(working))) {
+      wr <- accepted_visible_working_arm_rows(working)
+      if (nrow(wr) > 0L) {
+        for (ii in seq_len(nrow(wr))) {
+          one <- decode_arm_row(wr[ii, , drop = FALSE])
+          if (is.list(one)) {
+            one$source_dataset_id <- as.character(working$base_dataset_id %||% "")
+            one$is_working <- TRUE
+            arms[[idx_out]] <- one
+            idx_out <- idx_out + 1L
+          }
+        }
+      }
+    }
+    preview <- arm_preview_variant()
+    if (is.list(preview)) {
+      preview$is_preview <- TRUE
+      arms[[idx_out]] <- preview
+    }
+    builder_a <- resolve_arm_endpoint_choice(input$arm_endpoint_a)
+    builder_b <- resolve_arm_endpoint_choice(input$arm_endpoint_b)
+    if (is.list(builder_a) && isTRUE(builder_a$is_virtual)) {
+      add_virtual_marker(builder_a$vertex, label = builder_a$label, source = "builder")
+    }
+    if (is.list(builder_b) && isTRUE(builder_b$is_virtual)) {
+      add_virtual_marker(builder_b$vertex, label = builder_b$label, source = "builder")
+    }
+    if (length(arms) > 0L) {
+      for (aa in arms) {
+        if (!is.list(aa)) {
+          next
+        }
+        if (isTRUE(aa$endpoint_a_virtual)) {
+          add_virtual_marker(aa$endpoint_a, label = aa$endpoint_a_label %||% "CENTER", source = aa$arm_id %||% "arm")
+        }
+        if (isTRUE(aa$endpoint_b_virtual)) {
+          add_virtual_marker(aa$endpoint_b, label = aa$endpoint_b_label %||% "CENTER", source = aa$arm_id %||% "arm")
+        }
+      }
+    }
+    list(
+      arms = arms,
+      virtual_markers = unname(virtual_markers),
+      selected_id = as.character(arm_selected_id() %||% ""),
+      preview_id = if (is.list(preview)) as.character(preview$arm_id %||% "") else ""
+    )
+  })
+
+  shiny::observe({
+    vv <- input$arm_show_working_set
+    if (!is.null(vv)) {
+      arm_show_working_set(isTRUE(vv))
+    }
+  })
+
+  shiny::observe({
+    vv <- input$arm_datasets_open
+    if (!is.null(vv)) {
+      arm_datasets_open(isTRUE(vv))
+    }
+  })
+
+  shiny::observe({
+    vv <- input$arm_preview_layout_open
+    if (!is.null(vv)) {
+      arm_preview_layout_open(isTRUE(vv))
+    }
+  })
+
+  build_arm_preview_from_inputs <- function(show_error = TRUE) {
+    gd <- arm_graph_data()
+    ctx <- current_arm_graph_context()
+    if (!is.list(gd) || !is.list(ctx)) {
+      if (show_error) {
+        shiny::showNotification("No active graph is available for arm construction.", type = "error")
+      }
+      return(NULL)
+    }
+    a <- resolve_arm_endpoint_choice(input$arm_endpoint_a)
+    b <- resolve_arm_endpoint_choice(input$arm_endpoint_b)
+    if (!is.list(a) || !is.list(b)) {
+      if (show_error) {
+        shiny::showNotification("Choose two arm endpoints first.", type = "warning")
+      }
+      return(NULL)
+    }
+    thickening_method <- as.character(input$arm_thickening_method %||% "path_only")
+    corridor_rel_tol <- suppressWarnings(as.numeric(input$arm_corridor_rel_tol %||% 0.05))
+    corridor_abs_tol <- suppressWarnings(as.numeric(input$arm_corridor_abs_tol %||% 0))
+    tube_radius <- suppressWarnings(as.numeric(input$arm_tube_radius %||% 2))
+    res <- tryCatch(
+      compute_arm_variant(
+        adj.list = gd$adj_list,
+        weight.list = gd$weight_list,
+        coords = gd$coords,
+        endpoint_a = a$vertex,
+        endpoint_b = b$vertex,
+        endpoint_a_key = a$key,
+        endpoint_b_key = b$key,
+        endpoint_a_label = a$label,
+        endpoint_b_label = b$label,
+        endpoint_a_virtual = a$is_virtual,
+        endpoint_b_virtual = b$is_virtual,
+        thickening_method = thickening_method,
+        corridor_rel_tol = corridor_rel_tol,
+        corridor_abs_tol = corridor_abs_tol,
+        tube_radius = tube_radius
+      ),
+      error = function(e) e
+    )
+    if (inherits(res, "error")) {
+      if (show_error) {
+        shiny::showNotification(conditionMessage(res), type = "error")
+      }
+      return(NULL)
+    }
+    res$source_k <- as.integer(ctx$k)
+    res
+  }
+
+  add_preview_arm_to_working_set <- function() {
+    ctx <- current_arm_graph_context()
+    if (!is.list(ctx)) {
+      return(invisible(FALSE))
+    }
+    preview <- arm_preview_variant()
+    if (!is.list(preview)) {
+      preview <- build_arm_preview_from_inputs(show_error = TRUE)
+      if (!is.list(preview)) {
+        return(invisible(FALSE))
+      }
+      arm_preview_variant(preview)
+      arm_preview_layout_open(TRUE)
+      arm_preview_revision(isolate(arm_preview_revision()) + 1L)
+    }
+    st <- arm_panel_state()
+    working <- if (is.list(st) && is.list(st$working)) st$working else empty_working_arm_state(ctx = ctx)
+    updated <- upsert_working_arm_variant_state(
+      state = working,
+      variant = preview,
+      source_type = "manual",
+      source_dataset_id = as.character(working$base_dataset_id %||% "")
+    )
+    save_working_arm_state(updated, ctx = ctx)
+    arm_show_working_set(TRUE)
+    arm_overlay_selection(character(0))
+    arm_selected_id(as.character(preview$arm_id %||% ""))
+    shiny::showNotification(sprintf("Added '%s' to Working Arms.", as.character(preview$label %||% preview$family_label %||% "arm")), type = "message")
+    invisible(TRUE)
+  }
+
+  shiny::observeEvent(input$arm_preview_build, {
+    preview <- build_arm_preview_from_inputs(show_error = TRUE)
+    arm_preview_variant(preview)
+    arm_preview_revision(isolate(arm_preview_revision()) + 1L)
+    if (is.list(preview)) {
+      arm_preview_layout_open(TRUE)
+      arm_selected_id(as.character(preview$arm_id %||% ""))
+    }
+  }, ignoreInit = TRUE)
+
+  shiny::observeEvent(
+    list(input$arm_endpoint_a, input$arm_endpoint_b, input$arm_thickening_method,
+         input$arm_corridor_rel_tol, input$arm_corridor_abs_tol, input$arm_tube_radius),
+    {
+      arm_preview_variant(NULL)
+      arm_preview_layout_open(FALSE)
+      arm_preview_revision(isolate(arm_preview_revision()) + 1L)
+    },
+    ignoreInit = TRUE
+  )
+
+  shiny::observeEvent(input$arm_add_preview_to_working, {
+    add_preview_arm_to_working_set()
+  }, ignoreInit = TRUE)
+
+  shiny::observeEvent(input$arm_working_snapshot, {
+    save_working_arm_snapshot()
+  }, ignoreInit = TRUE)
+
+  shiny::observeEvent(input$arm_working_clear, {
+    ctx <- current_arm_graph_context()
+    if (!is.list(ctx)) {
+      return()
+    }
+    next_state <- working_arm_mark_clean(
+      empty_working_arm_state(ctx = ctx),
+      session_id = arm_session_id
+    )
+    save_working_arm_state(next_state, ctx = ctx)
+    arm_show_working_set(FALSE)
+    arm_preview_layout_open(FALSE)
+    arm_preview_variant(NULL)
+    arm_preview_revision(isolate(arm_preview_revision()) + 1L)
+    arm_selected_id("")
+    shiny::showNotification("Cleared Working Arms.", type = "message")
+  }, ignoreInit = TRUE)
+
+  shiny::observeEvent(input$arm_dataset_action, {
+    event_val <- input$arm_dataset_action
+    if (!is.list(event_val)) {
+      return()
+    }
+    action <- as.character(event_val$action %||% "")
+    dataset_id <- as.character(event_val$dataset_id %||% "")
+    if (!nzchar(action) || !nzchar(dataset_id)) {
+      return()
+    }
+    if (identical(action, "load")) {
+      maybe_load_arm_dataset(dataset_id)
+    } else if (identical(action, "rename")) {
+      row <- arm_dataset_row_by_id(dataset_id)
+      if (is.data.frame(row) && nrow(row) > 0L) {
+        shiny::showModal(
+          shiny::modalDialog(
+            title = "Rename Arm Dataset",
+            shiny::textInput("arm_dataset_rename_value", "Name", value = as.character(row$label[[1]] %||% dataset_id)),
+            footer = shiny::tagList(
+              shiny::modalButton("Cancel"),
+              shiny::actionButton("arm_dataset_rename_confirm", "Rename", class = "btn-primary")
+            ),
+            easyClose = FALSE
+          )
+        )
+        arm_pending_load_dataset_id(dataset_id)
+      }
+    } else if (identical(action, "delete")) {
+      delete_workspace_arm_dataset(dataset_id)
+    } else if (identical(action, "default")) {
+      set_default_arm_dataset(dataset_id)
+    }
+  }, ignoreInit = TRUE)
+
+  shiny::observeEvent(input$arm_dataset_toggle, {
+    event_val <- input$arm_dataset_toggle
+    if (!is.list(event_val)) {
+      return()
+    }
+    dataset_id <- as.character(event_val$dataset_id %||% "")
+    checked <- isTRUE(event_val$checked)
+    if (!nzchar(dataset_id)) {
+      return()
+    }
+    prev <- arm_overlay_selection()
+    next_sel <- if (checked) {
+      unique(c(prev, dataset_id))
+    } else {
+      setdiff(prev, dataset_id)
+    }
+    arm_overlay_selection(next_sel)
+  }, ignoreInit = TRUE)
+
+  shiny::observeEvent(input$arm_dataset_rename_confirm, {
+    dataset_id <- as.character(arm_pending_load_dataset_id() %||% "")
+    arm_pending_load_dataset_id("")
+    shiny::removeModal()
+    if (nzchar(dataset_id)) {
+      rename_workspace_arm_dataset(dataset_id, input$arm_dataset_rename_value %||% "")
+    }
+  }, ignoreInit = TRUE)
+
+  shiny::observeEvent(input$arm_replace_working_set, {
+    dataset_id <- as.character(arm_pending_load_dataset_id() %||% "")
+    arm_pending_load_dataset_id("")
+    shiny::removeModal()
+    if (nzchar(dataset_id)) {
+      use_arm_dataset_as_working_set(dataset_id)
+    }
+  }, ignoreInit = TRUE)
+
+  shiny::observeEvent(input$arm_snapshot_replace_working_set, {
+    dataset_id <- as.character(arm_pending_load_dataset_id() %||% "")
+    arm_pending_load_dataset_id("")
+    shiny::removeModal()
+    snap <- save_working_arm_snapshot()
+    if (isTRUE(snap$ok) && nzchar(dataset_id)) {
+      use_arm_dataset_as_working_set(dataset_id)
+    }
+  }, ignoreInit = TRUE)
+
+  shiny::observeEvent(input$arm_recovered_continue, {
+    arm_draft_banner_dismissed(TRUE)
+  }, ignoreInit = TRUE)
+
+  shiny::observeEvent(input$arm_recovered_save_snapshot, {
+    save_working_arm_snapshot()
+    arm_draft_banner_dismissed(TRUE)
+  }, ignoreInit = TRUE)
+
+  shiny::observeEvent(input$arm_recovered_discard, {
+    discard_working_arm_draft()
+  }, ignoreInit = TRUE)
+
+  shiny::observeEvent(input$arm_working_action, {
+    event_val <- input$arm_working_action
+    if (!is.list(event_val)) {
+      return()
+    }
+    action <- as.character(event_val$action %||% "")
+    arm_id <- as.character(event_val$arm_id %||% "")
+    if (!nzchar(action) || !nzchar(arm_id)) {
+      return()
+    }
+    st <- arm_panel_state()
+    ctx <- if (is.list(st)) st$context else current_arm_graph_context()
+    working <- if (is.list(st)) st$working else empty_working_arm_state(ctx = ctx)
+    if (!is.list(ctx)) {
+      return()
+    }
+    if (identical(action, "select")) {
+      arm_selected_id(arm_id)
+      return()
+    }
+    next_state <- if (identical(action, "hide")) {
+      hide_working_arm_state(working, arm_id)
+    } else if (identical(action, "restore")) {
+      restore_working_arm_state(working, arm_id)
+    } else if (identical(action, "delete")) {
+      remove_working_arm_state(working, arm_id)
+    } else {
+      working
+    }
+    save_working_arm_state(next_state, ctx = ctx)
+    if (identical(action, "hide") || identical(action, "delete")) {
+      if (identical(as.character(arm_selected_id() %||% ""), arm_id)) {
+        arm_selected_id("")
+      }
+    }
+  }, ignoreInit = TRUE)
+
+  shiny::observeEvent(input$arm_working_label_edit, {
+    event_val <- input$arm_working_label_edit
+    if (!is.list(event_val)) {
+      return()
+    }
+    arm_id <- as.character(event_val$arm_id %||% "")
+    label_use <- as.character(event_val$label %||% "")
+    if (!nzchar(arm_id)) {
+      return()
+    }
+    st <- arm_panel_state()
+    ctx <- if (is.list(st)) st$context else current_arm_graph_context()
+    working <- if (is.list(st)) st$working else empty_working_arm_state(ctx = ctx)
+    if (!is.list(ctx)) {
+      return()
+    }
+    next_state <- update_working_arm_label_state(working, arm_id = arm_id, label = label_use)
+    save_working_arm_state(next_state, ctx = ctx)
+  }, ignoreInit = TRUE)
+
   reference_view_state <- shiny::reactive({
     sel <- current_graph_selection()
     if (!is.list(sel) || !is.null(sel$error)) {
@@ -4516,6 +5771,13 @@ app_server <- function(input, output, session) {
     }
 
     adj_list <- picked$graph$adj_list
+    weight_list <- picked$graph$weight_list
+    if (!is.list(weight_list) || length(weight_list) != length(adj_list)) {
+      weight_list <- picked$graph$edge.length.list
+    }
+    if (!is.list(weight_list) || length(weight_list) != length(adj_list)) {
+      weight_list <- lapply(adj_list, function(nb) rep(1, length(nb %||% integer(0))))
+    }
     n_vertices <- length(adj_list)
     if (n_vertices < 1L) {
       return(list(error = "Reference graph has no vertices."))
@@ -4713,6 +5975,7 @@ app_server <- function(input, output, session) {
       n_vertices = n_vertices,
       coords = coords,
       adj_list = adj_list,
+      weight_list = weight_list,
       components = components,
       graph_set = spec$graph_set,
       sources = sources,
@@ -5236,6 +6499,221 @@ app_server <- function(input, output, session) {
           )
       }
 
+      arm_overlay <- arm_overlay_active()
+      arm_list <- if (is.list(arm_overlay$arms)) arm_overlay$arms else list()
+      arm_color <- normalize_palette_choice(
+        input$arm_color %||% "#2563eb",
+        c(
+          "Blue" = "#2563eb",
+          "Orange" = "#f97316",
+          "Green" = "#16a34a",
+          "Purple" = "#8b5cf6",
+          "Black" = "#111827"
+        ),
+        default = "#2563eb"
+      )
+      arm_opacity <- suppressWarnings(as.numeric(input$arm_tube_opacity %||% 0.35))
+      if (!is.finite(arm_opacity) || arm_opacity <= 0) {
+        arm_opacity <- 0.35
+      }
+      arm_path_width <- suppressWarnings(as.numeric(input$arm_path_width %||% 4))
+      if (!is.finite(arm_path_width) || arm_path_width <= 0) {
+        arm_path_width <- 4
+      }
+      arm_vertex_size <- suppressWarnings(as.numeric(input$arm_vertex_size %||% 1))
+      if (!is.finite(arm_vertex_size) || arm_vertex_size <= 0) {
+        arm_vertex_size <- 1
+      }
+      arm_label_size <- suppressWarnings(as.numeric(input$arm_label_size %||% 1))
+      if (!is.finite(arm_label_size) || arm_label_size <= 0) {
+        arm_label_size <- 1
+      }
+      preview_path_color <- normalize_palette_choice(
+        input$arm_preview_path_color %||% "#f97316",
+        c(
+          "Orange" = "#f97316",
+          "Blue" = "#2563eb",
+          "Green" = "#16a34a",
+          "Purple" = "#8b5cf6",
+          "Red" = "#dc2626",
+          "Black" = "#111827"
+        ),
+        default = "#f97316"
+      )
+      preview_body_color <- normalize_palette_choice(
+        input$arm_preview_body_color %||% "#eab308",
+        c(
+          "Gold" = "#eab308",
+          "Orange" = "#f97316",
+          "Blue" = "#2563eb",
+          "Green" = "#16a34a",
+          "Purple" = "#8b5cf6",
+          "Black" = "#111827"
+        ),
+        default = "#eab308"
+      )
+      preview_body_opacity <- suppressWarnings(as.numeric(input$arm_preview_body_opacity %||% 0.75))
+      if (!is.finite(preview_body_opacity) || preview_body_opacity <= 0) {
+        preview_body_opacity <- 0.75
+      }
+      preview_path_width <- suppressWarnings(as.numeric(input$arm_preview_path_width %||% 5))
+      if (!is.finite(preview_path_width) || preview_path_width <= 0) {
+        preview_path_width <- 5
+      }
+      preview_body_size <- suppressWarnings(as.numeric(input$arm_preview_body_size %||% 1.8))
+      if (!is.finite(preview_body_size) || preview_body_size <= 0) {
+        preview_body_size <- 1.8
+      }
+      center_marker_color <- normalize_palette_choice(
+        input$arm_center_marker_color %||% "#111827",
+        c(
+          "Black" = "#111827",
+          "Red" = "#dc2626",
+          "Orange" = "#f97316",
+          "Blue" = "#2563eb",
+          "Green" = "#16a34a",
+          "Purple" = "#8b5cf6"
+        ),
+        default = "#111827"
+      )
+      center_marker_size <- suppressWarnings(as.numeric(input$arm_center_marker_size %||% 1.7))
+      if (!is.finite(center_marker_size) || center_marker_size <= 0) {
+        center_marker_size <- 1.7
+      }
+      show_arm_labels <- isTRUE(input$arm_show_labels %||% TRUE)
+      selected_arm_id <- as.character(arm_overlay$selected_id %||% "")
+      virtual_markers <- if (is.list(arm_overlay$virtual_markers)) arm_overlay$virtual_markers else list()
+
+      if (length(arm_list) > 0L) {
+        for (aa in arm_list) {
+          if (!is.list(aa)) {
+            next
+          }
+          arm_id <- as.character(aa$arm_id %||% "")
+          arm_vertices <- suppressWarnings(as.integer(aa$arm_vertices %||% integer(0)))
+          arm_vertices <- arm_vertices[is.finite(arm_vertices) & arm_vertices >= 1L & arm_vertices <= nn]
+          arm_vertices <- arm_vertices[arm_vertices %in% idx]
+          path_vertices <- suppressWarnings(as.integer(aa$path_vertices %||% integer(0)))
+          path_vertices <- path_vertices[is.finite(path_vertices) & path_vertices >= 1L & path_vertices <= nn]
+          path_vertices <- path_vertices[path_vertices %in% idx]
+          if (length(arm_vertices) < 1L && length(path_vertices) < 1L) {
+            next
+          }
+
+          is_preview <- isTRUE(aa$is_preview)
+          is_selected <- nzchar(selected_arm_id) && identical(selected_arm_id, arm_id)
+          path_color_use <- if (is_preview) {
+            preview_path_color
+          } else if (is_selected) {
+            "#dc2626"
+          } else {
+            arm_color
+          }
+          body_color_use <- if (is_preview) {
+            preview_body_color
+          } else if (is_selected) {
+            "#dc2626"
+          } else {
+            arm_color
+          }
+          body_vertices <- if (is_preview && !identical(as.character(aa$thickening_method %||% "path_only"), "path_only")) {
+            setdiff(arm_vertices, path_vertices)
+          } else {
+            arm_vertices
+          }
+          opacity_use <- if (is_preview) preview_body_opacity else arm_opacity
+          path_width_use <- if (is_preview) preview_path_width else max(2, arm_path_width * if (is_selected) 1.25 else 1)
+          body_size_use <- if (is_preview) preview_body_size else arm_vertex_size
+
+          if (length(body_vertices) > 0L) {
+            p <- p %>%
+              plotly::add_trace(
+                type = "scatter3d",
+                mode = "markers",
+                x = coords[body_vertices, 1],
+                y = coords[body_vertices, 2],
+                z = coords[body_vertices, 3],
+                key = body_vertices,
+                customdata = body_vertices,
+                text = sprintf("arm=%s<br>vertex=%d", as.character(aa$label %||% aa$family_label %||% "arm"), body_vertices),
+                hoverinfo = "text",
+                marker = list(
+                  size = max(2.5, point_size * 0.55 * body_size_use),
+                  color = body_color_use,
+                  opacity = opacity_use
+                ),
+                showlegend = FALSE
+              )
+          }
+
+          if (length(path_vertices) > 1L) {
+            p <- p %>%
+              plotly::add_trace(
+                type = "scatter3d",
+                mode = "lines",
+                x = coords[path_vertices, 1],
+                y = coords[path_vertices, 2],
+                z = coords[path_vertices, 3],
+                text = sprintf("arm path=%s", as.character(aa$label %||% aa$family_label %||% "arm")),
+                hoverinfo = "text",
+                line = list(
+                  color = path_color_use,
+                  width = path_width_use
+                ),
+                showlegend = FALSE
+              )
+          }
+
+          if (isTRUE(show_arm_labels) && length(path_vertices) > 0L) {
+            mid_idx <- path_vertices[[ceiling(length(path_vertices) / 2)]]
+            p <- p %>%
+              plotly::add_trace(
+                type = "scatter3d",
+                mode = "text",
+                x = coords[mid_idx, 1],
+                y = coords[mid_idx, 2],
+                z = coords[mid_idx, 3],
+                text = as.character(aa$label %||% aa$family_label %||% "arm"),
+                hoverinfo = "skip",
+                showlegend = FALSE,
+                textfont = list(size = max(8, 11 * arm_label_size), color = path_color_use)
+              )
+          }
+        }
+      }
+
+      if (length(virtual_markers) > 0L) {
+        v_vertices <- vapply(virtual_markers, function(mm) suppressWarnings(as.integer(mm$vertex %||% NA_integer_)), integer(1))
+        v_labels <- vapply(virtual_markers, function(mm) as.character(mm$label %||% "CENTER"), character(1))
+        keep_virtual <- is.finite(v_vertices) & v_vertices >= 1L & v_vertices <= nn & v_vertices %in% idx
+        if (any(keep_virtual)) {
+          v_vertices <- as.integer(v_vertices[keep_virtual])
+          v_labels <- v_labels[keep_virtual]
+          p <- p %>%
+            plotly::add_trace(
+              type = "scatter3d",
+              mode = "markers+text",
+              x = coords[v_vertices, 1],
+              y = coords[v_vertices, 2],
+              z = coords[v_vertices, 3],
+              key = v_vertices,
+              customdata = v_vertices,
+              text = v_labels,
+              textposition = "top center",
+              hoverinfo = "text",
+              hovertext = sprintf("%s<br>vertex=%d", v_labels, v_vertices),
+              marker = list(
+                size = max(5.5, (point_size + 2.8) * center_marker_size),
+                color = center_marker_color,
+                line = list(color = "#ffffff", width = 1.5),
+                symbol = "diamond"
+              ),
+              textfont = list(size = max(9, 11 * arm_label_size), color = center_marker_color),
+              showlegend = FALSE
+            )
+        }
+      }
+
       p <- p %>%
         plotly::layout(
           margin = list(l = 0, r = 0, b = 0, t = 10),
@@ -5347,6 +6825,86 @@ app_server <- function(input, output, session) {
       } else {
         endpoint_marker_color <- endpoint_marker_color[[1]]
       }
+      arm_color <- normalize_palette_choice(
+        input$arm_color %||% "#2563eb",
+        c(
+          "Blue" = "#2563eb",
+          "Orange" = "#f97316",
+          "Green" = "#16a34a",
+          "Purple" = "#8b5cf6",
+          "Black" = "#111827"
+        ),
+        default = "#2563eb"
+      )
+      arm_opacity <- suppressWarnings(as.numeric(input$arm_tube_opacity %||% 0.35))
+      if (!is.finite(arm_opacity) || arm_opacity <= 0) {
+        arm_opacity <- 0.35
+      }
+      arm_path_width <- suppressWarnings(as.numeric(input$arm_path_width %||% 4))
+      if (!is.finite(arm_path_width) || arm_path_width <= 0) {
+        arm_path_width <- 4
+      }
+      arm_vertex_size <- suppressWarnings(as.numeric(input$arm_vertex_size %||% 1))
+      if (!is.finite(arm_vertex_size) || arm_vertex_size <= 0) {
+        arm_vertex_size <- 1
+      }
+      arm_label_size <- suppressWarnings(as.numeric(input$arm_label_size %||% 1))
+      if (!is.finite(arm_label_size) || arm_label_size <= 0) {
+        arm_label_size <- 1
+      }
+      preview_path_color <- normalize_palette_choice(
+        input$arm_preview_path_color %||% "#f97316",
+        c(
+          "Orange" = "#f97316",
+          "Blue" = "#2563eb",
+          "Green" = "#16a34a",
+          "Purple" = "#8b5cf6",
+          "Red" = "#dc2626",
+          "Black" = "#111827"
+        ),
+        default = "#f97316"
+      )
+      preview_body_color <- normalize_palette_choice(
+        input$arm_preview_body_color %||% "#eab308",
+        c(
+          "Gold" = "#eab308",
+          "Orange" = "#f97316",
+          "Blue" = "#2563eb",
+          "Green" = "#16a34a",
+          "Purple" = "#8b5cf6",
+          "Black" = "#111827"
+        ),
+        default = "#eab308"
+      )
+      preview_body_opacity <- suppressWarnings(as.numeric(input$arm_preview_body_opacity %||% 0.75))
+      if (!is.finite(preview_body_opacity) || preview_body_opacity <= 0) {
+        preview_body_opacity <- 0.75
+      }
+      preview_path_width <- suppressWarnings(as.numeric(input$arm_preview_path_width %||% 5))
+      if (!is.finite(preview_path_width) || preview_path_width <= 0) {
+        preview_path_width <- 5
+      }
+      preview_body_size <- suppressWarnings(as.numeric(input$arm_preview_body_size %||% 1.8))
+      if (!is.finite(preview_body_size) || preview_body_size <= 0) {
+        preview_body_size <- 1.8
+      }
+      center_marker_color <- normalize_palette_choice(
+        input$arm_center_marker_color %||% "#111827",
+        c(
+          "Black" = "#111827",
+          "Red" = "#dc2626",
+          "Orange" = "#f97316",
+          "Blue" = "#2563eb",
+          "Green" = "#16a34a",
+          "Purple" = "#8b5cf6"
+        ),
+        default = "#111827"
+      )
+      center_marker_size <- suppressWarnings(as.numeric(input$arm_center_marker_size %||% 1.7))
+      if (!is.finite(center_marker_size) || center_marker_size <= 0) {
+        center_marker_size <- 1.7
+      }
+      show_arm_labels <- isTRUE(input$arm_show_labels %||% TRUE)
 
       ep_overlay <- endpoint_overlay_active()
       ep_extra <- suppressWarnings(as.integer(ep_overlay$vertices %||% integer(0)))
@@ -5444,6 +7002,149 @@ app_server <- function(input, output, session) {
         NULL
       }
 
+      arm_overlay <- arm_overlay_active()
+      arm_list <- if (is.list(arm_overlay$arms)) arm_overlay$arms else list()
+      virtual_markers <- if (is.list(arm_overlay$virtual_markers)) arm_overlay$virtual_markers else list()
+      selected_arm_id <- as.character(arm_overlay$selected_id %||% "")
+      arm_layers <- list()
+      if (length(arm_list) > 0L) {
+        for (aa in arm_list) {
+          if (!is.list(aa)) {
+            next
+          }
+          arm_vertices <- suppressWarnings(as.integer(aa$arm_vertices %||% integer(0)))
+          arm_vertices <- arm_vertices[is.finite(arm_vertices) & arm_vertices >= 1L & arm_vertices <= nn]
+          path_vertices <- suppressWarnings(as.integer(aa$path_vertices %||% integer(0)))
+          path_vertices <- path_vertices[is.finite(path_vertices) & path_vertices >= 1L & path_vertices <= nn]
+          arm_view <- match(arm_vertices, keep_idx)
+          arm_view <- arm_view[is.finite(arm_view) & arm_view >= 1L & arm_view <= nn_view]
+          path_view <- match(path_vertices, keep_idx)
+          path_view <- path_view[is.finite(path_view) & path_view >= 1L & path_view <= nn_view]
+          if (length(arm_view) < 1L && length(path_view) < 1L) {
+            next
+          }
+          is_preview <- isTRUE(aa$is_preview)
+          is_selected <- nzchar(selected_arm_id) && identical(selected_arm_id, as.character(aa$arm_id %||% ""))
+          path_color_use <- if (is_preview) {
+            preview_path_color
+          } else if (is_selected) {
+            "#dc2626"
+          } else {
+            arm_color
+          }
+          body_color_use <- if (is_preview) {
+            grDevices::adjustcolor(preview_body_color, alpha.f = preview_body_opacity)
+          } else if (is_selected) {
+            grDevices::adjustcolor("#dc2626", alpha.f = arm_opacity)
+          } else {
+            grDevices::adjustcolor(arm_color, alpha.f = arm_opacity)
+          }
+          body_view <- if (is_preview && !identical(as.character(aa$thickening_method %||% "path_only"), "path_only")) {
+            setdiff(arm_view, path_view)
+          } else {
+            arm_view
+          }
+          arm_layers[[length(arm_layers) + 1L]] <- list(
+            fun = function(ctx, arm_idx, path_idx, arm_label, path_color_use, body_color_use, arm_vertex_size, arm_path_width, arm_label_size, show_arm_labels) {
+              idx <- suppressWarnings(as.integer(arm_idx))
+              idx <- idx[is.finite(idx) & idx >= 1L & idx <= nrow(ctx$X)]
+              pidx <- suppressWarnings(as.integer(path_idx))
+              pidx <- pidx[is.finite(pidx) & pidx >= 1L & pidx <= nrow(ctx$X)]
+              if (length(idx) > 0L) {
+                rgl::points3d(
+                  ctx$X[idx, , drop = FALSE],
+                  col = body_color_use,
+                  size = max(3.5, 4.5 * arm_vertex_size)
+                )
+              }
+              if (length(pidx) > 1L) {
+                rgl::lines3d(
+                  ctx$X[pidx, , drop = FALSE],
+                  col = path_color_use,
+                  lwd = max(2, arm_path_width)
+                )
+              }
+              if (isTRUE(show_arm_labels) && length(pidx) > 0L) {
+                mid <- pidx[[ceiling(length(pidx) / 2)]]
+                xyz <- ctx$X[mid, , drop = FALSE]
+                rgl::texts3d(
+                  x = xyz[, 1],
+                  y = xyz[, 2],
+                  z = xyz[, 3],
+                  texts = as.character(arm_label %||% "arm"),
+                  cex = max(0.7, 1.2 * arm_label_size),
+                  col = path_color_use,
+                  useFreeType = TRUE,
+                  fixedSize = TRUE,
+                  lit = FALSE
+                )
+              }
+              invisible(NULL)
+            },
+            args = list(
+              arm_idx = body_view,
+              path_idx = path_view,
+              arm_label = as.character(aa$label %||% aa$family_label %||% "arm"),
+              path_color_use = path_color_use,
+              body_color_use = body_color_use,
+              arm_vertex_size = if (is_preview) preview_body_size else arm_vertex_size,
+              arm_path_width = if (is_preview) preview_path_width else arm_path_width,
+              arm_label_size = arm_label_size,
+              show_arm_labels = show_arm_labels
+            ),
+            with_ctx = TRUE
+          )
+        }
+      }
+      if (length(virtual_markers) > 0L) {
+        v_vertices <- vapply(virtual_markers, function(mm) suppressWarnings(as.integer(mm$vertex %||% NA_integer_)), integer(1))
+        v_labels <- vapply(virtual_markers, function(mm) as.character(mm$label %||% "CENTER"), character(1))
+        keep_virtual <- is.finite(v_vertices) & v_vertices >= 1L & v_vertices <= nn
+        if (any(keep_virtual)) {
+          v_view <- match(as.integer(v_vertices[keep_virtual]), keep_idx)
+          keep_view <- is.finite(v_view) & v_view >= 1L & v_view <= nn_view
+          v_view <- v_view[keep_view]
+          v_labels <- v_labels[keep_virtual][keep_view]
+          if (length(v_view) > 0L) {
+            arm_layers[[length(arm_layers) + 1L]] <- list(
+              fun = function(ctx, center_idx, center_labels, center_marker_color, center_marker_size, arm_label_size) {
+                idx <- suppressWarnings(as.integer(center_idx))
+                idx <- idx[is.finite(idx) & idx >= 1L & idx <= nrow(ctx$X)]
+                if (length(idx) < 1L) {
+                  return(invisible(NULL))
+                }
+                rgl::points3d(
+                  ctx$X[idx, , drop = FALSE],
+                  col = center_marker_color,
+                  size = max(4.5, 5.5 * center_marker_size)
+                )
+                rgl::texts3d(
+                  x = ctx$X[idx, 1],
+                  y = ctx$X[idx, 2],
+                  z = ctx$X[idx, 3],
+                  texts = as.character(center_labels %||% rep("CENTER", length(idx))),
+                  cex = max(0.7, 1.15 * arm_label_size),
+                  col = center_marker_color,
+                  useFreeType = TRUE,
+                  fixedSize = TRUE,
+                  lit = FALSE
+                )
+                invisible(NULL)
+              },
+              args = list(
+                center_idx = v_view,
+                center_labels = v_labels,
+                center_marker_color = center_marker_color,
+                center_marker_size = center_marker_size,
+                arm_label_size = arm_label_size
+              ),
+              with_ctx = TRUE
+            )
+          }
+        }
+      }
+      post_layers <- c(endpoint_layers, arm_layers)
+
       make_plain_widget <- function(base_color = "gray70") {
         plot_fn <- resolve_gflow_plot3d_fn("plot3D.plain")
         plot_fn(
@@ -5454,7 +7155,7 @@ app_server <- function(input, output, session) {
           widget.width = 1700L,
           widget.height = 1000L,
           background.color = "white",
-          post.layers = endpoint_layers
+          post.layers = post_layers
         )
       }
 
@@ -5480,7 +7181,7 @@ app_server <- function(input, output, session) {
             widget.width = 1700L,
             widget.height = 1000L,
             background.color = "white",
-            post.layers = endpoint_layers
+            post.layers = post_layers
           ),
           error = function(e) make_plain_widget()
         )
@@ -5503,7 +7204,7 @@ app_server <- function(input, output, session) {
                 widget.width = 1700L,
                 widget.height = 1000L,
                 background.color = "white",
-                post.layers = endpoint_layers
+                post.layers = post_layers
               ),
             error = function(e) make_plain_widget()
           )
@@ -6039,6 +7740,10 @@ app_server <- function(input, output, session) {
     endpoint_panel <- endpoint_panel_state()
     endpoint_rows <- if (is.list(endpoint_panel) && is.data.frame(endpoint_panel$rows)) endpoint_panel$rows else data.frame()
     endpoint_working <- if (is.list(endpoint_panel) && is.list(endpoint_panel$working)) endpoint_panel$working else empty_working_endpoint_state()
+    arm_panel <- arm_panel_state()
+    arm_rows <- if (is.list(arm_panel) && is.data.frame(arm_panel$rows)) arm_panel$rows else empty_arm_candidate_rows()
+    arm_working <- if (is.list(arm_panel) && is.list(arm_panel$working)) arm_panel$working else empty_working_arm_state()
+    arm_virtual <- arm_virtual_endpoints()
     has_asset_views <- nrow(graph_tbl) > 0L || nrow(condexp_tbl) > 0L || length(endpoint_runs) > 0L
 
     build_endpoint_candidate_table <- function(rows_df) {
@@ -6349,6 +8054,464 @@ app_server <- function(input, output, session) {
       shiny::tagList(header, content)
     }
 
+    build_arm_dataset_table <- function(rows_df) {
+      if (!is.data.frame(rows_df) || nrow(rows_df) < 1L) {
+        return(shiny::p(class = "gf-hint", "No saved arm datasets found for the current graph set."))
+      }
+
+      head_row <- shiny::tags$tr(
+        shiny::tags$th("show"),
+        shiny::tags$th("loaded"),
+        shiny::tags$th("dataset"),
+        shiny::tags$th("method"),
+        shiny::tags$th("k"),
+        shiny::tags$th("n"),
+        shiny::tags$th("origin"),
+        shiny::tags$th("actions")
+      )
+      body_rows <- lapply(seq_len(nrow(rows_df)), function(ii) {
+        rr <- rows_df[ii, , drop = FALSE]
+        dataset_id <- as.character(rr$dataset_id[[1]] %||% "")
+        loaded_mark <- if (isTRUE(rr$is_working_source[[1]])) "\u2713" else ""
+        default_badge <- if (isTRUE(rr$is_default[[1]])) {
+          shiny::tags$span(class = "badge bg-secondary", "default")
+        } else {
+          NULL
+        }
+        shiny::tags$tr(
+          shiny::tags$td(
+            shiny::tags$input(
+              type = "checkbox",
+              checked = if (isTRUE(rr$selected[[1]])) "checked" else NULL,
+              onclick = sprintf(
+                "Shiny.setInputValue('arm_dataset_toggle',{dataset_id:'%s',checked:this.checked},{priority:'event'})",
+                dataset_id
+              )
+            )
+          ),
+          shiny::tags$td(class = "gf-endpoint-loaded-col", loaded_mark),
+          shiny::tags$td(
+            shiny::div(as.character(rr$label[[1]] %||% "")),
+            default_badge
+          ),
+          shiny::tags$td(as.character(rr$method[[1]] %||% "")),
+          shiny::tags$td(as.character(rr$k_display[[1]] %||% "")),
+          shiny::tags$td(as.character(rr$n_arms[[1]] %||% "")),
+          shiny::tags$td(as.character(rr$origin[[1]] %||% "")),
+          shiny::tags$td(
+            class = "gf-endpoint-table-actions-cell",
+            if (isTRUE(rr$can_load[[1]])) shiny::tags$button(
+              type = "button",
+              class = "btn btn-light btn-sm gf-btn-inline",
+              onclick = sprintf(
+                "Shiny.setInputValue('arm_dataset_action',{action:'load',dataset_id:'%s'},{priority:'event'})",
+                dataset_id
+              ),
+              "Load"
+            ),
+            if (isTRUE(rr$can_rename[[1]])) shiny::tags$button(
+              type = "button",
+              class = "btn btn-light btn-sm gf-btn-inline",
+              onclick = sprintf(
+                "Shiny.setInputValue('arm_dataset_action',{action:'rename',dataset_id:'%s'},{priority:'event'})",
+                dataset_id
+              ),
+              "Rename"
+            ),
+            if (isTRUE(rr$can_delete[[1]])) shiny::tags$button(
+              type = "button",
+              class = "btn btn-light btn-sm gf-btn-inline",
+              onclick = sprintf(
+                "Shiny.setInputValue('arm_dataset_action',{action:'delete',dataset_id:'%s'},{priority:'event'})",
+                dataset_id
+              ),
+              "Delete"
+            ),
+            if (isTRUE(rr$can_set_default[[1]]) && !isTRUE(rr$is_default[[1]])) shiny::tags$button(
+              type = "button",
+              class = "btn btn-light btn-sm gf-btn-inline",
+              onclick = sprintf(
+                "Shiny.setInputValue('arm_dataset_action',{action:'default',dataset_id:'%s'},{priority:'event'})",
+                dataset_id
+              ),
+              "Set Default"
+            )
+          )
+        )
+      })
+
+      shiny::tagList(
+        shiny::div(
+          class = "gf-hint",
+          "Saved arm sets live here. Checkboxes control graph overlays; actions load or manage datasets."
+        ),
+        shiny::div(
+          class = "table-responsive gf-endpoint-table-scroll",
+          shiny::tags$table(
+            class = "table table-sm gf-asset-table",
+            shiny::tags$thead(head_row),
+            shiny::tags$tbody(body_rows)
+          )
+        )
+      )
+    }
+
+    build_working_arm_table <- function(working_state) {
+      rows_df <- accepted_visible_working_arm_rows(working_state)
+      hidden_rows_df <- accepted_hidden_working_arm_rows(working_state)
+      selected_arm <- as.character(arm_selected_id() %||% "")
+      header <- shiny::div(
+        class = "gf-endpoint-header-row",
+        shiny::div(
+          class = "gf-endpoint-header-main",
+          shiny::h6(
+            class = "gf-graph-layout-head gf-endpoint-section-head",
+            sprintf("Working Arms (%d)", as.integer(nrow(rows_df)))
+          ),
+          shiny::tags$span(
+            class = if (working_arm_is_modified(working_state)) {
+              "gf-endpoint-status-badge gf-endpoint-status-modified"
+            } else {
+              "gf-endpoint-status-badge gf-endpoint-status-clean"
+            },
+            if (working_arm_is_modified(working_state)) "Modified" else "Clean"
+          )
+        ),
+        shiny::tags$label(
+          class = "gf-endpoint-inline-check",
+          shiny::tags$input(
+            type = "checkbox",
+            id = "arm_show_working_set",
+            checked = if (isTRUE(arm_show_working_set_effective(working_state))) "checked" else NULL
+          ),
+          shiny::tags$span("Show Working Set")
+        )
+      )
+
+      build_rows_table <- function(rows_use, hidden = FALSE) {
+        head_row <- shiny::tags$tr(
+          shiny::tags$th("arm"),
+          shiny::tags$th("pair"),
+          shiny::tags$th("method"),
+          shiny::tags$th("n"),
+          shiny::tags$th("actions")
+        )
+        body_rows <- lapply(seq_len(nrow(rows_use)), function(ii) {
+          rr <- rows_use[ii, , drop = FALSE]
+          arm_id <- as.character(rr$arm_id[[1]] %||% "")
+          arm_n <- length(decode_arm_integer_json(rr$arm_vertices_json[[1]] %||% "[]"))
+          shiny::tags$tr(
+            class = if (identical(selected_arm, arm_id)) "gf-endpoint-working-row-selected" else NULL,
+            shiny::tags$td(
+              class = "gf-endpoint-working-select-cell",
+              shiny::tags$button(
+                type = "button",
+                class = "gf-endpoint-working-select-btn",
+                onclick = sprintf(
+                  "Shiny.setInputValue('arm_working_action',{action:'select',arm_id:'%s'},{priority:'event'})",
+                  arm_id
+                ),
+                as.character(rr$label[[1]] %||% rr$family_label[[1]] %||% arm_id)
+              )
+            ),
+            shiny::tags$td(as.character(rr$family_label[[1]] %||% "")),
+            shiny::tags$td(as.character(rr$thickening_method[[1]] %||% "")),
+            shiny::tags$td(as.character(arm_n)),
+            shiny::tags$td(
+              class = "gf-endpoint-table-actions-cell",
+              if (!hidden) shiny::tags$button(
+                type = "button",
+                class = "btn btn-light btn-sm gf-btn-inline gf-endpoint-remove-btn",
+                onclick = sprintf(
+                  "Shiny.setInputValue('arm_working_action',{action:'hide',arm_id:'%s'},{priority:'event'})",
+                  arm_id
+                ),
+                "Hide"
+              ),
+              if (hidden) shiny::tags$button(
+                type = "button",
+                class = "btn btn-light btn-sm gf-btn-inline",
+                onclick = sprintf(
+                  "Shiny.setInputValue('arm_working_action',{action:'restore',arm_id:'%s'},{priority:'event'})",
+                  arm_id
+                ),
+                "Restore"
+              ),
+              if (hidden) shiny::tags$button(
+                type = "button",
+                class = "btn btn-light btn-sm gf-btn-inline gf-endpoint-remove-btn",
+                onclick = sprintf(
+                  "Shiny.setInputValue('arm_working_action',{action:'delete',arm_id:'%s'},{priority:'event'})",
+                  arm_id
+                ),
+                "Delete"
+              )
+            )
+          )
+        })
+        shiny::div(
+          class = "table-responsive gf-endpoint-table-scroll",
+          shiny::tags$table(
+            class = "table table-sm gf-asset-table",
+            shiny::tags$thead(head_row),
+            shiny::tags$tbody(body_rows)
+          )
+        )
+      }
+
+      preview <- arm_preview_variant()
+      shiny::tagList(
+        header,
+        if (nrow(rows_df) > 0L) build_rows_table(rows_df, hidden = FALSE) else shiny::p(class = "gf-hint", "No visible working arms."),
+        if (nrow(hidden_rows_df) > 0L) {
+          shiny::tags$details(
+            class = "gf-endpoint-metrics-details",
+            shiny::tags$summary(sprintf("Hidden Arms (%d)", as.integer(nrow(hidden_rows_df)))),
+            build_rows_table(hidden_rows_df, hidden = TRUE)
+          )
+        } else {
+          NULL
+        },
+        if (is.list(preview)) {
+          shiny::div(
+            class = "gf-hint",
+            sprintf(
+              "Preview: %s | path=%d | vertices=%d | %s",
+              as.character(preview$label %||% preview$family_label %||% "arm"),
+              length(preview$path_vertices %||% integer(0)),
+              length(preview$arm_vertices %||% integer(0)),
+              as.character(preview$parameter_summary %||% "")
+            )
+          )
+        } else {
+          shiny::div(class = "gf-hint", "No arm preview is active.")
+        }
+      )
+    }
+
+    build_arm_builder_ui <- function() {
+      choices <- arm_builder_endpoint_choices()
+      choice_vals <- unname(choices)
+      if (length(choice_vals) < 2L) {
+        return(shiny::p(class = "gf-hint", "Create or load at least two endpoints first. Working Endpoints supply the endpoint choices for arm construction."))
+      }
+      sel_a <- as.character(input$arm_endpoint_a %||% choice_vals[[1]])
+      if (!(sel_a %in% choice_vals)) {
+        sel_a <- choice_vals[[1]]
+      }
+      sel_b <- as.character(input$arm_endpoint_b %||% if (length(choice_vals) > 1L) choice_vals[[2]] else choice_vals[[1]])
+      if (!(sel_b %in% choice_vals)) {
+        sel_b <- if (length(choice_vals) > 1L) choice_vals[[2]] else choice_vals[[1]]
+      }
+      thick_choices <- c(
+        "Path only" = "path_only",
+        "Corridor" = "corridor",
+        "Graph tube (hop)" = "tube_hop",
+        "Graph tube (geodesic)" = "tube_geodesic",
+        "Harmonic extension (hop)" = "harmonic_hop",
+        "Harmonic extension (geodesic)" = "harmonic_geodesic"
+      )
+      thick_sel <- as.character(input$arm_thickening_method %||% "path_only")
+      if (!(thick_sel %in% unname(thick_choices))) {
+        thick_sel <- "path_only"
+      }
+      center_hint <- NULL
+      if (is.data.frame(arm_virtual) && nrow(arm_virtual) > 0L) {
+        center_hint <- sprintf(
+          "CENTER is a virtual endpoint mapped to vertex v%d and is shown on the graph when selected.",
+          suppressWarnings(as.integer(arm_virtual$vertex[[1]]))
+        )
+      }
+      shiny::tagList(
+        shiny::div(class = "gf-hint", "Build one arm variant from an endpoint pair using the weighted graph shortest path."),
+        if (nzchar(as.character(center_hint %||% ""))) shiny::div(class = "gf-hint", center_hint) else NULL,
+        shiny::div(
+          class = "gf-graph-row gf-graph-layout-row",
+          shiny::span(class = "gf-graph-row-label", "Endpoint A:"),
+          shiny::selectInput("arm_endpoint_a", label = NULL, choices = choices, selected = sel_a, width = "220px")
+        ),
+        shiny::div(
+          class = "gf-graph-row gf-graph-layout-row",
+          shiny::span(class = "gf-graph-row-label", "Endpoint B:"),
+          shiny::selectInput("arm_endpoint_b", label = NULL, choices = choices, selected = sel_b, width = "220px")
+        ),
+        shiny::div(
+          class = "gf-graph-row gf-graph-layout-row",
+          shiny::span(class = "gf-graph-row-label", "Path method:"),
+          shiny::span(class = "gf-hint", "Weighted shortest path")
+        ),
+        shiny::div(
+          class = "gf-graph-row gf-graph-layout-row",
+          shiny::span(class = "gf-graph-row-label", "Variant:"),
+          shiny::selectInput("arm_thickening_method", label = NULL, choices = thick_choices, selected = thick_sel, width = "220px")
+        ),
+        if (identical(thick_sel, "corridor")) {
+          shiny::tagList(
+            shiny::div(
+              class = "gf-graph-row gf-graph-layout-row",
+              shiny::span(class = "gf-graph-row-label", "Corridor rel.tol:"),
+              shiny::numericInput("arm_corridor_rel_tol", label = NULL, value = suppressWarnings(as.numeric(input$arm_corridor_rel_tol %||% 0.05)), min = 0, step = 0.01, width = "130px")
+            ),
+            shiny::div(
+              class = "gf-graph-row gf-graph-layout-row",
+              shiny::span(class = "gf-graph-row-label", "Corridor abs.tol:"),
+              shiny::numericInput("arm_corridor_abs_tol", label = NULL, value = suppressWarnings(as.numeric(input$arm_corridor_abs_tol %||% 0)), min = 0, step = 0.01, width = "130px")
+            )
+          )
+        } else {
+          NULL
+        },
+        if (thick_sel %in% c("tube_hop", "tube_geodesic", "harmonic_hop", "harmonic_geodesic")) {
+          shiny::div(
+            class = "gf-graph-row gf-graph-layout-row",
+            shiny::span(class = "gf-graph-row-label", "Tube radius:"),
+            shiny::numericInput("arm_tube_radius", label = NULL, value = suppressWarnings(as.numeric(input$arm_tube_radius %||% 2)), min = 0.1, step = 0.25, width = "130px")
+          )
+        } else {
+          NULL
+        },
+        shiny::div(
+          class = "gf-endpoint-actions",
+          shiny::actionButton("arm_preview_build", "Preview Arm", class = "btn-light btn-sm gf-btn-inline"),
+          shiny::actionButton("arm_add_preview_to_working", "Add To Working Arms", class = "btn-light btn-sm gf-btn-inline"),
+          shiny::actionButton("arm_working_snapshot", "Save Snapshot", class = "btn-light btn-sm gf-btn-inline"),
+          shiny::actionButton("arm_working_clear", "Clear Working Arms", class = "btn-light btn-sm gf-btn-inline")
+        )
+      )
+    }
+
+    build_preview_arm_layout_ui <- function(preview) {
+      if (!is.list(preview)) {
+        return(NULL)
+      }
+      path_n <- length(preview$path_vertices %||% integer(0))
+      arm_n <- length(preview$arm_vertices %||% integer(0))
+      body_n <- max(0L, arm_n - length(intersect(preview$path_vertices %||% integer(0), preview$arm_vertices %||% integer(0))))
+      shiny::tags$details(
+        class = "gf-endpoint-metrics-details",
+        open = if (isTRUE(arm_preview_layout_open())) "open" else NULL,
+        ontoggle = "Shiny.setInputValue('arm_preview_layout_open', this.open, {priority: 'event'})",
+        shiny::tags$summary("Preview Arm Layout"),
+        shiny::div(
+          class = "gf-hint",
+          sprintf(
+            "Preview: %s | path=%d | arm=%d | off-path body=%d | %s",
+            as.character(preview$label %||% preview$family_label %||% "arm"),
+            as.integer(path_n),
+            as.integer(arm_n),
+            as.integer(body_n),
+            as.character(preview$parameter_summary %||% "")
+          )
+        ),
+        shiny::div(
+          class = "gf-graph-row gf-graph-layout-row",
+          shiny::span(class = "gf-graph-row-label", "Path color:"),
+          shiny::selectInput(
+            "arm_preview_path_color",
+            label = NULL,
+            choices = c(
+              "Orange" = "#f97316",
+              "Blue" = "#2563eb",
+              "Green" = "#16a34a",
+              "Purple" = "#8b5cf6",
+              "Red" = "#dc2626",
+              "Black" = "#111827"
+            ),
+            selected = as.character(input$arm_preview_path_color %||% "#f97316"),
+            width = "180px"
+          )
+        ),
+        shiny::div(
+          class = "gf-graph-row gf-graph-layout-row",
+          shiny::span(class = "gf-graph-row-label", "Path width:"),
+          shiny::sliderInput(
+            "arm_preview_path_width",
+            label = NULL,
+            min = 1,
+            max = 10,
+            step = 1,
+            value = suppressWarnings(as.numeric(input$arm_preview_path_width %||% 5)),
+            width = "205px"
+          )
+        ),
+        shiny::div(
+          class = "gf-graph-row gf-graph-layout-row",
+          shiny::span(class = "gf-graph-row-label", "Body color:"),
+          shiny::selectInput(
+            "arm_preview_body_color",
+            label = NULL,
+            choices = c(
+              "Gold" = "#eab308",
+              "Orange" = "#f97316",
+              "Blue" = "#2563eb",
+              "Green" = "#16a34a",
+              "Purple" = "#8b5cf6",
+              "Black" = "#111827"
+            ),
+            selected = as.character(input$arm_preview_body_color %||% "#eab308"),
+            width = "180px"
+          )
+        ),
+        shiny::div(
+          class = "gf-graph-row gf-graph-layout-row",
+          shiny::span(class = "gf-graph-row-label", "Body opacity:"),
+          shiny::sliderInput(
+            "arm_preview_body_opacity",
+            label = NULL,
+            min = 0.10,
+            max = 1.0,
+            step = 0.05,
+            value = suppressWarnings(as.numeric(input$arm_preview_body_opacity %||% 0.75)),
+            width = "205px"
+          )
+        ),
+        shiny::div(
+          class = "gf-graph-row gf-graph-layout-row",
+          shiny::span(class = "gf-graph-row-label", "Body size:"),
+          shiny::sliderInput(
+            "arm_preview_body_size",
+            label = NULL,
+            min = 0.5,
+            max = 4.0,
+            step = 0.1,
+            value = suppressWarnings(as.numeric(input$arm_preview_body_size %||% 1.8)),
+            width = "205px"
+          )
+        ),
+        shiny::div(
+          class = "gf-graph-row gf-graph-layout-row",
+          shiny::span(class = "gf-graph-row-label", "Center color:"),
+          shiny::selectInput(
+            "arm_center_marker_color",
+            label = NULL,
+            choices = c(
+              "Black" = "#111827",
+              "Red" = "#dc2626",
+              "Orange" = "#f97316",
+              "Blue" = "#2563eb",
+              "Green" = "#16a34a",
+              "Purple" = "#8b5cf6"
+            ),
+            selected = as.character(input$arm_center_marker_color %||% "#111827"),
+            width = "180px"
+          )
+        ),
+        shiny::div(
+          class = "gf-graph-row gf-graph-layout-row",
+          shiny::span(class = "gf-graph-row-label", "Center size:"),
+          shiny::sliderInput(
+            "arm_center_marker_size",
+            label = NULL,
+            min = 0.8,
+            max = 4.0,
+            step = 0.1,
+            value = suppressWarnings(as.numeric(input$arm_center_marker_size %||% 1.7)),
+            width = "205px"
+          )
+        )
+      )
+    }
+
     panels <- list()
     open.panels <- c("workflow_graph_structure")
 
@@ -6640,6 +8803,137 @@ app_server <- function(input, output, session) {
             )
           ),
           bslib::accordion_panel(
+            "Arms",
+            value = "workflow_arm_structure",
+            shiny::tagList(
+              if (is.list(arm_panel$draft_banner)) {
+                shiny::div(
+                  class = "gf-endpoint-section gf-endpoint-draft-banner",
+                  shiny::div(class = "gf-hint", "Recovered unsaved working arm draft."),
+                  shiny::div(
+                    class = "gf-endpoint-actions",
+                    shiny::actionButton("arm_recovered_continue", "Continue Editing", class = "btn-light btn-sm gf-btn-inline"),
+                    shiny::actionButton("arm_recovered_save_snapshot", "Save Snapshot", class = "btn-light btn-sm gf-btn-inline"),
+                    shiny::actionButton("arm_recovered_discard", "Discard Draft", class = "btn-light btn-sm gf-btn-inline")
+                  )
+                )
+              } else {
+                NULL
+              },
+              shiny::div(
+                class = "gf-endpoint-section",
+                build_working_arm_table(arm_working)
+              ),
+              shiny::div(
+                class = "gf-endpoint-section",
+                shiny::h6(class = "gf-graph-layout-head", "Arm Builder"),
+                build_arm_builder_ui()
+              ),
+              if (is.list(arm_preview_variant())) shiny::div(
+                class = "gf-endpoint-section",
+                build_preview_arm_layout_ui(arm_preview_variant())
+              ) else NULL,
+              shiny::div(
+                class = "gf-endpoint-section",
+                shiny::tags$details(
+                  class = "gf-endpoint-metrics-details",
+                  open = if (isTRUE(arm_datasets_open())) "open" else NULL,
+                  ontoggle = "Shiny.setInputValue('arm_datasets_open', this.open, {priority: 'event'})",
+                  shiny::tags$summary(sprintf("Arm Datasets (%d)", as.integer(nrow(arm_rows)))),
+                  build_arm_dataset_table(arm_rows)
+                )
+              ),
+              shiny::div(
+                class = "gf-endpoint-section",
+                shiny::tags$details(
+                  class = "gf-endpoint-metrics-details",
+                  shiny::tags$summary("Arm Layout"),
+                  shiny::div(
+                    class = "gf-graph-row gf-graph-layout-row",
+                    shiny::span(class = "gf-graph-row-label", "Arm color:"),
+                    shiny::selectInput(
+                      "arm_color",
+                      label = NULL,
+                      choices = c(
+                        "Blue" = "#2563eb",
+                        "Orange" = "#f97316",
+                        "Green" = "#16a34a",
+                        "Purple" = "#8b5cf6",
+                        "Black" = "#111827"
+                      ),
+                      selected = as.character(input$arm_color %||% "#2563eb"),
+                      width = "180px"
+                    )
+                  ),
+                  shiny::div(
+                    class = "gf-graph-row gf-graph-layout-row",
+                    shiny::span(class = "gf-graph-row-label", "Tube opacity:"),
+                    shiny::sliderInput(
+                      "arm_tube_opacity",
+                      label = NULL,
+                      min = 0.10,
+                      max = 1.0,
+                      step = 0.05,
+                      value = suppressWarnings(as.numeric(input$arm_tube_opacity %||% 0.35)),
+                      width = "205px"
+                    )
+                  ),
+                  shiny::div(
+                    class = "gf-graph-row gf-graph-layout-row",
+                    shiny::span(class = "gf-graph-row-label", "Path width:"),
+                    shiny::sliderInput(
+                      "arm_path_width",
+                      label = NULL,
+                      min = 1,
+                      max = 8,
+                      step = 1,
+                      value = suppressWarnings(as.numeric(input$arm_path_width %||% 4)),
+                      width = "205px"
+                    )
+                  ),
+                  shiny::div(
+                    class = "gf-graph-row gf-graph-layout-row",
+                    shiny::span(class = "gf-graph-row-label", "Vertex size:"),
+                    shiny::sliderInput(
+                      "arm_vertex_size",
+                      label = NULL,
+                      min = 0.5,
+                      max = 3.0,
+                      step = 0.1,
+                      value = suppressWarnings(as.numeric(input$arm_vertex_size %||% 1.0)),
+                      width = "205px"
+                    )
+                  ),
+                  shiny::div(
+                    class = "gf-graph-row gf-graph-layout-row",
+                    shiny::span(class = "gf-graph-row-label", "Label size:"),
+                    shiny::sliderInput(
+                      "arm_label_size",
+                      label = NULL,
+                      min = 0.5,
+                      max = 2.5,
+                      step = 0.1,
+                      value = suppressWarnings(as.numeric(input$arm_label_size %||% 1.0)),
+                      width = "205px"
+                    )
+                  ),
+                  shiny::div(
+                    class = "gf-graph-row gf-graph-layout-row",
+                    shiny::tags$label(
+                      class = "gf-endpoint-inline-check",
+                      shiny::tags$input(
+                        type = "checkbox",
+                        id = "arm_show_labels",
+                        checked = if (isTRUE(input$arm_show_labels %||% TRUE)) "checked" else NULL
+                      ),
+                      shiny::tags$span("Show arm labels")
+                    )
+                  )
+                )
+              )
+            )
+          ),
+          bslib::accordion_panel(
             "Conditional Expectations",
             value = "workflow_condexp_structure",
             shiny::tagList(
@@ -6691,6 +8985,7 @@ app_server <- function(input, output, session) {
         c(
           "workflow_graph_structure",
           "workflow_endpoint_structure",
+          "workflow_arm_structure",
           "workflow_condexp_structure",
           "workflow_analysis"
         )
