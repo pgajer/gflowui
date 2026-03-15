@@ -54,6 +54,48 @@ testthat::test_that("compute_arm_variant builds shortest-path arm variants", {
   testthat::expect_true(5L %in% tube$arm_vertices)
 })
 
+testthat::test_that("compute_arm_variant normalizes hop harmonic radius before calling gflow", {
+  adj <- list(
+    c(2L),
+    c(1L, 3L, 5L),
+    c(2L, 4L),
+    c(3L),
+    c(2L)
+  )
+  weights <- list(
+    1,
+    c(1, 1, 2),
+    c(1, 1),
+    1,
+    2
+  )
+  coords <- cbind(
+    x = c(0, 1, 2, 3, 1),
+    y = c(0, 0, 0, 0, 1),
+    z = c(0, 0, 0, 0, 0)
+  )
+
+  harm <- testthat::expect_silent(
+    gflowui:::compute_arm_variant(
+      adj.list = adj,
+      weight.list = weights,
+      coords = coords,
+      endpoint_a = 1L,
+      endpoint_b = 4L,
+      endpoint_a_key = "v1",
+      endpoint_b_key = "v4",
+      endpoint_a_label = "A",
+      endpoint_b_label = "B",
+      thickening_method = "harmonic_hop",
+      tube_radius = 2.75
+    )
+  )
+
+  testthat::expect_identical(harm$params$distance, "hop")
+  testthat::expect_identical(as.integer(harm$params$radius), 2L)
+  testthat::expect_match(harm$parameter_summary, "radius=2 \\(hop\\)")
+})
+
 testthat::test_that("working arm state sanitizes and preserves visible rows", {
   variant <- list(
     arm_id = "arm_a",

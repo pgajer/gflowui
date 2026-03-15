@@ -383,6 +383,11 @@ compute_arm_variant <- function(adj.list,
   parameter_summary <- "weighted shortest path"
   select_path_corridor <- getFromNamespace("select.path.corridor", "gflow")
   select_path_neighborhood <- getFromNamespace("select.path.neighborhood", "gflow")
+  tube_radius_num <- suppressWarnings(as.numeric(tube_radius))
+  if (!is.finite(tube_radius_num) || tube_radius_num <= 0) {
+    tube_radius_num <- 2
+  }
+  tube_radius_hop <- max(1L, suppressWarnings(as.integer(floor(tube_radius_num))))
 
   if (identical(thickening_method, "corridor")) {
     arm_vertices <- select_path_corridor(
@@ -400,26 +405,27 @@ compute_arm_variant <- function(adj.list,
       graph = g,
       path = path_vertices,
       weights = NA,
-      max.dist = max(1, suppressWarnings(as.integer(round(tube_radius))))
+      max.dist = tube_radius_hop
     )
-    params <- list(radius = max(1, suppressWarnings(as.integer(round(tube_radius)))), distance = "hop")
+    params <- list(radius = tube_radius_hop, distance = "hop")
     parameter_summary <- sprintf("tube radius=%d (hop)", params$radius)
   } else if (identical(thickening_method, "tube_geodesic")) {
     arm_vertices <- select_path_neighborhood(
       graph = g,
       path = path_vertices,
       weights = ww,
-      max.dist = as.numeric(tube_radius)
+      max.dist = tube_radius_num
     )
-    params <- list(radius = as.numeric(tube_radius), distance = "geodesic")
-    parameter_summary <- sprintf("tube radius=%.3f (geodesic)", as.numeric(tube_radius))
+    params <- list(radius = tube_radius_num, distance = "geodesic")
+    parameter_summary <- sprintf("tube radius=%.3f (geodesic)", tube_radius_num)
   } else if (identical(thickening_method, "harmonic_hop") || identical(thickening_method, "harmonic_geodesic")) {
     tube_type <- if (identical(thickening_method, "harmonic_hop")) "hop" else "geodesic"
+    tube_radius_use <- if (identical(tube_type, "hop")) tube_radius_hop else tube_radius_num
     he <- gflow::compute.harmonic.extension(
       adj.list = adj.list,
       weight.list = weight.list,
       trajectory = path_vertices,
-      tube.radius = as.numeric(tube_radius),
+      tube.radius = tube_radius_use,
       tube.type = tube_type,
       use.edge.weights = TRUE,
       verbose = FALSE
@@ -430,8 +436,12 @@ compute_arm_variant <- function(adj.list,
       extended_coords <- ext_vals
       names(extended_coords) <- as.character(arm_vertices)
     }
-    params <- list(radius = as.numeric(tube_radius), distance = tube_type)
-    parameter_summary <- sprintf("harmonic extension radius=%.3f (%s)", as.numeric(tube_radius), tube_type)
+    params <- list(radius = tube_radius_use, distance = tube_type)
+    if (identical(tube_type, "hop")) {
+      parameter_summary <- sprintf("harmonic extension radius=%d (%s)", as.integer(tube_radius_use), tube_type)
+    } else {
+      parameter_summary <- sprintf("harmonic extension radius=%.3f (%s)", tube_radius_use, tube_type)
+    }
   }
 
   arm_vertices <- sort(unique(suppressWarnings(as.integer(arm_vertices))))
@@ -448,7 +458,12 @@ compute_arm_variant <- function(adj.list,
       gsub("\\.", "p", sprintf("%.3f", as.numeric(corridor_abs_tol)))
     )
   } else if (thickening_method %in% c("tube_hop", "tube_geodesic", "harmonic_hop", "harmonic_geodesic")) {
-    sprintf("r%s", gsub("\\.", "p", sprintf("%.3f", as.numeric(tube_radius))))
+    radius_token <- if (thickening_method %in% c("tube_hop", "harmonic_hop")) {
+      sprintf("%d", tube_radius_hop)
+    } else {
+      sprintf("%.3f", tube_radius_num)
+    }
+    sprintf("r%s", gsub("\\.", "p", radius_token))
   } else {
     "base"
   }
