@@ -42,7 +42,6 @@ app_server <- function(input, output, session) {
     set_id = "",
     k = NA_integer_
   )
-  reference_plot_camera <- shiny::reactiveVal(NULL)
   graph_layout_state <- shiny::reactiveValues(
     renderer = NA_character_,
     vertex_layout = "point",
@@ -1120,7 +1119,6 @@ app_server <- function(input, output, session) {
     arm_pending_load_dataset_id("")
     arm_selected_id("")
     arm_draft_banner_dismissed(FALSE)
-    reference_plot_camera(NULL)
     workflow_open_panels(NULL)
     rgl_last_output_id(NULL)
     rgl_gen(0L)
@@ -1135,6 +1133,10 @@ app_server <- function(input, output, session) {
          input$arm_preview_body_size, input$arm_center_marker_color,
          input$arm_center_marker_size),
     {
+      rr <- shiny::isolate(reference_renderer_state())
+      if (!is.list(rr) || !identical(as.character(rr$effective %||% ""), "rglwidget")) {
+        return()
+      }
       rgl_gen(shiny::isolate(rgl_gen()) + 1L)
     },
     ignoreInit = TRUE
@@ -2790,6 +2792,66 @@ app_server <- function(input, output, session) {
   }
 
   if (requireNamespace("plotly", quietly = TRUE)) {
+    attach_reference_plotly_camera_preserver <- function(widget) {
+      if (!requireNamespace("htmlwidgets", quietly = TRUE)) {
+        return(widget)
+      }
+      htmlwidgets::onRender(
+        widget,
+        "function(el, x) {
+          var key = '__gflowui_reference_plot_camera__';
+          var gd = document.getElementById(el.id) || el;
+          if (!gd) return;
+
+          function cloneCamera(cam) {
+            try {
+              return JSON.parse(JSON.stringify(cam));
+            } catch (e) {
+              return cam || null;
+            }
+          }
+
+          function currentCamera() {
+            try {
+              if (gd._fullLayout && gd._fullLayout.scene && gd._fullLayout.scene.camera) {
+                return cloneCamera(gd._fullLayout.scene.camera);
+              }
+            } catch (e) {}
+            return null;
+          }
+
+          function rememberCamera(ev) {
+            var cam = null;
+            if (ev && ev['scene.camera']) {
+              cam = ev['scene.camera'];
+            } else {
+              cam = currentCamera();
+            }
+            if (cam) {
+              window[key] = cloneCamera(cam);
+            }
+          }
+
+          if (!gd.__gflowuiCameraBound) {
+            gd.on('plotly_relayout', rememberCamera);
+            gd.on('plotly_afterplot', function() {
+              var cam = currentCamera();
+              if (cam) {
+                window[key] = cloneCamera(cam);
+              }
+            });
+            gd.__gflowuiCameraBound = true;
+          }
+
+          if (window[key]) {
+            try {
+              Plotly.relayout(gd, {'scene.camera': cloneCamera(window[key])});
+            } catch (e) {}
+          }
+        }"
+      )
+    }
+
     parse_plotly_event_input <- function(event_id) {
       raw_val <- input[[event_id]]
       if (is.null(raw_val)) {
@@ -2808,41 +2870,6 @@ app_server <- function(input, output, session) {
       )
     }
 
-    extract_plotly_camera_state <- function(event_data) {
-      if (is.null(event_data)) {
-        return(NULL)
-      }
-      if (is.list(event_data) && !is.null(event_data[["scene.camera"]]) && is.list(event_data[["scene.camera"]])) {
-        return(event_data[["scene.camera"]])
-      }
-      if (is.list(event_data) && !is.null(event_data$scene) && is.list(event_data$scene) &&
-          !is.null(event_data$scene$camera) && is.list(event_data$scene$camera)) {
-        return(event_data$scene$camera)
-      }
-      eye_x <- suppressWarnings(as.numeric(event_data[["scene.camera.eye.x"]] %||% NA_real_))
-      eye_y <- suppressWarnings(as.numeric(event_data[["scene.camera.eye.y"]] %||% NA_real_))
-      eye_z <- suppressWarnings(as.numeric(event_data[["scene.camera.eye.z"]] %||% NA_real_))
-      center_x <- suppressWarnings(as.numeric(event_data[["scene.camera.center.x"]] %||% NA_real_))
-      center_y <- suppressWarnings(as.numeric(event_data[["scene.camera.center.y"]] %||% NA_real_))
-      center_z <- suppressWarnings(as.numeric(event_data[["scene.camera.center.z"]] %||% NA_real_))
-      up_x <- suppressWarnings(as.numeric(event_data[["scene.camera.up.x"]] %||% NA_real_))
-      up_y <- suppressWarnings(as.numeric(event_data[["scene.camera.up.y"]] %||% NA_real_))
-      up_z <- suppressWarnings(as.numeric(event_data[["scene.camera.up.z"]] %||% NA_real_))
-      if (!all(is.finite(c(eye_x, eye_y, eye_z)))) {
-        return(NULL)
-      }
-      camera <- list(
-        eye = list(x = eye_x, y = eye_y, z = eye_z)
-      )
-      if (all(is.finite(c(center_x, center_y, center_z)))) {
-        camera$center <- list(x = center_x, y = center_y, z = center_z)
-      }
-      if (all(is.finite(c(up_x, up_y, up_z)))) {
-        camera$up <- list(x = up_x, y = up_y, z = up_z)
-      }
-      camera
-    }
-
     reference_plotly_click_event <- shiny::reactive({
       rr <- reference_renderer_state()
       if (!is.list(rr) || !identical(as.character(rr$effective %||% ""), "plotly")) {
@@ -2850,16 +2877,6 @@ app_server <- function(input, output, session) {
       }
       parse_plotly_event_input(
         sprintf("plotly_click-%s", reference_plotly_source)
-      )
-    })
-
-    reference_plotly_relayout_event <- shiny::reactive({
-      rr <- reference_renderer_state()
-      if (!is.list(rr) || !identical(as.character(rr$effective %||% ""), "plotly")) {
-        return(NULL)
-      }
-      parse_plotly_event_input(
-        sprintf("plotly_relayout-%s", reference_plotly_source)
       )
     })
 
@@ -2879,18 +2896,36 @@ app_server <- function(input, output, session) {
       },
       ignoreInit = TRUE
     )
-
-    shiny::observeEvent(
-      reference_plotly_relayout_event(),
-      {
-        camera <- extract_plotly_camera_state(reference_plotly_relayout_event())
-        if (is.list(camera)) {
-          reference_plot_camera(camera)
-        }
-      },
-      ignoreInit = TRUE
-    )
   }
+
+  arm_preview_layout_inputs <- shiny::debounce(
+    shiny::reactive({
+      list(
+        path_color = as.character(input$arm_preview_path_color %||% "#f97316"),
+        body_color = as.character(input$arm_preview_body_color %||% "#eab308"),
+        body_opacity = suppressWarnings(as.numeric(input$arm_preview_body_opacity %||% 0.75)),
+        path_width = suppressWarnings(as.numeric(input$arm_preview_path_width %||% 5)),
+        body_size = suppressWarnings(as.numeric(input$arm_preview_body_size %||% 1.8)),
+        center_marker_color = as.character(input$arm_center_marker_color %||% "#111827"),
+        center_marker_size = suppressWarnings(as.numeric(input$arm_center_marker_size %||% 1.7))
+      )
+    }),
+    millis = 180
+  )
+
+  arm_builder_preview_inputs <- shiny::debounce(
+    shiny::reactive({
+      list(
+        endpoint_a = as.character(input$arm_endpoint_a %||% ""),
+        endpoint_b = as.character(input$arm_endpoint_b %||% ""),
+        thickening_method = as.character(input$arm_thickening_method %||% "path_only"),
+        corridor_rel_tol = suppressWarnings(as.numeric(input$arm_corridor_rel_tol %||% 0.05)),
+        corridor_abs_tol = suppressWarnings(as.numeric(input$arm_corridor_abs_tol %||% 0)),
+        tube_radius = suppressWarnings(as.numeric(input$arm_tube_radius %||% 2))
+      )
+    }),
+    millis = 220
+  )
 
   shiny::observeEvent(input$endpoint_vertex_id, {
     raw_val <- input$endpoint_vertex_id
@@ -5605,8 +5640,7 @@ app_server <- function(input, output, session) {
   }, ignoreInit = TRUE)
 
   shiny::observeEvent(
-    list(input$arm_endpoint_a, input$arm_endpoint_b, input$arm_thickening_method,
-         input$arm_corridor_rel_tol, input$arm_corridor_abs_tol, input$arm_tube_radius),
+    arm_builder_preview_inputs(),
     {
       current_preview <- isolate(arm_preview_variant())
       if (!is.list(current_preview)) {
@@ -6386,7 +6420,7 @@ app_server <- function(input, output, session) {
               )
             )
         p_empty <- plotly::event_register(p_empty, "plotly_click")
-        p_empty <- plotly::event_register(p_empty, "plotly_relayout")
+        p_empty <- attach_reference_plotly_camera_preserver(p_empty)
         return(p_empty)
       }
 
@@ -6596,8 +6630,9 @@ app_server <- function(input, output, session) {
       if (!is.finite(arm_label_size) || arm_label_size <= 0) {
         arm_label_size <- 1
       }
+      preview_layout <- arm_preview_layout_inputs()
       preview_path_color <- normalize_palette_choice(
-        input$arm_preview_path_color %||% "#f97316",
+        preview_layout$path_color %||% "#f97316",
         c(
           "Orange" = "#f97316",
           "Blue" = "#2563eb",
@@ -6609,9 +6644,10 @@ app_server <- function(input, output, session) {
         default = "#f97316"
       )
       preview_body_color <- normalize_palette_choice(
-        input$arm_preview_body_color %||% "#eab308",
+        preview_layout$body_color %||% "#eab308",
         c(
           "Gold" = "#eab308",
+          "Red" = "#dc2626",
           "Orange" = "#f97316",
           "Blue" = "#2563eb",
           "Green" = "#16a34a",
@@ -6620,20 +6656,20 @@ app_server <- function(input, output, session) {
         ),
         default = "#eab308"
       )
-      preview_body_opacity <- suppressWarnings(as.numeric(input$arm_preview_body_opacity %||% 0.75))
+      preview_body_opacity <- suppressWarnings(as.numeric(preview_layout$body_opacity %||% 0.75))
       if (!is.finite(preview_body_opacity) || preview_body_opacity <= 0) {
         preview_body_opacity <- 0.75
       }
-      preview_path_width <- suppressWarnings(as.numeric(input$arm_preview_path_width %||% 5))
+      preview_path_width <- suppressWarnings(as.numeric(preview_layout$path_width %||% 5))
       if (!is.finite(preview_path_width) || preview_path_width <= 0) {
         preview_path_width <- 5
       }
-      preview_body_size <- suppressWarnings(as.numeric(input$arm_preview_body_size %||% 1.8))
+      preview_body_size <- suppressWarnings(as.numeric(preview_layout$body_size %||% 1.8))
       if (!is.finite(preview_body_size) || preview_body_size <= 0) {
         preview_body_size <- 1.8
       }
       center_marker_color <- normalize_palette_choice(
-        input$arm_center_marker_color %||% "#111827",
+        preview_layout$center_marker_color %||% "#111827",
         c(
           "Black" = "#111827",
           "Red" = "#dc2626",
@@ -6644,7 +6680,7 @@ app_server <- function(input, output, session) {
         ),
         default = "#111827"
       )
-      center_marker_size <- suppressWarnings(as.numeric(input$arm_center_marker_size %||% 1.7))
+      center_marker_size <- suppressWarnings(as.numeric(preview_layout$center_marker_size %||% 1.7))
       if (!is.finite(center_marker_size) || center_marker_size <= 0) {
         center_marker_size <- 1.7
       }
@@ -6782,7 +6818,6 @@ app_server <- function(input, output, session) {
         }
       }
 
-      camera_use <- reference_plot_camera() %||% list(eye = list(x = 1.6, y = 1.55, z = 1.2))
       p <- p %>%
         plotly::layout(
           margin = list(l = 0, r = 0, b = 0, t = 10),
@@ -6803,12 +6838,11 @@ app_server <- function(input, output, session) {
             uirevision = "reference-scene",
             xaxis = list(title = "", showgrid = FALSE, zeroline = FALSE, visible = FALSE),
             yaxis = list(title = "", showgrid = FALSE, zeroline = FALSE, visible = FALSE),
-            zaxis = list(title = "", showgrid = FALSE, zeroline = FALSE, visible = FALSE),
-            camera = camera_use
+            zaxis = list(title = "", showgrid = FALSE, zeroline = FALSE, visible = FALSE)
           )
         )
       p <- plotly::event_register(p, "plotly_click")
-      p <- plotly::event_register(p, "plotly_relayout")
+      p <- attach_reference_plotly_camera_preserver(p)
       p
     })
   }
@@ -6924,8 +6958,9 @@ app_server <- function(input, output, session) {
       if (!is.finite(arm_label_size) || arm_label_size <= 0) {
         arm_label_size <- 1
       }
+      preview_layout <- arm_preview_layout_inputs()
       preview_path_color <- normalize_palette_choice(
-        input$arm_preview_path_color %||% "#f97316",
+        preview_layout$path_color %||% "#f97316",
         c(
           "Orange" = "#f97316",
           "Blue" = "#2563eb",
@@ -6937,9 +6972,10 @@ app_server <- function(input, output, session) {
         default = "#f97316"
       )
       preview_body_color <- normalize_palette_choice(
-        input$arm_preview_body_color %||% "#eab308",
+        preview_layout$body_color %||% "#eab308",
         c(
           "Gold" = "#eab308",
+          "Red" = "#dc2626",
           "Orange" = "#f97316",
           "Blue" = "#2563eb",
           "Green" = "#16a34a",
@@ -6948,20 +6984,20 @@ app_server <- function(input, output, session) {
         ),
         default = "#eab308"
       )
-      preview_body_opacity <- suppressWarnings(as.numeric(input$arm_preview_body_opacity %||% 0.75))
+      preview_body_opacity <- suppressWarnings(as.numeric(preview_layout$body_opacity %||% 0.75))
       if (!is.finite(preview_body_opacity) || preview_body_opacity <= 0) {
         preview_body_opacity <- 0.75
       }
-      preview_path_width <- suppressWarnings(as.numeric(input$arm_preview_path_width %||% 5))
+      preview_path_width <- suppressWarnings(as.numeric(preview_layout$path_width %||% 5))
       if (!is.finite(preview_path_width) || preview_path_width <= 0) {
         preview_path_width <- 5
       }
-      preview_body_size <- suppressWarnings(as.numeric(input$arm_preview_body_size %||% 1.8))
+      preview_body_size <- suppressWarnings(as.numeric(preview_layout$body_size %||% 1.8))
       if (!is.finite(preview_body_size) || preview_body_size <= 0) {
         preview_body_size <- 1.8
       }
       center_marker_color <- normalize_palette_choice(
-        input$arm_center_marker_color %||% "#111827",
+        preview_layout$center_marker_color %||% "#111827",
         c(
           "Black" = "#111827",
           "Red" = "#dc2626",
@@ -6972,7 +7008,7 @@ app_server <- function(input, output, session) {
         ),
         default = "#111827"
       )
-      center_marker_size <- suppressWarnings(as.numeric(input$arm_center_marker_size %||% 1.7))
+      center_marker_size <- suppressWarnings(as.numeric(preview_layout$center_marker_size %||% 1.7))
       if (!is.finite(center_marker_size) || center_marker_size <= 0) {
         center_marker_size <- 1.7
       }
@@ -8422,22 +8458,37 @@ app_server <- function(input, output, session) {
             shiny::div(
               class = "gf-graph-row gf-graph-layout-row",
               shiny::span(class = "gf-graph-row-label", "Corridor rel.tol:"),
-              shiny::numericInput("arm_corridor_rel_tol", label = NULL, value = suppressWarnings(as.numeric(input$arm_corridor_rel_tol %||% 0.05)), min = 0, step = 0.01, width = "130px")
+              shiny::numericInput("arm_corridor_rel_tol", label = NULL, value = suppressWarnings(as.numeric(isolate(input$arm_corridor_rel_tol %||% 0.05))), min = 0, step = 0.01, width = "130px")
             ),
             shiny::div(
               class = "gf-graph-row gf-graph-layout-row",
               shiny::span(class = "gf-graph-row-label", "Corridor abs.tol:"),
-              shiny::numericInput("arm_corridor_abs_tol", label = NULL, value = suppressWarnings(as.numeric(input$arm_corridor_abs_tol %||% 0)), min = 0, step = 0.01, width = "130px")
+              shiny::numericInput("arm_corridor_abs_tol", label = NULL, value = suppressWarnings(as.numeric(isolate(input$arm_corridor_abs_tol %||% 0))), min = 0, step = 0.01, width = "130px")
             )
           )
         } else {
           NULL
         },
         if (thick_sel %in% c("tube_hop", "tube_geodesic", "harmonic_hop", "harmonic_geodesic")) {
+          tube_radius_is_hop <- thick_sel %in% c("tube_hop", "harmonic_hop")
+          tube_radius_value <- suppressWarnings(as.numeric(isolate(input$arm_tube_radius %||% 2)))
+          if (!is.finite(tube_radius_value) || tube_radius_value <= 0) {
+            tube_radius_value <- 2
+          }
+          if (isTRUE(tube_radius_is_hop)) {
+            tube_radius_value <- max(1, suppressWarnings(as.integer(floor(tube_radius_value))))
+          }
           shiny::div(
             class = "gf-graph-row gf-graph-layout-row",
             shiny::span(class = "gf-graph-row-label", "Tube radius:"),
-            shiny::numericInput("arm_tube_radius", label = NULL, value = suppressWarnings(as.numeric(input$arm_tube_radius %||% 2)), min = 0.1, step = 0.25, width = "130px")
+            shiny::numericInput(
+              "arm_tube_radius",
+              label = NULL,
+              value = tube_radius_value,
+              min = if (isTRUE(tube_radius_is_hop)) 1 else 0.1,
+              step = if (isTRUE(tube_radius_is_hop)) 1 else 0.25,
+              width = "130px"
+            )
           )
         } else {
           NULL
@@ -8489,7 +8540,7 @@ app_server <- function(input, output, session) {
               "Red" = "#dc2626",
               "Black" = "#111827"
             ),
-            selected = as.character(input$arm_preview_path_color %||% "#f97316"),
+            selected = as.character(isolate(input$arm_preview_path_color %||% "#f97316")),
             width = "180px"
           )
         ),
@@ -8502,7 +8553,7 @@ app_server <- function(input, output, session) {
             min = 1,
             max = 10,
             step = 1,
-            value = suppressWarnings(as.numeric(input$arm_preview_path_width %||% 5)),
+            value = suppressWarnings(as.numeric(isolate(input$arm_preview_path_width %||% 5))),
             width = "205px"
           )
         ),
@@ -8514,13 +8565,14 @@ app_server <- function(input, output, session) {
             label = NULL,
             choices = c(
               "Gold" = "#eab308",
+              "Red" = "#dc2626",
               "Orange" = "#f97316",
               "Blue" = "#2563eb",
               "Green" = "#16a34a",
               "Purple" = "#8b5cf6",
               "Black" = "#111827"
             ),
-            selected = as.character(input$arm_preview_body_color %||% "#eab308"),
+            selected = as.character(isolate(input$arm_preview_body_color %||% "#eab308")),
             width = "180px"
           )
         ),
@@ -8533,7 +8585,7 @@ app_server <- function(input, output, session) {
             min = 0.10,
             max = 1.0,
             step = 0.05,
-            value = suppressWarnings(as.numeric(input$arm_preview_body_opacity %||% 0.75)),
+            value = suppressWarnings(as.numeric(isolate(input$arm_preview_body_opacity %||% 0.75))),
             width = "205px"
           )
         ),
@@ -8546,7 +8598,7 @@ app_server <- function(input, output, session) {
             min = 0.5,
             max = 4.0,
             step = 0.1,
-            value = suppressWarnings(as.numeric(input$arm_preview_body_size %||% 1.8)),
+            value = suppressWarnings(as.numeric(isolate(input$arm_preview_body_size %||% 1.8))),
             width = "205px"
           )
         ),
@@ -8564,7 +8616,7 @@ app_server <- function(input, output, session) {
               "Green" = "#16a34a",
               "Purple" = "#8b5cf6"
             ),
-            selected = as.character(input$arm_center_marker_color %||% "#111827"),
+            selected = as.character(isolate(input$arm_center_marker_color %||% "#111827")),
             width = "180px"
           )
         ),
@@ -8577,7 +8629,7 @@ app_server <- function(input, output, session) {
             min = 0.8,
             max = 4.0,
             step = 0.1,
-            value = suppressWarnings(as.numeric(input$arm_center_marker_size %||% 1.7)),
+            value = suppressWarnings(as.numeric(isolate(input$arm_center_marker_size %||% 1.7))),
             width = "205px"
           )
         )
