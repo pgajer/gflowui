@@ -1129,6 +1129,19 @@ app_server <- function(input, output, session) {
   endpoint_overlay_selection <- shiny::reactiveVal(character(0))
   endpoint_autoselect_done <- shiny::reactiveVal(FALSE)
   endpoint_show_working_set <- shiny::reactiveVal(NA)
+  subject_state <- shiny::reactiveValues(
+    selected_ids = character(0),
+    show_overlay = FALSE,
+    dim_background = FALSE,
+    background_opacity = 0.22,
+    vertex_color = "#dc2626",
+    vertex_size = 1.8,
+    edge_mode = "none",
+    edge_color = "#dc2626",
+    edge_width = 2,
+    label_mode = "none",
+    label_size = 1.0
+  )
   arm_session_id <- paste(session$token %||% "session", "arm", as.integer(Sys.time()), sep = "-")
   arm_workspace_revision <- shiny::reactiveVal(0L)
   arm_overlay_selection <- shiny::reactiveVal(character(0))
@@ -1166,6 +1179,17 @@ app_server <- function(input, output, session) {
     endpoint_overlay_selection(character(0))
     endpoint_autoselect_done(FALSE)
     endpoint_show_working_set(NA)
+    subject_state$selected_ids <- character(0)
+    subject_state$show_overlay <- FALSE
+    subject_state$dim_background <- FALSE
+    subject_state$background_opacity <- 0.22
+    subject_state$vertex_color <- "#dc2626"
+    subject_state$vertex_size <- 1.8
+    subject_state$edge_mode <- "none"
+    subject_state$edge_color <- "#dc2626"
+    subject_state$edge_width <- 2
+    subject_state$label_mode <- "none"
+    subject_state$label_size <- 1.0
     endpoint_working_hide_counts(structure(integer(0), names = character(0)))
     endpoint_working_restore_counts(structure(integer(0), names = character(0)))
     endpoint_working_delete_counts(structure(integer(0), names = character(0)))
@@ -1196,6 +1220,12 @@ app_server <- function(input, output, session) {
   shiny::observeEvent(
     list(input$endpoint_label_size, input$endpoint_label_offset,
          input$endpoint_marker_size, input$endpoint_marker_color,
+         input$subject_ids, input$subject_show_overlay,
+         input$subject_dim_background, input$subject_background_opacity,
+         input$subject_vertex_color, input$subject_vertex_size,
+         input$subject_edge_mode, input$subject_edge_color,
+         input$subject_edge_width, input$subject_label_mode,
+         input$subject_label_size,
          input$arm_label_size, input$arm_tube_opacity, input$arm_path_width,
          input$arm_vertex_size, input$arm_color,
          input$arm_preview_path_color, input$arm_preview_body_color,
@@ -2122,6 +2152,7 @@ app_server <- function(input, output, session) {
 
   endpoint_profile_csv_cache <- new.env(parent = emptyenv())
   endpoint_live_label_provider_cache <- new.env(parent = emptyenv())
+  subject_live_provider_cache <- new.env(parent = emptyenv())
 
   read_endpoint_profile_csv <- function(path) {
     pp <- as.character(path %||% "")
@@ -2414,6 +2445,99 @@ app_server <- function(input, output, session) {
     provider
   }
 
+  empty_subject_sample_rows <- function() {
+    data.frame(
+      vertex = integer(0),
+      subject_id = character(0),
+      sample_id = character(0),
+      week = integer(0),
+      day = integer(0),
+      visit_label = character(0),
+      stringsAsFactors = FALSE
+    )
+  }
+
+  build_live_subject_provider <- function(project_id, manifest) {
+    pid <- tolower(trimws(as.character(project_id %||% "")))
+    project_root <- as.character(manifest$project_root %||% "")
+    if (!nzchar(project_root) || identical(project_root, "NA") || !dir.exists(project_root)) {
+      return(NULL)
+    }
+
+    if (!identical(pid, "symptoms")) {
+      return(NULL)
+    }
+
+    data_file <- file.path(project_root, "data", "S_asv.rda")
+    if (!file.exists(data_file)) {
+      return(NULL)
+    }
+
+    env <- new.env(parent = emptyenv())
+    load(data_file, envir = env)
+    S.asv.3d <- env$S.asv.3d %||% NULL
+    mt.asv <- env$mt.asv %||% NULL
+    if (is.null(S.asv.3d) || !is.data.frame(mt.asv)) {
+      return(NULL)
+    }
+
+    sample_ids <- rownames(S.asv.3d)
+    if (length(sample_ids) < 1L || !all(sample_ids %in% rownames(mt.asv))) {
+      return(NULL)
+    }
+
+    meta <- mt.asv[sample_ids, , drop = FALSE]
+    subject_id <- trimws(as.character(meta$subjID %||% rep("", nrow(meta))))
+    subject_id[is.na(subject_id)] <- ""
+    keep <- nzchar(subject_id)
+    if (!any(keep)) {
+      return(NULL)
+    }
+
+    week <- suppressWarnings(as.integer(meta$WEEK %||% rep(NA_integer_, nrow(meta))))
+    day <- suppressWarnings(as.integer(meta$DAY %||% rep(NA_integer_, nrow(meta))))
+    visit_label <- rep("", length(sample_ids))
+    have_visit <- is.finite(week) | is.finite(day)
+    visit_label[have_visit] <- sprintf(
+      "W%sD%s",
+      ifelse(is.finite(week[have_visit]), as.character(week[have_visit]), "?"),
+      ifelse(is.finite(day[have_visit]), as.character(day[have_visit]), "?")
+    )
+
+    rows <- data.frame(
+      vertex = seq_along(sample_ids),
+      subject_id = subject_id,
+      sample_id = as.character(sample_ids),
+      week = week,
+      day = day,
+      visit_label = visit_label,
+      stringsAsFactors = FALSE
+    )
+    rows <- rows[keep, , drop = FALSE]
+    if (nrow(rows) < 1L) {
+      return(NULL)
+    }
+
+    list(
+      project_id = pid,
+      project_root = project_root,
+      mode = "symptoms",
+      rows = rows
+    )
+  }
+
+  resolve_live_subject_provider <- function(project_id, manifest) {
+    pid <- tolower(trimws(as.character(project_id %||% "")))
+    project_root <- as.character(manifest$project_root %||% "")
+    cache_key <- paste(pid, normalizePath(path.expand(project_root), mustWork = FALSE), sep = "|")
+    if (exists(cache_key, envir = subject_live_provider_cache, inherits = FALSE)) {
+      return(get(cache_key, envir = subject_live_provider_cache, inherits = FALSE))
+    }
+    provider <- build_live_subject_provider(project_id = pid, manifest = manifest)
+    assign(cache_key, provider, envir = subject_live_provider_cache)
+    provider
+  }
+
   live_endpoint_label_profile_suggestion <- function(vertex_id, manifest) {
     vid <- suppressWarnings(as.integer(vertex_id))
     if (!is.finite(vid) || vid < 1L || !is.list(manifest)) {
@@ -2675,6 +2799,390 @@ app_server <- function(input, output, session) {
       project_id = as.character(rv$project.id %||% ""),
       graph_set_id = graph_set_id,
       k = as.integer(k_val)
+    )
+  })
+
+  subject_vertex_color_choices <- function() {
+    c(
+      "Red" = "#dc2626",
+      "Orange" = "#f97316",
+      "Blue" = "#2563eb",
+      "Green" = "#16a34a",
+      "Purple" = "#8b5cf6",
+      "Black" = "#111827"
+    )
+  }
+
+  subject_overlay_palette <- function(n) {
+    rep_len(
+      c("#dc2626", "#2563eb", "#16a34a", "#f97316", "#8b5cf6", "#0891b2", "#a16207", "#db2777"),
+      max(1L, suppressWarnings(as.integer(n %||% 1L)))
+    )
+  }
+
+  subject_edge_mode_choices <- c(
+    "None" = "none",
+    "Graph edges among subject vertices" = "graph"
+  )
+
+  shiny::observe({
+    subject_ids_val <- input$subject_ids
+    if (!is.null(subject_ids_val)) {
+      subject_state$selected_ids <- unique(as.character(subject_ids_val %||% character(0)))
+    }
+    show_val <- input$subject_show_overlay
+    if (!is.null(show_val)) {
+      subject_state$show_overlay <- isTRUE(show_val)
+    }
+    dim_val <- input$subject_dim_background
+    if (!is.null(dim_val)) {
+      subject_state$dim_background <- isTRUE(dim_val)
+    }
+    bg_opacity_val <- suppressWarnings(as.numeric(input$subject_background_opacity %||% NA_real_))
+    if (is.finite(bg_opacity_val) && bg_opacity_val > 0 && bg_opacity_val <= 1) {
+      subject_state$background_opacity <- as.numeric(bg_opacity_val)
+    }
+    color_val <- as.character(input$subject_vertex_color %||% "")
+    if (length(color_val) > 0L && nzchar(color_val[[1]])) {
+      subject_state$vertex_color <- normalize_palette_choice(
+        color_val[[1]],
+        subject_vertex_color_choices(),
+        default = "#dc2626"
+      )
+    }
+    size_val <- suppressWarnings(as.numeric(input$subject_vertex_size %||% NA_real_))
+    if (is.finite(size_val) && size_val > 0) {
+      subject_state$vertex_size <- as.numeric(size_val)
+    }
+    edge_mode_val <- as.character(input$subject_edge_mode %||% "")
+    if (edge_mode_val %in% unname(subject_edge_mode_choices)) {
+      subject_state$edge_mode <- edge_mode_val
+    }
+    edge_color_val <- as.character(input$subject_edge_color %||% "")
+    if (length(edge_color_val) > 0L && nzchar(edge_color_val[[1]])) {
+      subject_state$edge_color <- normalize_palette_choice(
+        edge_color_val[[1]],
+        subject_vertex_color_choices(),
+        default = "#dc2626"
+      )
+    }
+    edge_width_val <- suppressWarnings(as.numeric(input$subject_edge_width %||% NA_real_))
+    if (is.finite(edge_width_val) && edge_width_val > 0) {
+      subject_state$edge_width <- as.numeric(edge_width_val)
+    }
+    label_mode_val <- as.character(input$subject_label_mode %||% "")
+    if (nzchar(label_mode_val)) {
+      subject_state$label_mode <- label_mode_val
+    }
+    label_size_val <- suppressWarnings(as.numeric(input$subject_label_size %||% NA_real_))
+    if (is.finite(label_size_val) && label_size_val > 0) {
+      subject_state$label_size <- as.numeric(label_size_val)
+    }
+  })
+
+  subject_panel_state <- shiny::reactive({
+    manifest <- active_manifest()
+    provider <- if (is.list(manifest)) resolve_live_subject_provider(rv$project.id, manifest) else NULL
+    rows <- if (is.list(provider) && is.data.frame(provider$rows)) provider$rows else empty_subject_sample_rows()
+    n_vertices <- reference_vertex_count()
+    if (is.data.frame(rows) && nrow(rows) > 0L && is.finite(n_vertices) && n_vertices > 0L) {
+      rows <- rows[rows$vertex >= 1L & rows$vertex <= as.integer(n_vertices), , drop = FALSE]
+    }
+    if (!is.data.frame(rows) || nrow(rows) < 1L) {
+      return(list(
+        available = FALSE,
+        provider = provider,
+        rows = empty_subject_sample_rows(),
+        subject_choices = c("Choose subject..." = ""),
+        selected_ids = character(0),
+        selected_id = "",
+        selected_rows = empty_subject_sample_rows(),
+        show_overlay = isTRUE(subject_state$show_overlay),
+        dim_background = isTRUE(subject_state$dim_background),
+        background_opacity = as.numeric(subject_state$background_opacity %||% 0.22),
+        vertex_color = as.character(subject_state$vertex_color %||% "#dc2626"),
+        vertex_size = as.numeric(subject_state$vertex_size %||% 1.8),
+        edge_mode = as.character(subject_state$edge_mode %||% "none"),
+        edge_color = as.character(subject_state$edge_color %||% "#dc2626"),
+        edge_width = as.numeric(subject_state$edge_width %||% 2),
+        label_mode = "none",
+        label_choices = c("None" = "none", "Vertex ID" = "vertex"),
+        label_size = as.numeric(subject_state$label_size %||% 1.0)
+      ))
+    }
+
+    subject_ids <- sort(unique(as.character(rows$subject_id)))
+    subject_ids <- subject_ids[nzchar(subject_ids)]
+    counts <- vapply(subject_ids, function(ss) sum(as.character(rows$subject_id) == ss, na.rm = TRUE), integer(1))
+    choices <- c("Choose subject..." = "", stats::setNames(subject_ids, sprintf("%s (%d)", subject_ids, counts)))
+    selected_ids <- unique(as.character(subject_state$selected_ids %||% character(0)))
+    selected_ids <- selected_ids[nzchar(selected_ids) & selected_ids %in% subject_ids]
+    selected_rows <- if (length(selected_ids) > 0L) {
+      rows[as.character(rows$subject_id) %in% selected_ids, , drop = FALSE]
+    } else {
+      empty_subject_sample_rows()
+    }
+    if (nrow(selected_rows) > 0L) {
+      ord <- order(
+        as.character(selected_rows$subject_id),
+        suppressWarnings(as.integer(selected_rows$week)),
+        suppressWarnings(as.integer(selected_rows$day)),
+        as.character(selected_rows$sample_id),
+        na.last = TRUE
+      )
+      selected_rows <- selected_rows[ord, , drop = FALSE]
+    }
+
+    label_choices <- c("None" = "none", "Vertex ID" = "vertex")
+    if (nrow(selected_rows) > 0L && any(nzchar(as.character(selected_rows$sample_id %||% character(0))))) {
+      label_choices <- c(label_choices, "Sample ID" = "sample")
+    }
+    visit_labels <- as.character(selected_rows$visit_label %||% character(0))
+    has_visit_info <- nrow(selected_rows) > 0L && (
+      any(nzchar(visit_labels)) ||
+        any(is.finite(suppressWarnings(as.integer(selected_rows$week)))) ||
+        any(is.finite(suppressWarnings(as.integer(selected_rows$day))))
+    )
+    if (isTRUE(has_visit_info)) {
+      label_choices <- c(label_choices, "Visit" = "visit")
+    }
+    label_mode_use <- as.character(subject_state$label_mode %||% "none")
+    if (!(label_mode_use %in% unname(label_choices))) {
+      label_mode_use <- "none"
+    }
+    edge_mode_use <- as.character(subject_state$edge_mode %||% "none")
+    if (!(edge_mode_use %in% unname(subject_edge_mode_choices))) {
+      edge_mode_use <- "none"
+    }
+
+    list(
+      available = TRUE,
+      provider = provider,
+      rows = rows,
+      subject_choices = choices,
+      selected_ids = selected_ids,
+      selected_id = if (length(selected_ids) > 0L) selected_ids[[1]] else "",
+      selected_rows = selected_rows,
+      show_overlay = isTRUE(subject_state$show_overlay),
+      dim_background = isTRUE(subject_state$dim_background),
+      background_opacity = as.numeric(subject_state$background_opacity %||% 0.22),
+      vertex_color = normalize_palette_choice(
+        subject_state$vertex_color %||% "#dc2626",
+        subject_vertex_color_choices(),
+        default = "#dc2626"
+      ),
+      vertex_size = as.numeric(subject_state$vertex_size %||% 1.8),
+      edge_mode = edge_mode_use,
+      edge_color = normalize_palette_choice(
+        subject_state$edge_color %||% "#dc2626",
+        subject_vertex_color_choices(),
+        default = "#dc2626"
+      ),
+      edge_width = as.numeric(subject_state$edge_width %||% 2),
+      label_mode = label_mode_use,
+      label_choices = label_choices,
+      label_size = as.numeric(subject_state$label_size %||% 1.0)
+    )
+  })
+
+  subject_overlay_active <- shiny::reactive({
+    build_subject_label_text <- function(rows_df, mode = "none") {
+      if (!is.data.frame(rows_df) || nrow(rows_df) < 1L) {
+        return(character(0))
+      }
+      mode_use <- as.character(mode %||% "none")
+      if (identical(mode_use, "vertex")) {
+        return(sprintf("v%d", suppressWarnings(as.integer(rows_df$vertex))))
+      }
+      if (identical(mode_use, "sample")) {
+        labs <- as.character(rows_df$sample_id %||% rep("", nrow(rows_df)))
+        labs[is.na(labs)] <- ""
+        return(labs)
+      }
+      if (identical(mode_use, "visit")) {
+        visit_label <- as.character(rows_df$visit_label %||% rep("", nrow(rows_df)))
+        visit_label[is.na(visit_label)] <- ""
+        need_fallback <- !nzchar(visit_label)
+        if (any(need_fallback)) {
+          week <- suppressWarnings(as.integer(rows_df$week %||% rep(NA_integer_, nrow(rows_df))))
+          day <- suppressWarnings(as.integer(rows_df$day %||% rep(NA_integer_, nrow(rows_df))))
+          visit_label[need_fallback] <- sprintf(
+            "W%sD%s",
+            ifelse(is.finite(week[need_fallback]), as.character(week[need_fallback]), "?"),
+            ifelse(is.finite(day[need_fallback]), as.character(day[need_fallback]), "?")
+          )
+        }
+        return(visit_label)
+      }
+      rep("", nrow(rows_df))
+    }
+
+    compute_subject_edges <- function(vertices, adj_list) {
+      verts <- suppressWarnings(as.integer(vertices %||% integer(0)))
+      verts <- sort(unique(verts[is.finite(verts) & verts >= 1L]))
+      if (length(verts) < 2L || !is.list(adj_list) || length(adj_list) < max(verts)) {
+        return(matrix(integer(0), ncol = 2L, dimnames = list(NULL, c("from", "to"))))
+      }
+      in_set <- rep.int(FALSE, length(adj_list))
+      in_set[verts] <- TRUE
+      edge_rows <- lapply(verts, function(vv) {
+        nb <- suppressWarnings(as.integer(adj_list[[vv]] %||% integer(0)))
+        nb <- nb[is.finite(nb) & nb >= 1L & nb <= length(adj_list)]
+        nb <- nb[in_set[nb] & nb > vv]
+        if (length(nb) < 1L) {
+          return(NULL)
+        }
+        cbind(from = rep.int(vv, length(nb)), to = nb)
+      })
+      edge_rows <- Filter(Negate(is.null), edge_rows)
+      if (length(edge_rows) < 1L) {
+        return(matrix(integer(0), ncol = 2L, dimnames = list(NULL, c("from", "to"))))
+      }
+      out <- do.call(rbind, edge_rows)
+      if (!is.matrix(out)) {
+        out <- matrix(as.integer(out), ncol = 2L, byrow = TRUE)
+      }
+      storage.mode(out) <- "integer"
+      colnames(out) <- c("from", "to")
+      out
+    }
+
+    build_subject_color_map <- function(subject_ids, single_color) {
+      ids <- unique(as.character(subject_ids %||% character(0)))
+      ids <- ids[nzchar(ids)]
+      if (length(ids) < 1L) {
+        return(structure(character(0), names = character(0)))
+      }
+      if (length(ids) == 1L) {
+        cols <- normalize_palette_choice(
+          single_color %||% "#dc2626",
+          subject_vertex_color_choices(),
+          default = "#dc2626"
+        )
+        return(stats::setNames(cols, ids))
+      }
+      stats::setNames(subject_overlay_palette(length(ids)), ids)
+    }
+
+    if (!isTRUE(subject_state$show_overlay)) {
+      return(list(
+        vertices = integer(0),
+        rows = empty_subject_sample_rows(),
+        edges = matrix(integer(0), ncol = 2L, dimnames = list(NULL, c("from", "to"))),
+        edge_groups = list(),
+        hover_text = character(0),
+        label_text = character(0),
+        vertex_subject_ids = character(0),
+        vertex_colors = character(0),
+        color = normalize_palette_choice(
+          subject_state$vertex_color %||% "#dc2626",
+          subject_vertex_color_choices(),
+          default = "#dc2626"
+        ),
+        size = as.numeric(subject_state$vertex_size %||% 1.8),
+        dim_background = isTRUE(subject_state$dim_background),
+        background_opacity = as.numeric(subject_state$background_opacity %||% 0.22),
+        edge_color = normalize_palette_choice(
+          subject_state$edge_color %||% "#dc2626",
+          subject_vertex_color_choices(),
+          default = "#dc2626"
+        ),
+        edge_width = as.numeric(subject_state$edge_width %||% 2),
+        label_size = as.numeric(subject_state$label_size %||% 1.0),
+        subject_id = ""
+      ))
+    }
+    st <- subject_panel_state()
+    rows <- if (is.list(st) && is.data.frame(st$selected_rows)) st$selected_rows else empty_subject_sample_rows()
+    if (nrow(rows) < 1L) {
+      return(list(
+        vertices = integer(0),
+        rows = empty_subject_sample_rows(),
+        edges = matrix(integer(0), ncol = 2L, dimnames = list(NULL, c("from", "to"))),
+        edge_groups = list(),
+        hover_text = character(0),
+        label_text = character(0),
+        vertex_subject_ids = character(0),
+        vertex_colors = character(0),
+        color = as.character(st$vertex_color %||% "#dc2626"),
+        size = as.numeric(st$vertex_size %||% 1.8),
+        dim_background = isTRUE(st$dim_background),
+        background_opacity = as.numeric(st$background_opacity %||% 0.22),
+        edge_color = as.character(st$edge_color %||% "#dc2626"),
+        edge_width = as.numeric(st$edge_width %||% 2),
+        label_size = as.numeric(st$label_size %||% 1.0),
+        subject_id = as.character(st$selected_id %||% "")
+      ))
+    }
+    hover_text <- vapply(seq_len(nrow(rows)), function(ii) {
+      rr <- rows[ii, , drop = FALSE]
+      extra <- character(0)
+      if (is.finite(suppressWarnings(as.integer(rr$week[[1]])))) {
+        extra <- c(extra, sprintf("week=%d", suppressWarnings(as.integer(rr$week[[1]]))))
+      }
+      if (is.finite(suppressWarnings(as.integer(rr$day[[1]])))) {
+        extra <- c(extra, sprintf("day=%d", suppressWarnings(as.integer(rr$day[[1]]))))
+      }
+      paste(
+        c(
+          sprintf("subject=%s", as.character(rr$subject_id[[1]] %||% "")),
+          sprintf("sample=%s", as.character(rr$sample_id[[1]] %||% "")),
+          sprintf("vertex=%d", suppressWarnings(as.integer(rr$vertex[[1]])))
+        ),
+        collapse = "<br>"
+      ) |>
+        paste(collapse = "") |>
+        (\(base) if (length(extra) > 0L) paste(base, paste(extra, collapse = "<br>"), sep = "<br>") else base)()
+    }, character(1))
+    vertices <- suppressWarnings(as.integer(rows$vertex))
+    label_text <- build_subject_label_text(rows, st$label_mode %||% "none")
+    subject_ids_use <- as.character(rows$subject_id %||% rep("", nrow(rows)))
+    color_map <- build_subject_color_map(subject_ids_use, st$vertex_color %||% "#dc2626")
+    vertex_colors <- unname(color_map[subject_ids_use])
+    vertex_colors[is.na(vertex_colors)] <- as.character(st$vertex_color %||% "#dc2626")
+    edge_groups <- if (identical(as.character(st$edge_mode %||% "none"), "graph")) {
+      view_state <- reference_view_state()
+      lapply(unique(subject_ids_use[nzchar(subject_ids_use)]), function(ss) {
+        edge_mat <- compute_subject_edges(
+          vertices = suppressWarnings(as.integer(rows$vertex[as.character(rows$subject_id) == ss])),
+          adj_list = view_state$adj_list %||% NULL
+        )
+        list(
+          subject_id = ss,
+          edges = edge_mat,
+          color = as.character(color_map[[ss]] %||% st$edge_color %||% "#dc2626")
+        )
+      })
+    } else {
+      list()
+    }
+    edge_groups <- Filter(function(one) is.list(one) && is.matrix(one$edges) && nrow(one$edges) > 0L, edge_groups)
+    edge_mat <- if (length(edge_groups) > 0L) {
+      do.call(rbind, lapply(edge_groups, function(one) one$edges))
+    } else {
+      matrix(integer(0), ncol = 2L, dimnames = list(NULL, c("from", "to")))
+    }
+    overlay_rows <- rows
+    overlay_rows$hover_text <- hover_text
+    overlay_rows$label_text <- label_text
+    overlay_rows$color <- vertex_colors
+    list(
+      vertices = vertices,
+      rows = overlay_rows,
+      edges = edge_mat,
+      edge_groups = edge_groups,
+      hover_text = hover_text,
+      label_text = label_text,
+      vertex_subject_ids = subject_ids_use,
+      vertex_colors = vertex_colors,
+      color = as.character(st$vertex_color %||% "#dc2626"),
+      size = as.numeric(st$vertex_size %||% 1.8),
+      dim_background = isTRUE(st$dim_background),
+      background_opacity = as.numeric(st$background_opacity %||% 0.22),
+      edge_color = as.character(st$edge_color %||% "#dc2626"),
+      edge_width = as.numeric(st$edge_width %||% 2),
+      label_size = as.numeric(st$label_size %||% 1.0),
+      subject_id = as.character(st$selected_id %||% "")
     )
   })
 
@@ -6621,6 +7129,21 @@ app_server <- function(input, output, session) {
       } else {
         endpoint_marker_color <- endpoint_marker_color[[1]]
       }
+      subject_overlay <- subject_overlay_active()
+      dim_background_active <- isTRUE(subject_overlay$dim_background) &&
+        length(subject_overlay$vertices %||% integer(0)) > 0L
+      background_opacity_use <- suppressWarnings(as.numeric(subject_overlay$background_opacity %||% 0.22))
+      if (!is.finite(background_opacity_use) || background_opacity_use <= 0) {
+        background_opacity_use <- 0.22
+      }
+      background_opacity_use <- min(1, max(0.05, background_opacity_use))
+      base_marker_opacity <- if (isTRUE(dim_background_active)) {
+        background_opacity_use
+      } else if (identical(vertex_mode, "point")) {
+        0.82
+      } else {
+        0.93
+      }
       idx <- keep_idx
       if (length(idx) < 1L) {
         p_empty <- plotly::plot_ly(source = reference_plotly_source) %>%
@@ -6664,7 +7187,7 @@ app_server <- function(input, output, session) {
             marker = list(
               size = point_size,
               color = solid_color,
-              opacity = if (identical(vertex_mode, "point")) 0.82 else 0.93
+              opacity = base_marker_opacity
             ),
             showlegend = FALSE
           )
@@ -6697,7 +7220,7 @@ app_server <- function(input, output, session) {
               marker = list(
                 size = point_size,
                 color = pal[[lvl]],
-                opacity = if (identical(vertex_mode, "point")) 0.82 else 0.93
+                opacity = base_marker_opacity
               ),
               showlegend = FALSE
             ) %>%
@@ -6738,7 +7261,7 @@ app_server <- function(input, output, session) {
               size = point_size,
               color = vv,
               colorscale = "Viridis",
-              opacity = if (identical(vertex_mode, "point")) 0.82 else 0.93,
+              opacity = base_marker_opacity,
               colorbar = list(title = src$label)
             ),
             showlegend = FALSE
@@ -7059,6 +7582,90 @@ app_server <- function(input, output, session) {
         }
       }
 
+      subject_rows <- if (is.data.frame(subject_overlay$rows)) subject_overlay$rows else empty_subject_sample_rows()
+      if (nrow(subject_rows) > 0L) {
+        subject_rows <- subject_rows[subject_rows$vertex %in% idx, , drop = FALSE]
+      }
+      if (nrow(subject_rows) > 0L) {
+        edge_groups <- if (is.list(subject_overlay$edge_groups)) subject_overlay$edge_groups else list()
+        if (length(edge_groups) > 0L) {
+          for (gg in edge_groups) {
+            edge_use <- if (is.list(gg) && is.matrix(gg$edges)) gg$edges else matrix(integer(0), ncol = 2L)
+            if (nrow(edge_use) < 1L) {
+              next
+            }
+            edge_use <- edge_use[edge_use[, 1] %in% idx & edge_use[, 2] %in% idx, , drop = FALSE]
+            if (nrow(edge_use) < 1L) {
+              next
+            }
+            edge_xyz <- matrix(NA_real_, nrow = nrow(edge_use) * 3L, ncol = 3L)
+            edge_xyz[seq(1L, nrow(edge_xyz), by = 3L), ] <- coords[edge_use[, 1], , drop = FALSE]
+            edge_xyz[seq(2L, nrow(edge_xyz), by = 3L), ] <- coords[edge_use[, 2], , drop = FALSE]
+            p <- p %>%
+              plotly::add_trace(
+                type = "scatter3d",
+                mode = "lines",
+                x = edge_xyz[, 1],
+                y = edge_xyz[, 2],
+                z = edge_xyz[, 3],
+                hoverinfo = "skip",
+                line = list(
+                  color = as.character(gg$color %||% subject_overlay$edge_color %||% "#dc2626"),
+                  width = max(1, as.numeric(subject_overlay$edge_width %||% 2))
+                ),
+                showlegend = FALSE
+              )
+          }
+        }
+        subject_groups <- split(subject_rows, as.character(subject_rows$subject_id %||% ""))
+        for (sid in names(subject_groups)) {
+          grp <- subject_groups[[sid]]
+          if (!is.data.frame(grp) || nrow(grp) < 1L) {
+            next
+          }
+          grp_vertices <- suppressWarnings(as.integer(grp$vertex))
+          grp_color <- as.character(grp$color[[1]] %||% subject_overlay$color %||% "#dc2626")
+          p <- p %>%
+            plotly::add_trace(
+              type = "scatter3d",
+              mode = "markers",
+              x = coords[grp_vertices, 1],
+              y = coords[grp_vertices, 2],
+              z = coords[grp_vertices, 3],
+              key = grp_vertices,
+              customdata = grp_vertices,
+              name = sprintf("Subject %s", sid),
+              text = as.character(grp$hover_text %||% rep("", nrow(grp))),
+              hoverinfo = "text",
+              marker = list(
+                size = max(5, (point_size + 2.5) * max(0.75, as.numeric(subject_overlay$size %||% 1.8))),
+                color = grp_color,
+                opacity = 0.95,
+                line = list(color = "#ffffff", width = 1.2)
+              ),
+              showlegend = FALSE
+            )
+          keep_label <- nzchar(as.character(grp$label_text %||% rep("", nrow(grp))))
+          if (any(keep_label)) {
+            p <- p %>%
+              plotly::add_trace(
+                type = "scatter3d",
+                mode = "text",
+                x = coords[grp_vertices[keep_label], 1],
+                y = coords[grp_vertices[keep_label], 2],
+                z = coords[grp_vertices[keep_label], 3],
+                text = as.character(grp$label_text[keep_label]),
+                hoverinfo = "skip",
+                showlegend = FALSE,
+                textfont = list(
+                  size = max(8, 10 * as.numeric(subject_overlay$label_size %||% 1.0)),
+                  color = grp_color
+                )
+              )
+          }
+        }
+      }
+
       p <- p %>%
         plotly::layout(
           margin = list(l = 0, r = 0, b = 0, t = 10),
@@ -7261,6 +7868,14 @@ app_server <- function(input, output, session) {
         center_marker_size <- 1.7
       }
       show_arm_labels <- isTRUE(input$arm_show_labels %||% TRUE)
+      subject_overlay <- subject_overlay_active()
+      dim_background_active <- isTRUE(subject_overlay$dim_background) &&
+        length(subject_overlay$vertices %||% integer(0)) > 0L
+      background_alpha_use <- suppressWarnings(as.numeric(subject_overlay$background_opacity %||% 0.22))
+      if (!is.finite(background_alpha_use) || background_alpha_use <= 0) {
+        background_alpha_use <- 0.22
+      }
+      background_alpha_use <- min(1, max(0.05, background_alpha_use))
 
       ep_overlay <- endpoint_overlay_active()
       ep_extra <- suppressWarnings(as.integer(ep_overlay$vertices %||% integer(0)))
@@ -7514,15 +8129,145 @@ app_server <- function(input, output, session) {
           }
         }
       }
-      post_layers <- c(endpoint_layers, arm_layers)
+      subject_layers <- list()
+      subject_rows <- if (is.data.frame(subject_overlay$rows)) subject_overlay$rows else empty_subject_sample_rows()
+      subject_rows <- subject_rows[subject_rows$vertex %in% keep_idx, , drop = FALSE]
+      if (nrow(subject_rows) > 0L) {
+        edge_groups <- if (is.list(subject_overlay$edge_groups)) subject_overlay$edge_groups else list()
+        if (length(edge_groups) > 0L) {
+          for (gg in edge_groups) {
+            edge_view <- if (is.list(gg) && is.matrix(gg$edges)) gg$edges else matrix(integer(0), ncol = 2L)
+            if (nrow(edge_view) < 1L) {
+              next
+            }
+            edge_view <- edge_view[edge_view[, 1] %in% keep_idx & edge_view[, 2] %in% keep_idx, , drop = FALSE]
+            if (nrow(edge_view) < 1L) {
+              next
+            }
+            from_view <- match(edge_view[, 1], keep_idx)
+            to_view <- match(edge_view[, 2], keep_idx)
+            keep_pair <- is.finite(from_view) & is.finite(to_view) &
+              from_view >= 1L & from_view <= nn_view &
+              to_view >= 1L & to_view <= nn_view
+            from_view <- from_view[keep_pair]
+            to_view <- to_view[keep_pair]
+            if (length(from_view) > 0L) {
+              subject_layers[[length(subject_layers) + 1L]] <- list(
+                fun = function(ctx, from_idx, to_idx, edge_color, edge_width) {
+                  ff <- suppressWarnings(as.integer(from_idx))
+                  tt <- suppressWarnings(as.integer(to_idx))
+                  keep <- is.finite(ff) & is.finite(tt) &
+                    ff >= 1L & ff <= nrow(ctx$X) &
+                    tt >= 1L & tt <= nrow(ctx$X)
+                  ff <- ff[keep]
+                  tt <- tt[keep]
+                  if (length(ff) < 1L) {
+                    return(invisible(NULL))
+                  }
+                  xyz <- matrix(NA_real_, nrow = length(ff) * 2L, ncol = 3L)
+                  xyz[seq(1L, nrow(xyz), by = 2L), ] <- ctx$X[ff, , drop = FALSE]
+                  xyz[seq(2L, nrow(xyz), by = 2L), ] <- ctx$X[tt, , drop = FALSE]
+                  rgl::segments3d(
+                    x = xyz[, 1],
+                    y = xyz[, 2],
+                    z = xyz[, 3],
+                    col = as.character(edge_color %||% "#dc2626"),
+                    lwd = max(1, as.numeric(edge_width %||% 2))
+                  )
+                  invisible(NULL)
+                },
+                args = list(
+                  from_idx = from_view,
+                  to_idx = to_view,
+                  edge_color = as.character(gg$color %||% subject_overlay$edge_color %||% "#dc2626"),
+                  edge_width = as.numeric(subject_overlay$edge_width %||% 2)
+                ),
+                with_ctx = TRUE
+              )
+            }
+          }
+        }
+        subject_groups <- split(subject_rows, as.character(subject_rows$subject_id %||% ""))
+        for (sid in names(subject_groups)) {
+          grp <- subject_groups[[sid]]
+          if (!is.data.frame(grp) || nrow(grp) < 1L) {
+            next
+          }
+          subject_view <- match(suppressWarnings(as.integer(grp$vertex)), keep_idx)
+          subject_view <- subject_view[is.finite(subject_view) & subject_view >= 1L & subject_view <= nn_view]
+          if (length(subject_view) < 1L) {
+            next
+          }
+          grp_color <- as.character(grp$color[[1]] %||% subject_overlay$color %||% "#dc2626")
+          subject_layers[[length(subject_layers) + 1L]] <- list(
+            fun = function(ctx, subject_idx, subject_color, subject_size) {
+              idx <- suppressWarnings(as.integer(subject_idx))
+              idx <- idx[is.finite(idx) & idx >= 1L & idx <= nrow(ctx$X)]
+              if (length(idx) < 1L) {
+                return(invisible(NULL))
+              }
+              rgl::points3d(
+                ctx$X[idx, , drop = FALSE],
+                col = as.character(subject_color %||% "#dc2626"),
+                size = max(5, 6 * max(0.75, as.numeric(subject_size %||% 1.8)))
+              )
+              invisible(NULL)
+            },
+            args = list(
+              subject_idx = subject_view,
+              subject_color = grp_color,
+              subject_size = as.numeric(subject_overlay$size %||% 1.8)
+            ),
+            with_ctx = TRUE
+          )
+          keep_label <- nzchar(as.character(grp$label_text %||% rep("", nrow(grp))))
+          if (any(keep_label)) {
+            subject_layers[[length(subject_layers) + 1L]] <- list(
+              fun = function(ctx, subject_idx, label_text, label_color, label_size) {
+                idx <- suppressWarnings(as.integer(subject_idx))
+                idx <- idx[is.finite(idx) & idx >= 1L & idx <= nrow(ctx$X)]
+                labs <- as.character(label_text %||% character(0))
+                if (length(idx) < 1L || length(labs) != length(idx)) {
+                  return(invisible(NULL))
+                }
+                rgl::texts3d(
+                  x = ctx$X[idx, 1],
+                  y = ctx$X[idx, 2],
+                  z = ctx$X[idx, 3],
+                  texts = labs,
+                  cex = max(0.6, 1.1 * as.numeric(label_size %||% 1.0)),
+                  col = as.character(label_color %||% "#dc2626"),
+                  useFreeType = TRUE,
+                  fixedSize = TRUE,
+                  lit = FALSE
+                )
+                invisible(NULL)
+              },
+              args = list(
+                subject_idx = subject_view[keep_label],
+                label_text = as.character(grp$label_text[keep_label]),
+                label_color = grp_color,
+                label_size = as.numeric(subject_overlay$label_size %||% 1.0)
+              ),
+              with_ctx = TRUE
+            )
+          }
+        }
+      }
+      post_layers <- c(endpoint_layers, arm_layers, subject_layers)
 
       make_plain_widget <- function(base_color = "gray70") {
+        base_color_use <- if (isTRUE(dim_background_active)) {
+          grDevices::adjustcolor(base_color, alpha.f = background_alpha_use)
+        } else {
+          base_color
+        }
         plot_fn <- resolve_gflow_plot3d_fn("plot3D.plain")
         plot_fn(
           X = coords_view,
           radius = if (identical(vertex_mode, "sphere")) sphere_radius else NULL,
           size = point_size,
-          col = base_color,
+          col = base_color_use,
           widget.width = 1700L,
           widget.height = 1000L,
           background.color = "white",
@@ -7540,6 +8285,9 @@ app_server <- function(input, output, session) {
         )
         vv <- pal_info$values
         cltr_col_tbl <- pal_info$colors
+        if (isTRUE(dim_background_active)) {
+          cltr_col_tbl <- grDevices::adjustcolor(cltr_col_tbl, alpha.f = background_alpha_use)
+        }
         tryCatch(
           resolve_gflow_plot3d_fn("plot3D.cltrs")(
             X = coords_view,
@@ -7561,6 +8309,11 @@ app_server <- function(input, output, session) {
         if (all(!is.finite(vv))) {
           make_plain_widget()
         } else {
+          cont_palette <- if (isTRUE(dim_background_active)) {
+            function(x) grDevices::adjustcolor(grDevices::hcl.colors(length(x), "Viridis"), alpha.f = background_alpha_use)
+          } else {
+            NULL
+          }
           tryCatch(
               resolve_gflow_plot3d_fn("plot3D.cont")(
                 X = coords_view,
@@ -7570,6 +8323,8 @@ app_server <- function(input, output, session) {
                 highlight.type = if (identical(vertex_mode, "sphere")) "sphere" else "point",
                 point.size = point_size,
                 radius = if (identical(vertex_mode, "sphere")) sphere_radius else NULL,
+                color.palette = cont_palette,
+                palette.type = "value",
                 legend.title = as.character(src$label %||% src_key),
                 legend.show = FALSE,
                 widget.width = 1700L,
@@ -8111,6 +8866,7 @@ app_server <- function(input, output, session) {
     endpoint_panel <- endpoint_panel_state()
     endpoint_rows <- if (is.list(endpoint_panel) && is.data.frame(endpoint_panel$rows)) endpoint_panel$rows else data.frame()
     endpoint_working <- if (is.list(endpoint_panel) && is.list(endpoint_panel$working)) endpoint_panel$working else empty_working_endpoint_state()
+    subject_panel <- subject_panel_state()
     arm_panel <- arm_panel_state()
     arm_rows <- if (is.list(arm_panel) && is.data.frame(arm_panel$rows)) arm_panel$rows else empty_arm_candidate_rows()
     arm_working <- if (is.list(arm_panel) && is.list(arm_panel$working)) arm_panel$working else empty_working_arm_state()
@@ -8423,6 +9179,230 @@ app_server <- function(input, output, session) {
       }
 
       shiny::tagList(header, content)
+    }
+
+    build_subject_sample_table <- function(rows_df) {
+      if (!is.data.frame(rows_df) || nrow(rows_df) < 1L) {
+        return(shiny::p(class = "gf-hint", "No subjects are selected."))
+      }
+      rows_use <- rows_df
+      if (nrow(rows_use) > 250L) {
+        rows_use <- rows_use[seq_len(250L), , drop = FALSE]
+      }
+      show_subject_col <- length(unique(as.character(rows_use$subject_id %||% character(0)))) > 1L
+      head_row <- shiny::tags$tr(
+        if (show_subject_col) shiny::tags$th("subject") else NULL,
+        shiny::tags$th("vertex"),
+        shiny::tags$th("sample"),
+        shiny::tags$th("week"),
+        shiny::tags$th("day")
+      )
+      body_rows <- lapply(seq_len(nrow(rows_use)), function(ii) {
+        rr <- rows_use[ii, , drop = FALSE]
+        shiny::tags$tr(
+          if (show_subject_col) shiny::tags$td(as.character(rr$subject_id[[1]] %||% "")) else NULL,
+          shiny::tags$td(sprintf("v%d", suppressWarnings(as.integer(rr$vertex[[1]])))),
+          shiny::tags$td(as.character(rr$sample_id[[1]] %||% "")),
+          shiny::tags$td(
+            if (is.finite(suppressWarnings(as.integer(rr$week[[1]])))) {
+              as.character(suppressWarnings(as.integer(rr$week[[1]])))
+            } else {
+              ""
+            }
+          ),
+          shiny::tags$td(
+            if (is.finite(suppressWarnings(as.integer(rr$day[[1]])))) {
+              as.character(suppressWarnings(as.integer(rr$day[[1]])))
+            } else {
+              ""
+            }
+          )
+        )
+      })
+      shiny::div(
+        class = "table-responsive gf-endpoint-table-scroll",
+        shiny::tags$table(
+          class = "table table-sm gf-asset-table",
+          shiny::tags$thead(head_row),
+          shiny::tags$tbody(body_rows)
+        )
+      )
+    }
+
+    build_subject_panel_ui <- function(subject_state_panel) {
+      if (!is.list(subject_state_panel) || !isTRUE(subject_state_panel$available)) {
+        return(shiny::p(class = "gf-hint", "Subject metadata is not available for this project."))
+      }
+      selected_ids <- unique(as.character(subject_state_panel$selected_ids %||% character(0)))
+      selected_rows <- if (is.data.frame(subject_state_panel$selected_rows)) subject_state_panel$selected_rows else empty_subject_sample_rows()
+      shiny::tagList(
+        shiny::div(
+          class = "gf-endpoint-section",
+          shiny::h6(class = "gf-graph-layout-head", "Subject Selection"),
+          shiny::div(
+            class = "gf-graph-row gf-graph-layout-row",
+            shiny::span(class = "gf-graph-row-label", "Subject IDs:"),
+            shiny::selectizeInput(
+              "subject_ids",
+              label = NULL,
+              choices = subject_state_panel$subject_choices %||% c("Choose subject..." = ""),
+              selected = selected_ids,
+              multiple = TRUE,
+              width = "280px",
+              options = list(
+                placeholder = "Choose subject(s)..."
+              )
+            )
+          ),
+          shiny::tags$label(
+            class = "gf-endpoint-inline-check",
+            shiny::tags$input(
+              type = "checkbox",
+              id = "subject_show_overlay",
+              checked = if (isTRUE(subject_state_panel$show_overlay)) "checked" else NULL
+            ),
+            shiny::tags$span("Show Subject Overlay")
+          ),
+          shiny::tags$label(
+            class = "gf-endpoint-inline-check",
+            shiny::tags$input(
+              type = "checkbox",
+              id = "subject_dim_background",
+              checked = if (isTRUE(subject_state_panel$dim_background)) "checked" else NULL
+            ),
+            shiny::tags$span("Dim Background")
+          ),
+          shiny::div(
+            class = "gf-graph-row gf-graph-layout-row",
+            shiny::span(class = "gf-graph-row-label", "Background opacity:"),
+            shiny::selectInput(
+              "subject_background_opacity",
+              label = NULL,
+              choices = c("10%" = "0.10", "15%" = "0.15", "22%" = "0.22", "30%" = "0.30", "40%" = "0.40", "50%" = "0.50", "65%" = "0.65"),
+              selected = {
+                opacity_use <- formatC(as.numeric(subject_state_panel$background_opacity %||% 0.22), format = "f", digits = 2)
+                if (opacity_use %in% c("0.10", "0.15", "0.22", "0.30", "0.40", "0.50", "0.65")) opacity_use else "0.22"
+              },
+              width = "180px"
+            )
+          ),
+          if (length(selected_ids) > 0L) {
+            shiny::div(
+              class = "gf-hint",
+              if (length(selected_ids) == 1L) {
+                sprintf("Subject %s has %d graph samples in the current vertex set.", selected_ids[[1]], as.integer(nrow(selected_rows)))
+              } else {
+                sprintf("%d selected subjects contribute %d graph samples in the current vertex set.", as.integer(length(selected_ids)), as.integer(nrow(selected_rows)))
+              }
+            )
+          } else {
+            shiny::div(class = "gf-hint", "Choose one or more subjects to inspect their graph samples.")
+          }
+        ),
+        shiny::div(
+          class = "gf-endpoint-section",
+          shiny::h6(class = "gf-graph-layout-head", "Subject Samples"),
+          build_subject_sample_table(selected_rows)
+        ),
+        shiny::div(
+          class = "gf-endpoint-section",
+          shiny::h6(class = "gf-graph-layout-head", "Subject Layout"),
+          if (length(selected_ids) > 1L) {
+            shiny::div(class = "gf-hint", "Multiple subjects are colored automatically by subject for easier comparison.")
+          } else {
+            NULL
+          },
+          shiny::div(
+            class = "gf-graph-row gf-graph-layout-row",
+            shiny::span(class = "gf-graph-row-label", "Vertex color:"),
+            shiny::selectInput(
+              "subject_vertex_color",
+              label = NULL,
+              choices = subject_vertex_color_choices(),
+              selected = as.character(subject_state_panel$vertex_color %||% "#dc2626"),
+              width = "180px"
+            )
+          ),
+          shiny::div(
+            class = "gf-graph-row gf-graph-layout-row",
+            shiny::span(class = "gf-graph-row-label", "Vertex size:"),
+            shiny::selectInput(
+              "subject_vertex_size",
+              label = NULL,
+              choices = c("1.0x" = "1.0", "1.5x" = "1.5", "1.8x" = "1.8", "2.0x" = "2.0", "2.5x" = "2.5", "3.0x" = "3.0"),
+              selected = if (formatC(as.numeric(subject_state_panel$vertex_size %||% 1.8), format = "f", digits = 1) %in% c("1.0", "1.5", "1.8", "2.0", "2.5", "3.0")) {
+                formatC(as.numeric(subject_state_panel$vertex_size %||% 1.8), format = "f", digits = 1)
+              } else {
+                "1.8"
+              },
+              width = "180px"
+            )
+          ),
+          shiny::div(
+            class = "gf-graph-row gf-graph-layout-row",
+            shiny::span(class = "gf-graph-row-label", "Edge mode:"),
+            shiny::selectInput(
+              "subject_edge_mode",
+              label = NULL,
+              choices = subject_edge_mode_choices,
+              selected = as.character(subject_state_panel$edge_mode %||% "none"),
+              width = "220px"
+            )
+          ),
+          shiny::div(
+            class = "gf-graph-row gf-graph-layout-row",
+            shiny::span(class = "gf-graph-row-label", "Edge color:"),
+            shiny::selectInput(
+              "subject_edge_color",
+              label = NULL,
+              choices = subject_vertex_color_choices(),
+              selected = as.character(subject_state_panel$edge_color %||% "#dc2626"),
+              width = "180px"
+            )
+          ),
+          shiny::div(
+            class = "gf-graph-row gf-graph-layout-row",
+            shiny::span(class = "gf-graph-row-label", "Edge width:"),
+            shiny::selectInput(
+              "subject_edge_width",
+              label = NULL,
+              choices = c("1" = "1", "2" = "2", "3" = "3", "4" = "4", "5" = "5", "6" = "6"),
+              selected = if (as.character(as.integer(subject_state_panel$edge_width %||% 2)) %in% c("1", "2", "3", "4", "5", "6")) {
+                as.character(as.integer(subject_state_panel$edge_width %||% 2))
+              } else {
+                "2"
+              },
+              width = "180px"
+            )
+          ),
+          shiny::div(
+            class = "gf-graph-row gf-graph-layout-row",
+            shiny::span(class = "gf-graph-row-label", "Label mode:"),
+            shiny::selectInput(
+              "subject_label_mode",
+              label = NULL,
+              choices = subject_state_panel$label_choices %||% c("None" = "none", "Vertex ID" = "vertex"),
+              selected = as.character(subject_state_panel$label_mode %||% "none"),
+              width = "220px"
+            )
+          ),
+          shiny::div(
+            class = "gf-graph-row gf-graph-layout-row",
+            shiny::span(class = "gf-graph-row-label", "Label size:"),
+            shiny::selectInput(
+              "subject_label_size",
+              label = NULL,
+              choices = c("0.8x" = "0.8", "1.0x" = "1.0", "1.2x" = "1.2", "1.5x" = "1.5", "1.8x" = "1.8", "2.2x" = "2.2"),
+              selected = if (formatC(as.numeric(subject_state_panel$label_size %||% 1.0), format = "f", digits = 1) %in% c("0.8", "1.0", "1.2", "1.5", "1.8", "2.2")) {
+                formatC(as.numeric(subject_state_panel$label_size %||% 1.0), format = "f", digits = 1)
+              } else {
+                "1.0"
+              },
+              width = "180px"
+            )
+          )
+        )
+      )
     }
 
     build_arm_dataset_table <- function(rows_df) {
@@ -9085,6 +10065,11 @@ app_server <- function(input, output, session) {
             "Graphs",
             value = "workflow_graph_structure",
             graph_panel
+          ),
+          bslib::accordion_panel(
+            "Subjects",
+            value = "workflow_subject_structure",
+            build_subject_panel_ui(subject_panel)
           ),
           bslib::accordion_panel(
             "Endpoints",
