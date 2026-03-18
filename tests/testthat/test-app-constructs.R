@@ -694,3 +694,72 @@ test_that("symptoms endpoint label provider exposes precomputed and live profile
     expect_match(as.character(st$working$rows$label[[hit[[1]]]]), "L iners")
   })
 })
+
+test_that("symptoms subjects panel resolves subject rows and overlay vertices", {
+  local_projects_data_sandbox()
+  reg <- gflowui::list_projects()
+  if (!("symptoms" %in% reg$id)) {
+    skip("Symptoms project is not registered in this environment")
+  }
+
+  shiny::testServer(gflowui:::app_server, {
+    open_project("symptoms")
+    session$flushReact()
+
+    sp0 <- subject_panel_state()
+    expect_true(is.list(sp0))
+    expect_true(isTRUE(sp0$available))
+    expect_true(is.data.frame(sp0$rows))
+    expect_true(all(c("vertex", "subject_id", "sample_id", "week", "day") %in% names(sp0$rows)))
+    expect_gt(nrow(sp0$rows), 0L)
+
+    subject_ids <- unique(as.character(sp0$rows$subject_id))
+    subject_ids <- subject_ids[nzchar(subject_ids)]
+    expect_gte(length(subject_ids), 2L)
+    selected_subjects <- subject_ids[seq_len(2L)]
+    expected_rows <- sp0$rows[as.character(sp0$rows$subject_id) %in% selected_subjects, , drop = FALSE]
+    expect_gt(nrow(expected_rows), 0L)
+
+    session$setInputs(subject_ids = selected_subjects)
+    session$flushReact()
+    ov0 <- subject_overlay_active()
+    expect_length(ov0$vertices, 0L)
+
+    session$setInputs(
+      subject_show_overlay = TRUE,
+      subject_dim_background = TRUE,
+      subject_background_opacity = "0.30"
+    )
+    session$flushReact()
+
+    sp1 <- subject_panel_state()
+    ov1 <- subject_overlay_active()
+    expect_equal(sort(as.character(sp1$selected_ids %||% character(0))), sort(selected_subjects))
+    expect_equal(sort(as.integer(ov1$vertices)), sort(as.integer(sp1$selected_rows$vertex)))
+    expect_equal(length(ov1$hover_text), nrow(sp1$selected_rows))
+    expect_true(isTRUE(sp1$dim_background))
+    expect_equal(as.numeric(sp1$background_opacity %||% NA_real_), 0.30)
+    expect_equal(sort(unique(as.character(ov1$vertex_subject_ids %||% character(0)))), sort(selected_subjects))
+    expect_gte(length(unique(as.character(ov1$vertex_colors %||% character(0)))), 2L)
+    expect_true(all(c("none", "vertex", "sample", "visit") %in% unname(sp1$label_choices %||% character(0))))
+
+    session$setInputs(
+      subject_edge_mode = "graph",
+      subject_label_mode = "sample",
+      subject_label_size = "1.2"
+    )
+    session$flushReact()
+
+    sp2 <- subject_panel_state()
+    ov2 <- subject_overlay_active()
+    expect_equal(as.character(sp2$edge_mode %||% ""), "graph")
+    expect_equal(as.character(sp2$label_mode %||% ""), "sample")
+    expect_true(is.matrix(ov2$edges))
+    expect_equal(ncol(ov2$edges), 2L)
+    expect_equal(length(ov2$label_text), nrow(sp2$selected_rows))
+    expect_equal(as.character(ov2$label_text), as.character(sp2$selected_rows$sample_id))
+    expect_equal(as.numeric(ov2$label_size %||% NA_real_), 1.2)
+    expect_true(is.data.frame(ov2$rows))
+    expect_equal(nrow(ov2$rows), nrow(sp2$selected_rows))
+  })
+})
