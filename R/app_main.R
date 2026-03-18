@@ -3,7 +3,16 @@
 #' @return A `shiny.appobj` application.
 #' @export
 #'
+gflowui_enable_rgl_null_device <- function() {
+  old <- getOption("rgl.useNULL")
+  if (!isTRUE(old)) {
+    options(rgl.useNULL = TRUE)
+  }
+  old
+}
+
 gflowui_app <- function() {
+  gflowui_enable_rgl_null_device()
   shiny::shinyApp(
     ui = app_ui(),
     server = app_server
@@ -24,6 +33,8 @@ run_gflowui <- function(
   port = getOption("shiny.port"),
   launch.browser = interactive()
 ) {
+  old_rgl_use_null <- gflowui_enable_rgl_null_device()
+  on.exit(options(rgl.useNULL = old_rgl_use_null), add = TRUE)
   # Use positional first argument for broad Shiny compatibility:
   # older Shiny uses `appDir`, newer accepts app objects too.
   shiny::runApp(

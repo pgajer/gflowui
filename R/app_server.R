@@ -28,7 +28,7 @@ app_server <- function(input, output, session) {
   # Prefer off-screen/null rgl device in Shiny; avoids noisy init warnings
   # and brittle native OpenGL paths on some macOS/XQuartz setups.
   old_rgl_use_null <- getOption("rgl.useNULL")
-  if (requireNamespace("rgl", quietly = TRUE) && !isTRUE(old_rgl_use_null)) {
+  if (!isTRUE(old_rgl_use_null)) {
     options(rgl.useNULL = TRUE)
     session$onSessionEnded(function() {
       options(rgl.useNULL = old_rgl_use_null)
@@ -38,6 +38,8 @@ app_server <- function(input, output, session) {
   graph_solid_color_key <- "solid_color"
   graph_solid_color_default <- "#111827"
   reference_plotly_source <- "reference_plot_source"
+  reference_plot_camera_input_id <- "reference_plot_camera_state"
+  reference_plot_camera_state <- shiny::reactiveVal(NULL)
   graph_selection_state <- shiny::reactiveValues(
     set_id = "",
     k = NA_integer_
@@ -78,6 +80,57 @@ app_server <- function(input, output, session) {
     }
     default_use[[1]]
   }
+  normalize_plotly_camera <- function(cam) {
+    if (!is.list(cam)) {
+      return(NULL)
+    }
+    normalize_xyz <- function(node, default = NULL) {
+      if (!is.list(node)) {
+        return(default)
+      }
+      x <- suppressWarnings(as.numeric(node$x %||% NA_real_))
+      y <- suppressWarnings(as.numeric(node$y %||% NA_real_))
+      z <- suppressWarnings(as.numeric(node$z %||% NA_real_))
+      if (!all(is.finite(c(x, y, z)))) {
+        return(default)
+      }
+      list(x = x, y = y, z = z)
+    }
+    out <- list()
+    eye <- normalize_xyz(cam$eye)
+    center <- normalize_xyz(cam$center, default = list(x = 0, y = 0, z = 0))
+    up <- normalize_xyz(cam$up, default = list(x = 0, y = 0, z = 1))
+    if (is.null(eye)) {
+      return(NULL)
+    }
+    out$eye <- eye
+    if (!is.null(center)) {
+      out$center <- center
+    }
+    if (!is.null(up)) {
+      out$up <- up
+    }
+    projection_type <- as.character(cam$projection$type %||% "")
+    if (nzchar(projection_type)) {
+      out$projection <- list(type = projection_type)
+    }
+    out
+  }
+  capture_reference_plot_camera_js <- function() {
+    sprintf(
+      "(function(){var gd=document.getElementById('reference_plot'); if(gd && gd._fullLayout && gd._fullLayout.scene && gd._fullLayout.scene.camera && window.Shiny && typeof window.Shiny.setInputValue==='function'){ try { window.Shiny.setInputValue('%s', JSON.parse(JSON.stringify(gd._fullLayout.scene.camera)), {priority:'event'}); } catch(e) {} }})();",
+      reference_plot_camera_input_id
+    )
+  }
+  arm_preview_build_request_js <- function() {
+    "(function(){var cam=null; var gd=document.getElementById('reference_plot'); if(gd && gd._fullLayout && gd._fullLayout.scene && gd._fullLayout.scene.camera){ try { cam=JSON.parse(JSON.stringify(gd._fullLayout.scene.camera)); } catch(e) { cam=null; } } if(window.Shiny && typeof window.Shiny.setInputValue==='function'){ window.Shiny.setInputValue('arm_preview_build_request', {ts: Date.now(), camera: cam}, {priority:'event'}); }})();"
+  }
+  arm_builder_camera_hook_script <- function() {
+    sprintf(
+      "(function(){var cloneCamera=function(cam){try{return JSON.parse(JSON.stringify(cam));}catch(e){return cam||null;}}; var currentCamera=function(){var gd=document.getElementById('reference_plot'); if(!(gd && gd._fullLayout && gd._fullLayout.scene && gd._fullLayout.scene.camera)) return null; return cloneCamera(gd._fullLayout.scene.camera);}; var remember=function(){var cam=currentCamera(); if(!cam) return; window.__gflowuiReferenceCamera=cam; if(window.Shiny && typeof window.Shiny.setInputValue==='function'){ try { window.Shiny.setInputValue('%s', cam, {priority:'event'}); } catch(e) {} } }; var restore=function(){var cam=window.__gflowuiReferenceCamera||currentCamera(); if(!(cam && window.Plotly)) return; var apply=function(){var gd=document.getElementById('reference_plot'); if(!gd) return; try { window.Plotly.relayout(gd, {'scene.camera': cam}); } catch(e) {} }; if(window.requestAnimationFrame){ window.requestAnimationFrame(apply); window.requestAnimationFrame(function(){ window.requestAnimationFrame(apply); }); } setTimeout(apply, 40); setTimeout(apply, 140); setTimeout(apply, 320); }; var hook=function(id){var el=document.getElementById(id); if(el && !el.dataset.gfCameraHooked){ el.addEventListener('mousedown', remember, true); el.addEventListener('focus', remember, true); el.addEventListener('change', function(){ restore(); }, true); el.dataset.gfCameraHooked='1'; } var sel=document.getElementById(id + '-selectized'); if(sel && !sel.dataset.gfCameraHooked){ sel.addEventListener('mousedown', remember, true); sel.addEventListener('focus', remember, true); sel.dataset.gfCameraHooked='1'; } }; hook('arm_endpoint_a'); hook('arm_endpoint_b');})();",
+      reference_plot_camera_input_id
+    )
+  }
   normalize_live_renderer_choice <- function(x, default = "plotly") {
     val <- tolower(trimws(as.character(x %||% default)))
     if (identical(val, "rgl")) {
@@ -90,6 +143,21 @@ app_server <- function(input, output, session) {
       val <- as.character(default %||% "plotly")
     }
     val
+  }
+  restore_reference_plot_camera_proxy <- function() {
+    rr <- tryCatch(reference_renderer_state(), error = function(e) NULL)
+    cam <- isolate(reference_plot_camera_state())
+    if (!is.list(rr) || !identical(as.character(rr$effective %||% ""), "plotly") || !is.list(cam) || !requireNamespace("plotly", quietly = TRUE)) {
+      return(invisible(FALSE))
+    }
+    session$onFlushed(function() {
+      proxy <- plotly::plotlyProxy("reference_plot", session = session)
+      try(
+        plotly::plotlyProxyInvoke(proxy, "relayout", list(`scene.camera` = cam)),
+        silent = TRUE
+      )
+    }, once = TRUE)
+    invisible(TRUE)
   }
   resolve_gflow_plot3d_fn <- function(base_name) {
     if (!requireNamespace("gflow", quietly = TRUE)) {
@@ -1069,6 +1137,7 @@ app_server <- function(input, output, session) {
   arm_preview_layout_open <- shiny::reactiveVal(FALSE)
   arm_preview_variant <- shiny::reactiveVal(NULL)
   arm_preview_revision <- shiny::reactiveVal(0L)
+  arm_builder_virtual_markers <- shiny::reactiveVal(list())
   arm_pending_load_dataset_id <- shiny::reactiveVal("")
   arm_selected_id <- shiny::reactiveVal("")
   arm_draft_banner_dismissed <- shiny::reactiveVal(FALSE)
@@ -1116,6 +1185,7 @@ app_server <- function(input, output, session) {
     arm_preview_layout_open(FALSE)
     arm_preview_variant(NULL)
     arm_preview_revision(0L)
+    arm_builder_virtual_markers(list())
     arm_pending_load_dataset_id("")
     arm_selected_id("")
     arm_draft_banner_dismissed(FALSE)
@@ -1129,6 +1199,7 @@ app_server <- function(input, output, session) {
          input$arm_label_size, input$arm_tube_opacity, input$arm_path_width,
          input$arm_vertex_size, input$arm_color,
          input$arm_preview_path_color, input$arm_preview_body_color,
+         input$arm_preview_body_color_mode,
          input$arm_preview_body_opacity, input$arm_preview_path_width,
          input$arm_preview_body_size, input$arm_center_marker_color,
          input$arm_center_marker_size),
@@ -2798,10 +2869,13 @@ app_server <- function(input, output, session) {
       }
       htmlwidgets::onRender(
         widget,
-        "function(el, x) {
-          var key = '__gflowui_reference_plot_camera__';
+        sprintf("function(el, x) {
           var gd = document.getElementById(el.id) || el;
           if (!gd) return;
+
+          var cameraToRestore = window.__gflowuiReferenceCamera
+            ? JSON.parse(JSON.stringify(window.__gflowuiReferenceCamera))
+            : null;
 
           function cloneCamera(cam) {
             try {
@@ -2821,34 +2895,44 @@ app_server <- function(input, output, session) {
           }
 
           function rememberCamera(ev) {
-            var cam = null;
-            if (ev && ev['scene.camera']) {
-              cam = ev['scene.camera'];
-            } else {
-              cam = currentCamera();
-            }
+            if (gd.__gflowuiSuppressRemember) return;
+            var cam = ev && ev['scene.camera'] ? ev['scene.camera'] : currentCamera();
             if (cam) {
-              window[key] = cloneCamera(cam);
+              window.__gflowuiReferenceCamera = cloneCamera(cam);
+            }
+            if (cam && window.Shiny && typeof window.Shiny.setInputValue === 'function') {
+              window.Shiny.setInputValue('%s', cloneCamera(cam), {priority: 'event'});
             }
           }
 
-          if (!gd.__gflowuiCameraBound) {
-            gd.on('plotly_relayout', rememberCamera);
-            gd.on('plotly_afterplot', function() {
-              var cam = currentCamera();
-              if (cam) {
-                window[key] = cloneCamera(cam);
-              }
-            });
-            gd.__gflowuiCameraBound = true;
-          }
+          gd.on('plotly_relayout', rememberCamera);
+          gd.on('plotly_afterplot', function() {
+            if (gd.__gflowuiSuppressRemember) return;
+            var cam = currentCamera();
+            if (cam) {
+              window.__gflowuiReferenceCamera = cloneCamera(cam);
+            }
+            if (cam && window.Shiny && typeof window.Shiny.setInputValue === 'function') {
+              window.Shiny.setInputValue('%s', cloneCamera(cam), {priority: 'event'});
+            }
+          });
 
-          if (window[key]) {
-            try {
-              Plotly.relayout(gd, {'scene.camera': cloneCamera(window[key])});
-            } catch (e) {}
+          if (cameraToRestore) {
+            gd.__gflowuiSuppressRemember = true;
+            setTimeout(function() {
+              try {
+                Plotly.relayout(gd, {'scene.camera': cameraToRestore}).then(function() {
+                  window.__gflowuiReferenceCamera = JSON.parse(JSON.stringify(cameraToRestore));
+                  gd.__gflowuiSuppressRemember = false;
+                }).catch(function() {
+                  gd.__gflowuiSuppressRemember = false;
+                });
+              } catch (e) {
+                gd.__gflowuiSuppressRemember = false;
+              }
+            }, 80);
           }
-        }"
+        }", reference_plot_camera_input_id, reference_plot_camera_input_id)
       )
     }
 
@@ -2896,12 +2980,25 @@ app_server <- function(input, output, session) {
       },
       ignoreInit = TRUE
     )
+
+    shiny::observeEvent(input[[reference_plot_camera_input_id]], {
+      cam <- input[[reference_plot_camera_input_id]]
+      if (is.null(cam) || !is.list(cam)) {
+        return()
+      }
+      cam_norm <- normalize_plotly_camera(cam)
+      if (is.null(cam_norm)) {
+        return()
+      }
+      reference_plot_camera_state(cam_norm)
+    }, ignoreInit = TRUE)
   }
 
   arm_preview_layout_inputs <- shiny::debounce(
     shiny::reactive({
       list(
         path_color = as.character(input$arm_preview_path_color %||% "#f97316"),
+        body_color_mode = as.character(input$arm_preview_body_color_mode %||% "solid"),
         body_color = as.character(input$arm_preview_body_color %||% "#eab308"),
         body_opacity = suppressWarnings(as.numeric(input$arm_preview_body_opacity %||% 0.75)),
         path_width = suppressWarnings(as.numeric(input$arm_preview_path_width %||% 5)),
@@ -2919,9 +3016,8 @@ app_server <- function(input, output, session) {
         endpoint_a = as.character(input$arm_endpoint_a %||% ""),
         endpoint_b = as.character(input$arm_endpoint_b %||% ""),
         thickening_method = as.character(input$arm_thickening_method %||% "path_only"),
-        corridor_rel_tol = suppressWarnings(as.numeric(input$arm_corridor_rel_tol %||% 0.05)),
-        corridor_abs_tol = suppressWarnings(as.numeric(input$arm_corridor_abs_tol %||% 0)),
-        tube_radius = suppressWarnings(as.numeric(input$arm_tube_radius %||% 2))
+        path_relative_radius = suppressWarnings(as.numeric(input$arm_path_relative_radius %||% 0.10)),
+        excess_tolerance = suppressWarnings(as.numeric(input$arm_excess_tolerance %||% NA_real_))
       )
     }),
     millis = 220
@@ -4728,6 +4824,44 @@ app_server <- function(input, output, session) {
     NULL
   }
 
+  shiny::observeEvent(list(input$arm_endpoint_a, input$arm_endpoint_b), {
+    collect_builder_virtual_marker <- function(choice_value, source_tag) {
+      resolved <- resolve_arm_endpoint_choice(choice_value)
+      if (!is.list(resolved) || !isTRUE(resolved$is_virtual)) {
+        return(NULL)
+      }
+      vv <- suppressWarnings(as.integer(resolved$vertex %||% NA_integer_))
+      if (!is.finite(vv) || vv < 1L) {
+        return(NULL)
+      }
+      list(
+        key = sprintf("%s|%d|%s", as.character(source_tag %||% "builder"), as.integer(vv), as.character(resolved$label %||% "CENTER")),
+        vertex = as.integer(vv),
+        label = as.character(resolved$label %||% "CENTER"),
+        source = as.character(source_tag %||% "builder")
+      )
+    }
+    next_markers <- list()
+    for (mm in list(
+      collect_builder_virtual_marker(input$arm_endpoint_a, "builder_a"),
+      collect_builder_virtual_marker(input$arm_endpoint_b, "builder_b")
+    )) {
+      if (!is.list(mm)) {
+        next
+      }
+      next_markers[[mm$key]] <- list(
+        vertex = mm$vertex,
+        label = mm$label,
+        source = mm$source
+      )
+    }
+    current_markers <- isolate(arm_builder_virtual_markers())
+    if (!identical(current_markers, next_markers)) {
+      arm_builder_virtual_markers(next_markers)
+      restore_reference_plot_camera_proxy()
+    }
+  }, ignoreInit = FALSE)
+
   read_workspace_arm_dataset <- function(path) {
     obj <- read_rds_if_exists(path, default = NULL)
     if (!is.list(obj)) {
@@ -5497,13 +5631,14 @@ app_server <- function(input, output, session) {
       preview$is_preview <- TRUE
       arms[[idx_out]] <- preview
     }
-    builder_a <- resolve_arm_endpoint_choice(input$arm_endpoint_a)
-    builder_b <- resolve_arm_endpoint_choice(input$arm_endpoint_b)
-    if (is.list(builder_a) && isTRUE(builder_a$is_virtual)) {
-      add_virtual_marker(builder_a$vertex, label = builder_a$label, source = "builder")
-    }
-    if (is.list(builder_b) && isTRUE(builder_b$is_virtual)) {
-      add_virtual_marker(builder_b$vertex, label = builder_b$label, source = "builder")
+    builder_markers <- arm_builder_virtual_markers()
+    if (is.list(builder_markers) && length(builder_markers) > 0L) {
+      for (mm in builder_markers) {
+        if (!is.list(mm)) {
+          next
+        }
+        add_virtual_marker(mm$vertex, label = mm$label %||% "CENTER", source = mm$source %||% "builder")
+      }
     }
     if (length(arms) > 0L) {
       for (aa in arms) {
@@ -5565,9 +5700,8 @@ app_server <- function(input, output, session) {
       return(NULL)
     }
     thickening_method <- as.character(input$arm_thickening_method %||% "path_only")
-    corridor_rel_tol <- suppressWarnings(as.numeric(input$arm_corridor_rel_tol %||% 0.05))
-    corridor_abs_tol <- suppressWarnings(as.numeric(input$arm_corridor_abs_tol %||% 0))
-    tube_radius <- suppressWarnings(as.numeric(input$arm_tube_radius %||% 2))
+    path_relative_radius <- suppressWarnings(as.numeric(input$arm_path_relative_radius %||% 0.10))
+    excess_tolerance <- suppressWarnings(as.numeric(input$arm_excess_tolerance %||% NA_real_))
     res <- tryCatch(
       compute_arm_variant(
         adj.list = gd$adj_list,
@@ -5582,9 +5716,8 @@ app_server <- function(input, output, session) {
         endpoint_a_virtual = a$is_virtual,
         endpoint_b_virtual = b$is_virtual,
         thickening_method = thickening_method,
-        corridor_rel_tol = corridor_rel_tol,
-        corridor_abs_tol = corridor_abs_tol,
-        tube_radius = tube_radius
+        path_relative_radius = path_relative_radius,
+        excess_tolerance = excess_tolerance
       ),
       error = function(e) e
     )
@@ -5629,7 +5762,14 @@ app_server <- function(input, output, session) {
     invisible(TRUE)
   }
 
-  shiny::observeEvent(input$arm_preview_build, {
+  shiny::observeEvent(input$arm_preview_build_request, {
+    req <- input$arm_preview_build_request
+    if (is.list(req) && is.list(req$camera)) {
+      cam_norm <- normalize_plotly_camera(req$camera)
+      if (is.list(cam_norm)) {
+        reference_plot_camera_state(cam_norm)
+      }
+    }
     preview <- build_arm_preview_from_inputs(show_error = TRUE)
     arm_preview_variant(preview)
     arm_preview_revision(isolate(arm_preview_revision()) + 1L)
@@ -5637,6 +5777,7 @@ app_server <- function(input, output, session) {
       arm_preview_layout_open(TRUE)
       arm_selected_id(as.character(preview$arm_id %||% ""))
     }
+    restore_reference_plot_camera_proxy()
   }, ignoreInit = TRUE)
 
   shiny::observeEvent(
@@ -5652,6 +5793,7 @@ app_server <- function(input, output, session) {
         arm_selected_id(as.character(preview$arm_id %||% ""))
       }
       arm_preview_revision(isolate(arm_preview_revision()) + 1L)
+      restore_reference_plot_camera_proxy()
     },
     ignoreInit = TRUE
   )
@@ -6346,6 +6488,79 @@ app_server <- function(input, output, session) {
     list(values = vv, levels = lev, colors = cols)
   }
 
+  arm_preview_body_color_choices <- c(
+    "Solid color" = "solid",
+    "Balanced position" = "t_balance",
+    "Harmonic position" = "harmonic_t",
+    "Distance to path" = "distance_to_path",
+    "Excess" = "excess"
+  )
+
+  arm_preview_body_metric <- function(arm_variant, metric_name, vertices) {
+    vv <- suppressWarnings(as.integer(vertices %||% integer(0)))
+    vv <- vv[is.finite(vv)]
+    if (length(vv) < 1L) {
+      return(NULL)
+    }
+    metric_key <- as.character(metric_name %||% "solid")
+    if (!nzchar(metric_key) || identical(metric_key, "solid")) {
+      return(NULL)
+    }
+    metrics <- if (is.list(arm_variant$arm_metrics)) arm_variant$arm_metrics else list()
+    vals <- suppressWarnings(as.numeric(metrics[[metric_key]] %||% numeric(0)))
+    val_names <- names(metrics[[metric_key]] %||% numeric(0))
+    if (length(vals) < 1L || length(val_names) != length(vals)) {
+      return(NULL)
+    }
+    mm <- match(as.character(vv), as.character(val_names))
+    ok <- is.finite(mm) & mm >= 1L & mm <= length(vals)
+    if (!any(ok)) {
+      return(NULL)
+    }
+    out <- rep(NA_real_, length(vv))
+    out[ok] <- vals[mm[ok]]
+    if (!any(is.finite(out))) {
+      return(NULL)
+    }
+    choice_match <- names(arm_preview_body_color_choices)[match(metric_key, unname(arm_preview_body_color_choices))]
+    metric_label <- if (length(choice_match) > 0L && !is.na(choice_match[[1]]) && nzchar(choice_match[[1]])) {
+      as.character(choice_match[[1]])
+    } else {
+      metric_key
+    }
+    list(
+      key = metric_key,
+      label = metric_label,
+      values = out
+    )
+  }
+
+  numeric_arm_colors <- function(values, palette = "Viridis", alpha = 1) {
+    vv <- suppressWarnings(as.numeric(values %||% numeric(0)))
+    out <- rep("#9ca3af", length(vv))
+    ok <- is.finite(vv)
+    if (!any(ok)) {
+      return(out)
+    }
+    rng <- range(vv[ok], na.rm = TRUE)
+    if (!all(is.finite(rng))) {
+      return(out)
+    }
+    if (diff(rng) <= 0) {
+      idx <- rep(128L, sum(ok))
+    } else {
+      scaled <- (vv[ok] - rng[[1]]) / diff(rng)
+      idx <- pmin(256L, pmax(1L, floor(scaled * 255) + 1L))
+    }
+    pal <- grDevices::hcl.colors(256, palette)
+    cols <- pal[idx]
+    if (is.finite(alpha) && alpha > 0 && alpha < 1) {
+      cols <- grDevices::adjustcolor(cols, alpha.f = alpha)
+    }
+    out[ok] <- cols
+    out
+  }
+
   if (requireNamespace("plotly", quietly = TRUE)) {
     output$reference_plot <- plotly::renderPlotly({
       rr <- reference_renderer_state()
@@ -6406,7 +6621,6 @@ app_server <- function(input, output, session) {
       } else {
         endpoint_marker_color <- endpoint_marker_color[[1]]
       }
-
       idx <- keep_idx
       if (length(idx) < 1L) {
         p_empty <- plotly::plot_ly(source = reference_plotly_source) %>%
@@ -6730,6 +6944,37 @@ app_server <- function(input, output, session) {
           body_size_use <- if (is_preview) preview_body_size else arm_vertex_size
 
           if (length(body_vertices) > 0L) {
+            body_metric <- if (is_preview) {
+              arm_preview_body_metric(aa, preview_layout$body_color_mode %||% "solid", body_vertices)
+            } else {
+              NULL
+            }
+            hover_text <- if (is.list(body_metric) && any(is.finite(body_metric$values))) {
+              sprintf(
+                "arm=%s<br>vertex=%d<br>%s=%.4f",
+                as.character(aa$label %||% aa$family_label %||% "arm"),
+                body_vertices,
+                as.character(body_metric$label %||% body_metric$key %||% "metric"),
+                suppressWarnings(as.numeric(body_metric$values))
+              )
+            } else {
+              sprintf("arm=%s<br>vertex=%d", as.character(aa$label %||% aa$family_label %||% "arm"), body_vertices)
+            }
+            marker_spec <- if (is.list(body_metric) && any(is.finite(body_metric$values))) {
+              list(
+                size = max(2.5, point_size * 0.55 * body_size_use),
+                color = suppressWarnings(as.numeric(body_metric$values)),
+                colorscale = "Viridis",
+                opacity = opacity_use,
+                colorbar = list(title = as.character(body_metric$label %||% body_metric$key %||% "metric"))
+              )
+            } else {
+              list(
+                size = max(2.5, point_size * 0.55 * body_size_use),
+                color = body_color_use,
+                opacity = opacity_use
+              )
+            }
             p <- p %>%
               plotly::add_trace(
                 type = "scatter3d",
@@ -6739,13 +6984,9 @@ app_server <- function(input, output, session) {
                 z = coords[body_vertices, 3],
                 key = body_vertices,
                 customdata = body_vertices,
-                text = sprintf("arm=%s<br>vertex=%d", as.character(aa$label %||% aa$family_label %||% "arm"), body_vertices),
+                text = hover_text,
                 hoverinfo = "text",
-                marker = list(
-                  size = max(2.5, point_size * 0.55 * body_size_use),
-                  color = body_color_use,
-                  opacity = opacity_use
-                ),
+                marker = marker_spec,
                 showlegend = FALSE
               )
           }
@@ -6834,12 +7075,19 @@ app_server <- function(input, output, session) {
           } else {
             list(orientation = "h")
           },
-          scene = list(
-            uirevision = "reference-scene",
-            xaxis = list(title = "", showgrid = FALSE, zeroline = FALSE, visible = FALSE),
-            yaxis = list(title = "", showgrid = FALSE, zeroline = FALSE, visible = FALSE),
-            zaxis = list(title = "", showgrid = FALSE, zeroline = FALSE, visible = FALSE)
-          )
+          scene = {
+            sc <- list(
+              uirevision = "reference-scene",
+              xaxis = list(title = "", showgrid = FALSE, zeroline = FALSE, visible = FALSE),
+              yaxis = list(title = "", showgrid = FALSE, zeroline = FALSE, visible = FALSE),
+              zaxis = list(title = "", showgrid = FALSE, zeroline = FALSE, visible = FALSE)
+            )
+            saved_cam <- isolate(reference_plot_camera_state())
+            if (is.list(saved_cam)) {
+              sc$camera <- saved_cam
+            }
+            sc
+          }
         )
       p <- plotly::event_register(p, "plotly_click")
       p <- attach_reference_plotly_camera_preserver(p)
@@ -7152,8 +7400,23 @@ app_server <- function(input, output, session) {
           } else {
             arm_view
           }
+          body_vertices <- if (is_preview && !identical(as.character(aa$thickening_method %||% "path_only"), "path_only")) {
+            setdiff(arm_vertices, path_vertices)
+          } else {
+            arm_vertices
+          }
+          body_metric <- if (is_preview) {
+            arm_preview_body_metric(aa, preview_layout$body_color_mode %||% "solid", body_vertices)
+          } else {
+            NULL
+          }
+          body_cols_use <- if (is.list(body_metric) && any(is.finite(body_metric$values))) {
+            numeric_arm_colors(body_metric$values, palette = "Viridis", alpha = if (is_preview) preview_body_opacity else arm_opacity)
+          } else {
+            body_color_use
+          }
           arm_layers[[length(arm_layers) + 1L]] <- list(
-            fun = function(ctx, arm_idx, path_idx, arm_label, path_color_use, body_color_use, arm_vertex_size, arm_path_width, arm_label_size, show_arm_labels) {
+            fun = function(ctx, arm_idx, path_idx, arm_label, path_color_use, body_cols_use, arm_vertex_size, arm_path_width, arm_label_size, show_arm_labels) {
               idx <- suppressWarnings(as.integer(arm_idx))
               idx <- idx[is.finite(idx) & idx >= 1L & idx <= nrow(ctx$X)]
               pidx <- suppressWarnings(as.integer(path_idx))
@@ -7161,7 +7424,7 @@ app_server <- function(input, output, session) {
               if (length(idx) > 0L) {
                 rgl::points3d(
                   ctx$X[idx, , drop = FALSE],
-                  col = body_color_use,
+                  col = body_cols_use,
                   size = max(3.5, 4.5 * arm_vertex_size)
                 )
               }
@@ -7194,7 +7457,7 @@ app_server <- function(input, output, session) {
               path_idx = path_view,
               arm_label = as.character(aa$label %||% aa$family_label %||% "arm"),
               path_color_use = path_color_use,
-              body_color_use = body_color_use,
+              body_cols_use = body_cols_use,
               arm_vertex_size = if (is_preview) preview_body_size else arm_vertex_size,
               arm_path_width = if (is_preview) preview_path_width else arm_path_width,
               arm_label_size = arm_label_size,
@@ -8323,7 +8586,7 @@ app_server <- function(input, output, session) {
               )
             ),
             shiny::tags$td(as.character(rr$family_label[[1]] %||% "")),
-            shiny::tags$td(as.character(rr$thickening_method[[1]] %||% "")),
+            shiny::tags$td(arm_thickening_label(rr$thickening_method[[1]] %||% "")),
             shiny::tags$td(as.character(arm_n)),
             shiny::tags$td(
               class = "gf-endpoint-table-actions-cell",
@@ -8403,21 +8666,18 @@ app_server <- function(input, output, session) {
       if (length(choice_vals) < 2L) {
         return(shiny::p(class = "gf-hint", "Create or load at least two endpoints first. Working Endpoints supply the endpoint choices for arm construction."))
       }
-      sel_a <- as.character(input$arm_endpoint_a %||% choice_vals[[1]])
+      sel_a <- as.character(isolate(input$arm_endpoint_a %||% choice_vals[[1]]))
       if (!(sel_a %in% choice_vals)) {
         sel_a <- choice_vals[[1]]
       }
-      sel_b <- as.character(input$arm_endpoint_b %||% if (length(choice_vals) > 1L) choice_vals[[2]] else choice_vals[[1]])
+      sel_b <- as.character(isolate(input$arm_endpoint_b %||% if (length(choice_vals) > 1L) choice_vals[[2]] else choice_vals[[1]]))
       if (!(sel_b %in% choice_vals)) {
         sel_b <- if (length(choice_vals) > 1L) choice_vals[[2]] else choice_vals[[1]]
       }
       thick_choices <- c(
         "Path only" = "path_only",
-        "Corridor" = "corridor",
-        "Graph tube (hop)" = "tube_hop",
-        "Graph tube (geodesic)" = "tube_geodesic",
-        "Harmonic extension (hop)" = "harmonic_hop",
-        "Harmonic extension (geodesic)" = "harmonic_geodesic"
+        "Tube lens corridor" = "tube_lens_corridor",
+        "Tube lens excess corridor" = "tube_lens_excess_corridor"
       )
       thick_sel <- as.character(input$arm_thickening_method %||% "path_only")
       if (!(thick_sel %in% unname(thick_choices))) {
@@ -8453,41 +8713,31 @@ app_server <- function(input, output, session) {
           shiny::span(class = "gf-graph-row-label", "Variant:"),
           shiny::selectInput("arm_thickening_method", label = NULL, choices = thick_choices, selected = thick_sel, width = "220px")
         ),
-        if (identical(thick_sel, "corridor")) {
+        if (thick_sel %in% c("tube_lens_corridor", "tube_lens_excess_corridor")) {
           shiny::tagList(
             shiny::div(
               class = "gf-graph-row gf-graph-layout-row",
-              shiny::span(class = "gf-graph-row-label", "Corridor rel.tol:"),
-              shiny::numericInput("arm_corridor_rel_tol", label = NULL, value = suppressWarnings(as.numeric(isolate(input$arm_corridor_rel_tol %||% 0.05))), min = 0, step = 0.01, width = "130px")
+              shiny::span(class = "gf-graph-row-label", "Path rel. radius:"),
+              shiny::numericInput("arm_path_relative_radius", label = NULL, value = suppressWarnings(as.numeric(isolate(input$arm_path_relative_radius %||% 0.10))), min = 0, step = 0.01, width = "130px")
             ),
+            if (identical(thick_sel, "tube_lens_excess_corridor")) {
+              shiny::div(
+                class = "gf-graph-row gf-graph-layout-row",
+                shiny::span(class = "gf-graph-row-label", "Excess tol.:"),
+                shiny::textInput(
+                  "arm_excess_tolerance",
+                  label = NULL,
+                  value = as.character(isolate(input$arm_excess_tolerance %||% "")),
+                  width = "130px",
+                  placeholder = "auto"
+                )
+              )
+            } else {
+              NULL
+            },
             shiny::div(
-              class = "gf-graph-row gf-graph-layout-row",
-              shiny::span(class = "gf-graph-row-label", "Corridor abs.tol:"),
-              shiny::numericInput("arm_corridor_abs_tol", label = NULL, value = suppressWarnings(as.numeric(isolate(input$arm_corridor_abs_tol %||% 0))), min = 0, step = 0.01, width = "130px")
-            )
-          )
-        } else {
-          NULL
-        },
-        if (thick_sel %in% c("tube_hop", "tube_geodesic", "harmonic_hop", "harmonic_geodesic")) {
-          tube_radius_is_hop <- thick_sel %in% c("tube_hop", "harmonic_hop")
-          tube_radius_value <- suppressWarnings(as.numeric(isolate(input$arm_tube_radius %||% 2)))
-          if (!is.finite(tube_radius_value) || tube_radius_value <= 0) {
-            tube_radius_value <- 2
-          }
-          if (isTRUE(tube_radius_is_hop)) {
-            tube_radius_value <- max(1, suppressWarnings(as.integer(floor(tube_radius_value))))
-          }
-          shiny::div(
-            class = "gf-graph-row gf-graph-layout-row",
-            shiny::span(class = "gf-graph-row-label", "Tube radius:"),
-            shiny::numericInput(
-              "arm_tube_radius",
-              label = NULL,
-              value = tube_radius_value,
-              min = if (isTRUE(tube_radius_is_hop)) 1 else 0.1,
-              step = if (isTRUE(tube_radius_is_hop)) 1 else 0.25,
-              width = "130px"
+              class = "gf-hint",
+              "Path rel. radius sets corridor width as a fraction of shortest-path length. Leave Excess tol. blank to use the tube radius."
             )
           )
         } else {
@@ -8495,17 +8745,29 @@ app_server <- function(input, output, session) {
         },
         shiny::div(
           class = "gf-endpoint-actions",
-          shiny::actionButton("arm_preview_build", "Preview Arm", class = "btn-light btn-sm gf-btn-inline"),
+          shiny::tags$button(
+            type = "button",
+            class = "btn btn-light btn-sm gf-btn-inline",
+            onclick = arm_preview_build_request_js(),
+            "Preview Arm"
+          ),
           shiny::actionButton("arm_add_preview_to_working", "Add To Working Arms", class = "btn-light btn-sm gf-btn-inline"),
           shiny::actionButton("arm_working_snapshot", "Save Snapshot", class = "btn-light btn-sm gf-btn-inline"),
           shiny::actionButton("arm_working_clear", "Clear Working Arms", class = "btn-light btn-sm gf-btn-inline")
-        )
+        ),
+        shiny::tags$script(HTML(arm_builder_camera_hook_script()))
       )
     }
 
     build_preview_arm_layout_ui <- function(preview) {
       if (!is.list(preview)) {
         return(NULL)
+      }
+      is_corridor_preview <- identical(as.character(preview$thickening_method %||% ""), "tube_lens_corridor") ||
+        identical(as.character(preview$thickening_method %||% ""), "tube_lens_excess_corridor")
+      body_color_mode <- as.character(isolate(input$arm_preview_body_color_mode %||% "solid"))
+      if (!(body_color_mode %in% unname(arm_preview_body_color_choices))) {
+        body_color_mode <- "solid"
       }
       path_n <- length(preview$path_vertices %||% integer(0))
       arm_n <- length(preview$arm_vertices %||% integer(0))
@@ -8557,51 +8819,75 @@ app_server <- function(input, output, session) {
             width = "205px"
           )
         ),
-        shiny::div(
-          class = "gf-graph-row gf-graph-layout-row",
-          shiny::span(class = "gf-graph-row-label", "Body color:"),
-          shiny::selectInput(
-            "arm_preview_body_color",
-            label = NULL,
-            choices = c(
-              "Gold" = "#eab308",
-              "Red" = "#dc2626",
-              "Orange" = "#f97316",
-              "Blue" = "#2563eb",
-              "Green" = "#16a34a",
-              "Purple" = "#8b5cf6",
-              "Black" = "#111827"
+        if (is_corridor_preview) {
+          shiny::tagList(
+            shiny::div(
+              class = "gf-graph-row gf-graph-layout-row",
+              shiny::span(class = "gf-graph-row-label", "Color corridor by:"),
+              shiny::selectInput(
+                "arm_preview_body_color_mode",
+                label = NULL,
+                choices = arm_preview_body_color_choices,
+                selected = body_color_mode,
+                width = "220px"
+              )
             ),
-            selected = as.character(isolate(input$arm_preview_body_color %||% "#eab308")),
-            width = "180px"
+            if (identical(body_color_mode, "solid")) {
+              shiny::div(
+                class = "gf-graph-row gf-graph-layout-row",
+                shiny::span(class = "gf-graph-row-label", "Body color:"),
+                shiny::selectInput(
+                  "arm_preview_body_color",
+                  label = NULL,
+                  choices = c(
+                    "Gold" = "#eab308",
+                    "Red" = "#dc2626",
+                    "Orange" = "#f97316",
+                    "Blue" = "#2563eb",
+                    "Green" = "#16a34a",
+                    "Purple" = "#8b5cf6",
+                    "Black" = "#111827"
+                  ),
+                  selected = as.character(isolate(input$arm_preview_body_color %||% "#eab308")),
+                  width = "180px"
+                )
+              )
+            } else {
+              shiny::div(
+                class = "gf-hint",
+                "Corridor body vertices are colored by the selected parameterization."
+              )
+            },
+            shiny::div(
+              class = "gf-graph-row gf-graph-layout-row",
+              shiny::span(class = "gf-graph-row-label", "Body opacity:"),
+              shiny::sliderInput(
+                "arm_preview_body_opacity",
+                label = NULL,
+                min = 0.10,
+                max = 1.0,
+                step = 0.05,
+                value = suppressWarnings(as.numeric(isolate(input$arm_preview_body_opacity %||% 0.75))),
+                width = "205px"
+              )
+            ),
+            shiny::div(
+              class = "gf-graph-row gf-graph-layout-row",
+              shiny::span(class = "gf-graph-row-label", "Body size:"),
+              shiny::sliderInput(
+                "arm_preview_body_size",
+                label = NULL,
+                min = 0.5,
+                max = 4.0,
+                step = 0.1,
+                value = suppressWarnings(as.numeric(isolate(input$arm_preview_body_size %||% 1.8))),
+                width = "205px"
+              )
+            )
           )
-        ),
-        shiny::div(
-          class = "gf-graph-row gf-graph-layout-row",
-          shiny::span(class = "gf-graph-row-label", "Body opacity:"),
-          shiny::sliderInput(
-            "arm_preview_body_opacity",
-            label = NULL,
-            min = 0.10,
-            max = 1.0,
-            step = 0.05,
-            value = suppressWarnings(as.numeric(isolate(input$arm_preview_body_opacity %||% 0.75))),
-            width = "205px"
-          )
-        ),
-        shiny::div(
-          class = "gf-graph-row gf-graph-layout-row",
-          shiny::span(class = "gf-graph-row-label", "Body size:"),
-          shiny::sliderInput(
-            "arm_preview_body_size",
-            label = NULL,
-            min = 0.5,
-            max = 4.0,
-            step = 0.1,
-            value = suppressWarnings(as.numeric(isolate(input$arm_preview_body_size %||% 1.8))),
-            width = "205px"
-          )
-        ),
+        } else {
+          NULL
+        },
         shiny::div(
           class = "gf-graph-row gf-graph-layout-row",
           shiny::span(class = "gf-graph-row-label", "Center color:"),

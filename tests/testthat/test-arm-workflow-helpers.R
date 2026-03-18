@@ -1,22 +1,24 @@
-testthat::test_that("compute_arm_variant builds shortest-path arm variants", {
+testthat::test_that("compute_arm_variant builds path and tube-lens corridor variants", {
   adj <- list(
     c(2L),
-    c(1L, 3L, 5L),
-    c(2L, 4L),
+    c(1L, 3L, 5L, 6L),
+    c(2L, 4L, 5L),
     c(3L),
+    c(2L, 3L),
     c(2L)
   )
   weights <- list(
     1,
-    c(1, 1, 2),
-    c(1, 1),
+    c(1, 1, 1, 2),
+    c(1, 1, 1),
     1,
+    c(1, 1),
     2
   )
   coords <- cbind(
-    x = c(0, 1, 2, 3, 1),
-    y = c(0, 0, 0, 0, 1),
-    z = c(0, 0, 0, 0, 0)
+    x = c(0, 1, 2, 3, 1.5, 1),
+    y = c(0, 0, 0, 0, 0.8, -1),
+    z = c(0, 0, 0, 0, 0, 0)
   )
 
   path_only <- gflowui:::compute_arm_variant(
@@ -34,9 +36,10 @@ testthat::test_that("compute_arm_variant builds shortest-path arm variants", {
 
   testthat::expect_equal(path_only$path_vertices, c(1L, 2L, 3L, 4L))
   testthat::expect_equal(path_only$arm_vertices, c(1L, 2L, 3L, 4L))
+  testthat::expect_equal(unname(path_only$arm_metrics$harmonic_t), c(0, 1 / 3, 2 / 3, 1))
   testthat::expect_true(nzchar(path_only$arm_id))
 
-  tube <- gflowui:::compute_arm_variant(
+  corridor <- gflowui:::compute_arm_variant(
     adj.list = adj,
     weight.list = weights,
     coords = coords,
@@ -46,54 +49,58 @@ testthat::test_that("compute_arm_variant builds shortest-path arm variants", {
     endpoint_b_key = "v4",
     endpoint_a_label = "A",
     endpoint_b_label = "B",
-    thickening_method = "tube_hop",
-    tube_radius = 1
+    thickening_method = "tube_lens_corridor",
+    path_relative_radius = 0.35
   )
 
-  testthat::expect_true(all(c(1L, 2L, 3L, 4L) %in% tube$arm_vertices))
-  testthat::expect_true(5L %in% tube$arm_vertices)
+  testthat::expect_true(all(c(1L, 2L, 3L, 4L) %in% corridor$arm_vertices))
+  testthat::expect_true(5L %in% corridor$arm_vertices)
+  testthat::expect_true("harmonic_t" %in% names(corridor$arm_metrics))
+  testthat::expect_equal(length(corridor$arm_metrics$harmonic_t), length(corridor$arm_vertices))
 })
 
-testthat::test_that("compute_arm_variant normalizes hop harmonic radius before calling gflow", {
+testthat::test_that("tube-lens excess corridor carries excess-filtered selection", {
   adj <- list(
     c(2L),
-    c(1L, 3L, 5L),
-    c(2L, 4L),
+    c(1L, 3L, 5L, 6L),
+    c(2L, 4L, 5L),
     c(3L),
+    c(2L, 3L),
     c(2L)
   )
   weights <- list(
     1,
-    c(1, 1, 2),
-    c(1, 1),
+    c(1, 1, 1, 2),
+    c(1, 1, 1),
     1,
+    c(1, 1),
     2
   )
   coords <- cbind(
-    x = c(0, 1, 2, 3, 1),
-    y = c(0, 0, 0, 0, 1),
-    z = c(0, 0, 0, 0, 0)
+    x = c(0, 1, 2, 3, 1.5, 1),
+    y = c(0, 0, 0, 0, 0.8, -1),
+    z = c(0, 0, 0, 0, 0, 0)
   )
 
-  harm <- testthat::expect_silent(
-    gflowui:::compute_arm_variant(
-      adj.list = adj,
-      weight.list = weights,
-      coords = coords,
-      endpoint_a = 1L,
-      endpoint_b = 4L,
-      endpoint_a_key = "v1",
-      endpoint_b_key = "v4",
-      endpoint_a_label = "A",
-      endpoint_b_label = "B",
-      thickening_method = "harmonic_hop",
-      tube_radius = 2.75
-    )
+  strict_corridor <- gflowui:::compute_arm_variant(
+    adj.list = adj,
+    weight.list = weights,
+    coords = coords,
+    endpoint_a = 1L,
+    endpoint_b = 4L,
+    endpoint_a_key = "v1",
+    endpoint_b_key = "v4",
+    endpoint_a_label = "A",
+    endpoint_b_label = "B",
+    thickening_method = "tube_lens_excess_corridor",
+    path_relative_radius = 0.35,
+    excess_tolerance = 0.5
   )
 
-  testthat::expect_identical(harm$params$distance, "hop")
-  testthat::expect_identical(as.integer(harm$params$radius), 2L)
-  testthat::expect_match(harm$parameter_summary, "radius=2 \\(hop\\)")
+  testthat::expect_true(all(c(1L, 2L, 3L, 4L) %in% strict_corridor$arm_vertices))
+  testthat::expect_false(6L %in% strict_corridor$arm_vertices)
+  testthat::expect_true(is.finite(strict_corridor$params$excess.tolerance))
+  testthat::expect_match(strict_corridor$parameter_summary, "tube-lens excess corridor")
 })
 
 testthat::test_that("working arm state sanitizes and preserves visible rows", {
@@ -114,7 +121,14 @@ testthat::test_that("working arm state sanitizes and preserves visible rows", {
     thickening_method = "path_only",
     path_vertices = c(1L, 2L, 3L),
     arm_vertices = c(1L, 2L, 3L),
-    arm_coords = numeric(0),
+    arm_coords = c(0, 0.5, 1),
+    path_arc_length = stats::setNames(c(0, 0.5, 1), c("1", "2", "3")),
+    arm_metrics = list(
+      t_balance = stats::setNames(c(0, 0.5, 1), c("1", "2", "3")),
+      harmonic_t = stats::setNames(c(0, 0.5, 1), c("1", "2", "3")),
+      distance_to_path = stats::setNames(c(0, 0, 0), c("1", "2", "3")),
+      excess = stats::setNames(c(0, 0, 0), c("1", "2", "3"))
+    ),
     parameter_summary = "weighted shortest path",
     params = list(),
     source_k = 7L
