@@ -2933,7 +2933,7 @@ app_server <- function(input, output, session) {
       selected_rows <- selected_rows[ord, , drop = FALSE]
     }
 
-    label_choices <- c("None" = "none", "Vertex ID" = "vertex")
+    label_choices <- c("None" = "none", "Vertex ID" = "vertex", "Sample Order" = "order")
     if (nrow(selected_rows) > 0L && any(nzchar(as.character(selected_rows$sample_id %||% character(0))))) {
       label_choices <- c(label_choices, "Sample ID" = "sample")
     }
@@ -2998,6 +2998,9 @@ app_server <- function(input, output, session) {
         labs <- as.character(rows_df$sample_id %||% rep("", nrow(rows_df)))
         labs[is.na(labs)] <- ""
         return(labs)
+      }
+      if (identical(mode_use, "order")) {
+        return(as.character(seq_len(nrow(rows_df))))
       }
       if (identical(mode_use, "visit")) {
         visit_label <- as.character(rows_df$visit_label %||% rep("", nrow(rows_df)))
@@ -9231,7 +9234,13 @@ app_server <- function(input, output, session) {
 
     build_subject_panel_ui <- function(subject_state_panel) {
       if (!is.list(subject_state_panel) || !isTRUE(subject_state_panel$available)) {
-        return(shiny::p(class = "gf-hint", "Subject metadata is not available for this project."))
+        prov <- if (is.list(subject_state_panel)) subject_state_panel$provider else NULL
+        hint <- if (is.null(prov)) {
+          "Subject metadata is not available for this project."
+        } else {
+          "Subject metadata loaded but no matching vertices found in the current graph."
+        }
+        return(shiny::p(class = "gf-hint", hint))
       }
       selected_ids <- unique(as.character(subject_state_panel$selected_ids %||% character(0)))
       selected_rows <- if (is.data.frame(subject_state_panel$selected_rows)) subject_state_panel$selected_rows else empty_subject_sample_rows()
@@ -9242,17 +9251,35 @@ app_server <- function(input, output, session) {
           shiny::div(
             class = "gf-graph-row gf-graph-layout-row",
             shiny::span(class = "gf-graph-row-label", "Subject IDs:"),
-            shiny::selectizeInput(
-              "subject_ids",
-              label = NULL,
-              choices = subject_state_panel$subject_choices %||% c("Choose subject..." = ""),
-              selected = selected_ids,
-              multiple = TRUE,
-              width = "280px",
-              options = list(
-                placeholder = "Choose subject(s)..."
+            {
+              rows_for_choices <- subject_state_panel$rows
+              if (is.data.frame(rows_for_choices) && nrow(rows_for_choices) > 0L) {
+                sid_vec <- sort(unique(as.character(rows_for_choices$subject_id)))
+                sid_vec <- sid_vec[nzchar(sid_vec)]
+              } else {
+                sid_vec <- character(0)
+              }
+              sel <- if (length(selected_ids) > 0L) selected_ids[[1]] else ""
+              option_tags <- list(shiny::tags$option(value = "", "Choose subject..."))
+              for (ss in sid_vec) {
+                nn <- sum(as.character(rows_for_choices$subject_id) == ss, na.rm = TRUE)
+                lbl <- sprintf("%s (%d)", ss, nn)
+                if (identical(ss, sel)) {
+                  option_tags[[length(option_tags) + 1L]] <- shiny::tags$option(value = ss, selected = "selected", lbl)
+                } else {
+                  option_tags[[length(option_tags) + 1L]] <- shiny::tags$option(value = ss, lbl)
+                }
+              }
+              shiny::div(
+                class = "shiny-input-container",
+                style = "width: 280px;",
+                shiny::tags$select(
+                  id = "subject_ids",
+                  class = "shiny-input-select form-control",
+                  option_tags
+                )
               )
-            )
+            }
           ),
           shiny::tags$label(
             class = "gf-endpoint-inline-check",
@@ -10379,6 +10406,7 @@ app_server <- function(input, output, session) {
       if (isTRUE(has_asset_views)) {
         c(
           "workflow_graph_structure",
+          "workflow_subject_structure",
           "workflow_endpoint_structure",
           "workflow_arm_structure",
           "workflow_condexp_structure",
@@ -10403,11 +10431,19 @@ app_server <- function(input, output, session) {
       }
     }
 
-    remembered_open <- workflow_open_panels()
-    if (!is.null(remembered_open)) {
-      mapped_open <- intersect(as.character(remembered_open), available_panels)
-      if (length(mapped_open) > 0L || length(remembered_open) < 1L) {
-        open.panels <- mapped_open
+    live_open <- input$workflow_accordion
+    if (!is.null(live_open)) {
+      mapped_live_open <- intersect(as.character(live_open %||% character(0)), available_panels)
+      if (length(mapped_live_open) > 0L || length(live_open) < 1L) {
+        open.panels <- mapped_live_open
+      }
+    } else {
+      remembered_open <- workflow_open_panels()
+      if (!is.null(remembered_open)) {
+        mapped_open <- intersect(as.character(remembered_open), available_panels)
+        if (length(mapped_open) > 0L || length(remembered_open) < 1L) {
+          open.panels <- mapped_open
+        }
       }
     }
 
