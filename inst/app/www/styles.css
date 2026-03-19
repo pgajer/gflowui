@@ -66,6 +66,10 @@ body {
   margin-top: 1rem;
 }
 
+.accordion-collapse.show {
+  overflow: visible;
+}
+
 .gf-workflow-actions {
   margin-bottom: 0.6rem;
 }
