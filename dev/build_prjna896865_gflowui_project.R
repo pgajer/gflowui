@@ -1,4 +1,5 @@
 args_all <- commandArgs(trailingOnly = FALSE)
+args_trailing <- commandArgs(trailingOnly = TRUE)
 file_arg <- "--file="
 script_arg <- args_all[startsWith(args_all, file_arg)]
 if (length(script_arg) < 1L) {
@@ -7,11 +8,33 @@ if (length(script_arg) < 1L) {
 
 script_path <- normalizePath(sub(file_arg, "", script_arg[[1L]]), mustWork = TRUE)
 repo_root <- normalizePath(file.path(dirname(script_path), ".."), mustWork = TRUE)
+
+arg_value <- function(name, default = NULL) {
+  prefix <- paste0("--", name, "=")
+  hit <- args_trailing[startsWith(args_trailing, prefix)]
+  if (length(hit) < 1L) {
+    return(default)
+  }
+  sub(prefix, "", hit[[1L]], fixed = TRUE)
+}
+
+project_id <- as.character(arg_value("project-id", "prjna896865"))
+project_name <- as.character(arg_value("project-name", "PRJNA896865"))
+
+source_root_default <- "/Users/pgajer/current_projects/vaginal_microbiome/outputs/amplicon_lanes/v4/projects/PRJNA896865"
 source_root <- normalizePath(
-  "/Users/pgajer/current_projects/vaginal_microbiome/outputs/amplicon_lanes/v4/projects/PRJNA896865",
+  arg_value("source-root", source_root_default),
   mustWork = TRUE
 )
-project_root <- file.path(repo_root, "projects", "prjna896865")
+project_root_default <- file.path(
+  dirname(dirname(source_root)),
+  "gflowui_projects",
+  project_id
+)
+project_root <- normalizePath(
+  path.expand(arg_value("project-root", project_root_default)),
+  mustWork = FALSE
+)
 
 dir.create(project_root, recursive = TRUE, showWarnings = FALSE)
 
@@ -63,6 +86,15 @@ first_string <- function(x, default = "") {
   vals <- as.character(x)
   vals <- vals[!is.na(vals)]
   if (length(vals) < 1L || !nzchar(vals[[1L]])) {
+    return(as.character(default)[[1L]])
+  }
+  vals[[1L]]
+}
+
+first_non_missing <- function(x, default = NA_character_) {
+  vals <- as.character(x)
+  vals <- vals[!is.na(vals) & nzchar(vals)]
+  if (length(vals) < 1L) {
     return(as.character(default)[[1L]])
   }
   vals[[1L]]
@@ -339,8 +371,6 @@ representation_labels <- c(
   rclr_rpca = "rCLR + RPCA"
 )
 
-project_id <- "prjna896865"
-project_name <- "PRJNA896865"
 default_graph_set_id <- "ge_2p5pct_relative_abundance_pca"
 
 orientation_summary <- read_tsv(file.path(source_root, "orientation_canonicalization_summary.tsv"))
@@ -965,15 +995,18 @@ if (!requireNamespace("pkgload", quietly = TRUE)) {
 
 pkgload::load_all(repo_root, export_all = FALSE, quiet = TRUE)
 
-reg_result <- gflowui::register_project(
+doc_sets <- lapply(seq_len(nrow(source_artifact_rows)), function(ii) {
+  list(
+    id = as.character(source_artifact_rows$artifact_id[[ii]]),
+    label = as.character(source_artifact_rows$label[[ii]]),
+    path = as.character(source_artifact_rows$path[[ii]])
+  )
+})
+
+project_spec <- gflowui::build_project_spec_iknn_3x3(
   project_root = normalizePath(project_root, mustWork = TRUE),
-  project_id = project_id,
-  project_name = project_name,
-  profile = "custom",
-  scan_results = FALSE,
   graph_sets = graph_sets,
-  condexp_sets = list(),
-  endpoint_runs = list(),
+  doc_sets = doc_sets,
   defaults = list(
     graph_set_id = default_graph_set_id,
     reference_graph_set_id = default_graph_set_id,
@@ -982,56 +1015,71 @@ reg_result <- gflowui::register_project(
     ),
     reference_reason = "median norm-GCV top20"
   ),
+  metadata = list(
+    overview = list(
+      summary_table = overview_summary,
+      artifact_paths = stats::setNames(
+        as.list(c(
+          source_artifact_rows$path,
+          graph_variant_summary = normalizePath(graph_variant_summary_path, mustWork = TRUE),
+          overview_summary = normalizePath(overview_summary_path, mustWork = TRUE),
+          artifact_inventory = normalizePath(artifact_inventory_path, mustWork = TRUE),
+          detection_manifest_with_labels = normalizePath(detection_manifest_pretty_path, mustWork = TRUE)
+        )),
+        c(
+          source_artifact_rows$artifact_id,
+          "graph_variant_summary",
+          "overview_summary",
+          "artifact_inventory",
+          "detection_manifest_with_labels"
+        )
+      ),
+      artifact_labels = c(
+        report_pdf = "PDF report",
+        report_tex = "LaTeX report",
+        run_summary = "Run summary",
+        screen_retention_summary = "Screen retention summary",
+        representation_qc_summary = "Representation QC summary",
+        graph_quality_summary = "Graph quality summary",
+        sample_annotation_join = "Sample annotation join",
+        orientation_summary = "Orientation summary",
+        detection_manifest = "ASV detection manifest",
+        dcst_summary = "Depth-1 DCST summary",
+        dcst_depth2_summary = "Depth-2 DCST summary",
+        graph_variant_summary = "Graph variant summary",
+        overview_summary = "Overview summary",
+        artifact_inventory = "Artifact inventory",
+        detection_manifest_with_labels = "ASV detection manifest (readable labels)"
+      ),
+      source_root = normalizePath(source_root, mustWork = TRUE),
+      adapter_root = normalizePath(project_root, mustWork = TRUE),
+      generated_at = now_txt
+    ),
+    registration = list(
+      builder_script = normalizePath(script_path, mustWork = TRUE),
+      registration_method = "build_project_spec_iknn_3x3",
+      profile = "iknn_3x3"
+    )
+  )
+)
+
+reg_result <- gflowui::register_project(
+  project_root = normalizePath(project_root, mustWork = TRUE),
+  project_id = project_id,
+  project_name = project_name,
+  profile = "iknn_3x3",
+  project_spec = project_spec,
+  scan_results = FALSE,
   overwrite = TRUE
 )
 
 manifest <- reg_result$manifest
-manifest$metadata <- list(
-  overview = list(
-    summary_table = overview_summary,
-    artifact_paths = stats::setNames(
-      as.list(c(
-        source_artifact_rows$path,
-        graph_variant_summary = normalizePath(graph_variant_summary_path, mustWork = TRUE),
-        overview_summary = normalizePath(overview_summary_path, mustWork = TRUE),
-        artifact_inventory = normalizePath(artifact_inventory_path, mustWork = TRUE),
-        detection_manifest_with_labels = normalizePath(detection_manifest_pretty_path, mustWork = TRUE)
-      )),
-      c(
-        source_artifact_rows$artifact_id,
-        "graph_variant_summary",
-        "overview_summary",
-        "artifact_inventory",
-        "detection_manifest_with_labels"
-      )
-    ),
-    artifact_labels = c(
-      report_pdf = "PDF report",
-      report_tex = "LaTeX report",
-      run_summary = "Run summary",
-      screen_retention_summary = "Screen retention summary",
-      representation_qc_summary = "Representation QC summary",
-      graph_quality_summary = "Graph quality summary",
-      sample_annotation_join = "Sample annotation join",
-      orientation_summary = "Orientation summary",
-      detection_manifest = "ASV detection manifest",
-      dcst_summary = "Depth-1 DCST summary",
-      dcst_depth2_summary = "Depth-2 DCST summary",
-      graph_variant_summary = "Graph variant summary",
-      overview_summary = "Overview summary",
-      artifact_inventory = "Artifact inventory",
-      detection_manifest_with_labels = "ASV detection manifest (readable labels)"
-    ),
-    source_root = normalizePath(source_root, mustWork = TRUE),
-    adapter_root = normalizePath(project_root, mustWork = TRUE),
-    generated_at = now_txt
-  )
-)
-saveRDS(manifest, file = reg_result$manifest_file)
-
 manifest_snapshot_path <- file.path(project_root, "metadata", "registered_manifest_snapshot.rds")
 saveRDS(manifest, file = manifest_snapshot_path)
 
 message("Created PRJNA896865 gflowui project")
+message(sprintf("Source root: %s", normalizePath(source_root, mustWork = TRUE)))
 message(sprintf("Project root: %s", normalizePath(project_root, mustWork = TRUE)))
 message(sprintf("Manifest file: %s", reg_result$manifest_file))
+message(sprintf("Graph sets: %d", length(manifest$graph_sets %||% list())))
+message(sprintf("Profile: %s", as.character(manifest$profile %||% "")))
