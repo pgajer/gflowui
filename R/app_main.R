@@ -1,8 +1,4 @@
-#' Build the gflowui Shiny application object
-#'
-#' @return A `shiny.appobj` application.
-#' @export
-#'
+# Internal helper for headless/test environments.
 gflowui_enable_rgl_null_device <- function() {
   old <- getOption("rgl.useNULL")
   if (!isTRUE(old)) {
@@ -11,6 +7,11 @@ gflowui_enable_rgl_null_device <- function() {
   old
 }
 
+#' Build the gflowui Shiny application object
+#'
+#' @return A `shiny.appobj` application.
+#' @export
+#'
 gflowui_app <- function() {
   gflowui_enable_rgl_null_device()
   shiny::shinyApp(

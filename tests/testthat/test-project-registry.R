@@ -44,6 +44,233 @@ test_that("register/list/unregister roundtrip persists manifest and registry", {
 })
 
 
+test_that("build_project_spec_iknn_3x3 normalizes rich project inputs", {
+  root <- tempfile("iknn-3x3-")
+  dir.create(root, recursive = TRUE, showWarnings = FALSE)
+  on.exit(unlink(root, recursive = TRUE, force = TRUE), add = TRUE)
+
+  graph_file <- file.path(root, "results", "iknn.selection.rds")
+  dir.create(dirname(graph_file), recursive = TRUE, showWarnings = FALSE)
+  saveRDS(list(dummy = TRUE), graph_file)
+
+  metadata_file <- file.path(root, "data", "S_asv.rda")
+  dir.create(dirname(metadata_file), recursive = TRUE, showWarnings = FALSE)
+  mt.asv <- data.frame(
+    CST = c("I", "II"),
+    subCST = c("I-A", "II-A"),
+    stringsAsFactors = FALSE
+  )
+  save(mt.asv, file = metadata_file)
+
+  report_file <- file.path(root, "reports", "iknn_report.pdf")
+  dir.create(dirname(report_file), recursive = TRUE, showWarnings = FALSE)
+  writeLines("report", report_file, useBytes = TRUE)
+
+  labels_file <- file.path(root, "results", "landmark_labels.csv")
+  utils::write.csv(
+    data.frame(vertex = c(1L, 2L), label = c("L1", "L2")),
+    labels_file,
+    row.names = FALSE
+  )
+
+  X <- matrix(seq_len(6), nrow = 3, ncol = 2)
+  spec <- gflowui::build_project_spec_iknn_3x3(
+    project_root = root,
+    graph_sets = list(list(
+      id = "all",
+      label = "All Samples",
+      graph_file = graph_file,
+      k_values = 3:5
+    )),
+    X = X,
+    factor_sets = list(list(
+      id = "cst",
+      label = "CST",
+      metadata_file = metadata_file,
+      columns = c("CST", "subCST")
+    )),
+    ordered_factor_sets = list(list(
+      id = "subject_order",
+      columns = c("subject_id", "visit_order")
+    )),
+    cont_vars_sets = list(list(
+      id = "clinical",
+      columns = c("pH", "age")
+    )),
+    landmark_pts_runs = list(list(
+      id = "dcst_landmarks",
+      label = "DCST Landmarks",
+      landmark_labels_csv = labels_file,
+      k_values = 5L
+    )),
+    doc_sets = list(list(
+      id = "report_pdf",
+      label = "Report PDF",
+      path = report_file
+    )),
+    defaults = list(graph_set_id = "all")
+  )
+
+  expect_equal(spec$profile, "iknn_3x3")
+  expect_true(file.exists(spec$metadata$reference_data$path))
+  expect_equal(spec$metadata$reference_data$n_samples, 3L)
+  expect_equal(spec$metadata$reference_data$n_features, 2L)
+  expect_equal(
+    sort(vapply(spec$metadata$annotation_sets, function(x) as.character(x$value_type), character(1))),
+    c("continuous", "factor", "ordered_factor")
+  )
+  expect_equal(spec$artifacts$documents[[1]]$id, "report_pdf")
+  expect_equal(spec$endpoint_runs[[1]]$kind, "landmark_points")
+  expect_equal(
+    spec$endpoint_runs[[1]]$labels_csv,
+    normalizePath(labels_file, mustWork = FALSE)
+  )
+  expect_equal(spec$defaults$graph_set_id, "all")
+})
+
+
+test_that("register_project supports project_spec precedence and 3x3 alias", {
+  db_dir <- tempfile("gflowui-projects-iknn-")
+  dir.create(db_dir, recursive = TRUE, showWarnings = FALSE)
+
+  old_opt <- getOption("gflowui.projects_data_dir", NULL)
+  options(gflowui.projects_data_dir = db_dir)
+  on.exit({
+    if (is.null(old_opt)) {
+      options(gflowui.projects_data_dir = NULL)
+    } else {
+      options(gflowui.projects_data_dir = old_opt)
+    }
+    unlink(db_dir, recursive = TRUE, force = TRUE)
+  }, add = TRUE)
+
+  root <- tempfile("iknn-project-")
+  dir.create(root, recursive = TRUE, showWarnings = FALSE)
+
+  graph_file <- file.path(root, "results", "iknn.selection.rds")
+  dir.create(dirname(graph_file), recursive = TRUE, showWarnings = FALSE)
+  saveRDS(list(dummy = TRUE), graph_file)
+
+  report_file <- file.path(root, "reports", "iknn_report.pdf")
+  dir.create(dirname(report_file), recursive = TRUE, showWarnings = FALSE)
+  writeLines("report", report_file, useBytes = TRUE)
+
+  labels_file <- file.path(root, "results", "landmark_labels.csv")
+  utils::write.csv(
+    data.frame(vertex = c(1L, 2L), label = c("L1", "L2")),
+    labels_file,
+    row.names = FALSE
+  )
+
+  spec <- gflowui::build_project_spec_iknn_3x3(
+    project_root = root,
+    graph_sets = list(list(
+      id = "all",
+      label = "All Samples",
+      graph_file = graph_file,
+      k_values = 3:5
+    )),
+    landmark_pts_runs = list(list(
+      id = "dcst_landmarks",
+      label = "DCST Landmarks",
+      landmark_labels_csv = labels_file,
+      k_values = 5L
+    )),
+    doc_sets = list(list(
+      id = "report_pdf",
+      label = "Report PDF",
+      path = report_file
+    ))
+  )
+
+  wrong_graph <- file.path(root, "results", "wrong.selection.rds")
+  saveRDS(list(dummy = FALSE), wrong_graph)
+
+  reg_result <- gflowui::register_project(
+    project_root = root,
+    project_id = "iknn_project",
+    project_name = "IKNN Project",
+    profile = "3x3",
+    project_spec = spec,
+    graph_sets = list(list(
+      id = "wrong",
+      label = "Wrong Graph",
+      graph_file = wrong_graph,
+      k_values = 7L
+    )),
+    metadata = list(extra = list(flag = TRUE)),
+    defaults = list(graph_set_id = "all"),
+    overwrite = TRUE
+  )
+
+  manifest <- reg_result$manifest
+  expect_equal(manifest$profile, "iknn_3x3")
+  expect_equal(manifest$graph_sets[[1]]$id, "all")
+  expect_equal(manifest$endpoint_runs[[1]]$id, "dcst_landmarks")
+  expect_true(isTRUE(manifest$metadata$extra$flag))
+  expect_equal(manifest$defaults$graph_set_id, "all")
+  expect_true(is.list(manifest$artifacts$documents))
+
+  listed <- gflowui::list_projects(include_manifests = TRUE)
+  expect_equal(listed$manifests[["iknn_project"]]$profile, "iknn_3x3")
+})
+
+
+test_that("register_project normalizes top-level landmark_pts_runs alias", {
+  db_dir <- tempfile("gflowui-projects-landmarks-")
+  dir.create(db_dir, recursive = TRUE, showWarnings = FALSE)
+
+  old_opt <- getOption("gflowui.projects_data_dir", NULL)
+  options(gflowui.projects_data_dir = db_dir)
+  on.exit({
+    if (is.null(old_opt)) {
+      options(gflowui.projects_data_dir = NULL)
+    } else {
+      options(gflowui.projects_data_dir = old_opt)
+    }
+    unlink(db_dir, recursive = TRUE, force = TRUE)
+  }, add = TRUE)
+
+  project_root <- tempfile("external-project-landmarks-")
+  dir.create(project_root, recursive = TRUE, showWarnings = FALSE)
+
+  graph_file <- file.path(project_root, "graph_set.rds")
+  saveRDS(list(dummy = TRUE), graph_file)
+
+  labels_file <- file.path(project_root, "landmark_labels.csv")
+  utils::write.csv(
+    data.frame(vertex = c(1L, 2L), label = c("A", "B")),
+    labels_file,
+    row.names = FALSE
+  )
+
+  reg_result <- gflowui::register_project(
+    project_root = project_root,
+    project_name = "Landmark Project",
+    project_id = "landmark_project",
+    profile = "iknn_3x3",
+    scan_results = FALSE,
+    graph_sets = list(list(
+      id = "set_a",
+      label = "Set A",
+      graph_file = graph_file,
+      k_values = c(5L, 7L)
+    )),
+    landmark_pts_runs = list(list(
+      id = "lm_k05",
+      label = "Landmarks (k=5)",
+      landmark_labels_csv = labels_file,
+      k_values = 5L
+    )),
+    overwrite = TRUE
+  )
+
+  expect_equal(reg_result$manifest$profile, "iknn_3x3")
+  expect_equal(reg_result$manifest$endpoint_runs[[1]]$id, "lm_k05")
+  expect_equal(reg_result$manifest$endpoint_runs[[1]]$kind, "landmark_points")
+})
+
+
 test_that("discover_project_artifacts finds symptoms_restart outputs", {
   root <- tempfile("symptoms-restart-")
   results_root <- file.path(root, "results")
