@@ -8516,6 +8516,68 @@ app_server <- function(input, output, session) {
       }
     }
 
+    graph_metadata_tbl <- data.frame(Metric = character(0), Value = character(0), stringsAsFactors = FALSE)
+    add_graph_meta <- function(metric, value) {
+      val <- as.character(value %||% "")
+      val <- val[!is.na(val)]
+      if (length(val) < 1L || !nzchar(val[[1L]])) {
+        return(invisible(NULL))
+      }
+      graph_metadata_tbl[nrow(graph_metadata_tbl) + 1L, ] <<- list(
+        Metric = as.character(metric),
+        Value = val[[1L]]
+      )
+      invisible(NULL)
+    }
+
+    add_graph_meta("Screen", gs$screen_label %||% gs$screen_name %||% "")
+    add_graph_meta("Representation", gs$representation_label %||% gs$representation %||% "")
+
+    k_top20 <- suppressWarnings(as.integer(gs$selected_k %||% k_sel))
+    if (is.finite(k_top20)) {
+      add_graph_meta("Selected k (top20)", format(k_top20, big.mark = ","))
+    }
+
+    k_top30 <- suppressWarnings(as.integer(gs$selected_k_top30 %||% NA_integer_))
+    if (is.finite(k_top30)) {
+      add_graph_meta("Selected k (top30)", format(k_top30, big.mark = ","))
+    }
+
+    stable_top20_top30 <- gs$selected_k_stable_top20_top30
+    stable_txt <- ""
+    if (!is.null(stable_top20_top30) && length(stable_top20_top30) > 0L) {
+      stable_txt <- if (isTRUE(as.logical(stable_top20_top30) || identical(tolower(as.character(stable_top20_top30)), "true"))) {
+        "yes"
+      } else if (identical(tolower(as.character(stable_top20_top30)), "false")) {
+        "no"
+      } else {
+        ""
+      }
+    }
+    if (nzchar(stable_txt)) {
+      add_graph_meta("Top20/top30 stable", stable_txt)
+    }
+
+    if (is.finite(n_samples)) {
+      add_graph_meta("Graph samples", format(as.integer(n_samples), big.mark = ","))
+    }
+    if (is.finite(n_features)) {
+      add_graph_meta("Graph features", format(as.integer(n_features), big.mark = ","))
+    }
+
+    edge_count <- suppressWarnings(as.integer(gs$graph_edge_count %||% NA_integer_))
+    if (is.finite(edge_count)) {
+      add_graph_meta("Graph edges", format(edge_count, big.mark = ","))
+    }
+
+    comp_count <- suppressWarnings(as.integer(gs$graph_component_count %||% NA_integer_))
+    if (!is.finite(comp_count) && is.list(st_use$components)) {
+      comp_count <- suppressWarnings(as.integer(st_use$components$n_components %||% NA_integer_))
+    }
+    if (is.finite(comp_count)) {
+      add_graph_meta("Graph components", format(comp_count, big.mark = ","))
+    }
+
     list(
       error = NULL,
       manifest = manifest,
@@ -8534,10 +8596,72 @@ app_server <- function(input, output, session) {
       component_choices = component_choices,
       component_selected = component_selected,
       component_hint = component_hint,
+      metadata_tbl = graph_metadata_tbl,
       color_choices = color_choices,
       color_selected = color_selected,
       vertex_color_choices = solid_vertex_color_choices,
       vertex_color_selected = vertex_color_selected
+    )
+  })
+
+  project_overview_state <- shiny::reactive({
+    manifest <- active_manifest()
+    if (!is.list(manifest) || !is.list(manifest$metadata) || !is.list(manifest$metadata$overview)) {
+      return(NULL)
+    }
+
+    overview <- manifest$metadata$overview
+    summary_tbl <- if (is.data.frame(overview$summary_table)) {
+      overview$summary_table
+    } else {
+      data.frame()
+    }
+
+    artifact_paths_raw <- overview$artifact_paths
+    if (!is.list(artifact_paths_raw)) {
+      artifact_paths_raw <- list()
+    }
+    artifact_paths <- list()
+    for (nm in names(artifact_paths_raw)) {
+      pp <- as.character(artifact_paths_raw[[nm]] %||% "")
+      pp <- pp[!is.na(pp) & nzchar(pp)]
+      if (length(pp) < 1L) {
+        next
+      }
+      artifact_paths[[as.character(nm)]] <- pp[[1L]]
+    }
+
+    labels_raw <- overview$artifact_labels
+    if (is.list(labels_raw)) {
+      labels_raw <- unlist(labels_raw, recursive = TRUE, use.names = TRUE)
+    }
+    artifact_labels <- character(0)
+    if (is.character(labels_raw) && length(labels_raw) > 0L && !is.null(names(labels_raw))) {
+      keep <- nzchar(names(labels_raw)) & nzchar(as.character(labels_raw))
+      artifact_labels <- as.character(labels_raw[keep])
+      names(artifact_labels) <- as.character(names(labels_raw)[keep])
+    }
+
+    ids <- names(artifact_paths)
+    ids <- ids[nzchar(ids)]
+    choice_labels <- vapply(ids, function(id) {
+      as.character(artifact_labels[[id]] %||% id)
+    }, character(1))
+    artifact_choices <- stats::setNames(ids, choice_labels)
+
+    default_artifact_id <- if ("report_pdf" %in% ids) {
+      "report_pdf"
+    } else if (length(ids) > 0L) {
+      ids[[1L]]
+    } else {
+      ""
+    }
+
+    list(
+      summary_tbl = summary_tbl,
+      artifact_paths = artifact_paths,
+      artifact_choices = artifact_choices,
+      default_artifact_id = default_artifact_id
     )
   })
 
@@ -8628,6 +8752,33 @@ app_server <- function(input, output, session) {
       return()
     }
     set_run_monitor_note(sprintf("Opened optimal-k artifact: %s", basename(target)))
+  }, ignoreInit = TRUE)
+
+  shiny::observeEvent(input$project_overview_open_artifact, {
+    overview <- project_overview_state()
+    if (!is.list(overview)) {
+      shiny::showNotification("No overview artifacts are available for this project.", type = "error")
+      return()
+    }
+
+    artifact_id <- as.character(input$project_overview_artifact %||% overview$default_artifact_id %||% "")
+    if (!nzchar(artifact_id)) {
+      shiny::showNotification("No overview artifact is available to open.", type = "error")
+      return()
+    }
+
+    path <- as.character(overview$artifact_paths[[artifact_id]] %||% "")
+    if (!nzchar(path)) {
+      shiny::showNotification("The selected overview artifact is missing.", type = "error")
+      return()
+    }
+
+    opened <- tryCatch(open_external_path(path), error = function(e) FALSE)
+    if (!isTRUE(opened)) {
+      shiny::showNotification("Unable to open the selected overview artifact.", type = "error")
+      return()
+    }
+    set_run_monitor_note(sprintf("Opened project artifact: %s", basename(path)))
   }, ignoreInit = TRUE)
 
   output$project_controls <- shiny::renderUI({
@@ -8857,6 +9008,7 @@ app_server <- function(input, output, session) {
     condexp_sets <- if (is.list(manifest$condexp_sets)) manifest$condexp_sets else list()
     endpoint_runs <- if (is.list(manifest$endpoint_runs)) manifest$endpoint_runs else list()
     graph_ui <- graph_structure_state()
+    overview_ui <- project_overview_state()
 
     graph_tbl <- summarize_graph_assets(
       graph_sets,
@@ -9932,6 +10084,45 @@ app_server <- function(input, output, session) {
     panels <- list()
     open.panels <- c("workflow_graph_structure")
 
+    if (is.list(overview_ui)) {
+      panels <- c(
+        panels,
+        list(
+          bslib::accordion_panel(
+            "Overview",
+            value = "workflow_overview",
+            shiny::tagList(
+              build_html_table(overview_ui$summary_tbl, empty_text = "No overview summary available."),
+              if (length(overview_ui$artifact_choices %||% c()) > 0L) {
+                shiny::div(
+                  class = "gf-endpoint-section",
+                  shiny::div(
+                    class = "gf-graph-row gf-graph-row-tight",
+                    shiny::span(class = "gf-graph-row-label", "Artifact:"),
+                    shiny::selectInput(
+                      "project_overview_artifact",
+                      label = NULL,
+                      choices = overview_ui$artifact_choices,
+                      selected = as.character(input$project_overview_artifact %||% overview_ui$default_artifact_id %||% ""),
+                      width = "230px"
+                    ),
+                    shiny::actionButton(
+                      "project_overview_open_artifact",
+                      "Open",
+                      class = "btn-light btn-sm gf-btn-inline"
+                    )
+                  )
+                )
+              } else {
+                NULL
+              }
+            )
+          )
+        )
+      )
+      open.panels <- c("workflow_overview", open.panels)
+    }
+
     if (isTRUE(rv$project.show.data)) {
       panels <- c(
         panels,
@@ -10079,6 +10270,15 @@ app_server <- function(input, output, session) {
           ),
           if (nzchar(as.character(graph_ui$component_hint %||% ""))) {
             shiny::div(class = "gf-hint", graph_ui$component_hint)
+          } else {
+            NULL
+          },
+          if (is.data.frame(graph_ui$metadata_tbl) && nrow(graph_ui$metadata_tbl) > 0L) {
+            shiny::tags$details(
+              class = "gf-endpoint-metrics-details",
+              shiny::tags$summary("Graph metadata"),
+              build_html_table(graph_ui$metadata_tbl, empty_text = "No graph metadata available.")
+            )
           } else {
             NULL
           }

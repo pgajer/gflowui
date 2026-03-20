@@ -97,4 +97,4 @@ After registration:
 
 1. `list_projects(include_manifests = TRUE)` shows non-empty `graph_sets`.
 2. `Graphs -> Color by` includes `CST`/`subCST` (when available), conditional expectations, and falls back to `Vertex Degree`.
-3. Renderer switch (`HTML`, `RGL`, `Plotly`) keeps graph structure synchronized because all use the same `grip.layout()` coordinates.
+3. Renderer switch (`Plotly`, `RGL`) keeps graph structure synchronized because both use the same `grip.layout()` coordinates.
