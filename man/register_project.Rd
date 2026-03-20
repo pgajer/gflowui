@@ -8,52 +8,300 @@ register_project(
   project_root,
   project_id = NULL,
   project_name = NULL,
-  profile = c("auto", "symptoms_restart", "agp_restart", "custom"),
+  profile = c("auto", "symptoms_restart", "agp_restart", "iknn_3x3", "custom"),
+  project_spec = NULL,
   graph_sets = NULL,
   condexp_sets = NULL,
   endpoint_runs = NULL,
+  landmark_pts_runs = NULL,
+  metadata = list(),
+  artifacts = list(),
   defaults = list(),
   scan_results = TRUE,
   overwrite = FALSE
 )
 }
 \arguments{
-\item{project_root}{Path to the external analysis project root.}
+\item{project_root}{Absolute or \code{~}-prefixed path to the root of an
+external analysis project (e.g. \code{"~/current_projects/symptoms"}).
+The directory must already exist. It is expanded with
+\code{path.expand()} and normalized to an absolute path.
+All asset paths in the resulting manifest are resolved relative to this
+root.}
 
-\item{project_id}{Optional project identifier. When \code{NULL}, one is generated
-from \code{project_name}.}
+\item{project_id}{Optional character string used as the unique project
+identifier in the registry (e.g. \code{"symptoms_restart"}).  When
+\code{NULL} (the default), an id is generated automatically from
+\code{project_name}.  Must be unique across registered projects unless
+\code{overwrite = TRUE}.}
 
-\item{project_name}{Display name in the UI.}
+\item{project_name}{Display name shown in the UI project picker.  When
+\code{NULL}, defaults to \code{basename(project_root)}.}
 
-\item{profile}{Discovery profile (\code{"auto"}, \code{"symptoms_restart"},
-\code{"agp_restart"}, \code{"custom"}).}
+\item{profile}{Discovery profile that controls how on-disk assets are
+located when \code{scan_results = TRUE}.  One of:
+\describe{
+\item{\code{"auto"}}{(default) Infer profile from the project folder
+name: a folder named \code{"symptoms"} maps to
+\code{"symptoms_restart"}, a folder named \code{"AGP"} maps to
+\code{"agp_restart"}, anything else maps to \code{"custom"}.}
+\item{\code{"symptoms_restart"}}{Expects the symptoms project layout
+with \code{results/} sub-directories for HV sweep graphs, vaginal
+odor conditional expectations, and evenness-based endpoint runs.}
+\item{\code{"agp_restart"}}{Expects the AGP project layout with
+\code{results/asv_hv_k_gcv_sweep/} containing shared graphs,
+sensitivity bundles, IBS/IBD benchmark conditional expectations,
+and evenness endpoint directories with per-k RDS bundles.}
+\item{\code{"iknn_3x3"}}{Disables built-in discovery and is intended
+for richer, explicitly assembled project specs such as 3x3/DCST
+graph-family projects. The legacy alias \code{"3x3"} is also
+accepted and normalized to \code{"iknn_3x3"}.}
+\item{\code{"custom"}}{Performs no automatic discovery; all asset
+lists must be supplied explicitly via \code{graph_sets},
+\code{condexp_sets}, and \code{endpoint_runs}.}
+}}
 
-\item{graph_sets}{Optional explicit graph-set list to store in manifest.}
+\item{project_spec}{Optional rich project specification. When supplied, it
+becomes the preferred source for \code{graph_sets}, \code{condexp_sets},
+\code{endpoint_runs}, \code{metadata}, \code{artifacts}, and
+\code{defaults}. Use \code{\link{build_project_spec_iknn_3x3}} for the
+current 3x3/DCST-oriented workflow.}
 
-\item{condexp_sets}{Optional explicit conditional-expectation set list.}
+\item{graph_sets}{Optional list of graph-set specifications.  When
+non-\code{NULL} this \emph{replaces} any graph sets found by automatic
+discovery.  Each element is a named list with the following fields:
+\describe{
+\item{\code{id}}{Character.  Unique identifier for this graph set
+(e.g. \code{"top20"}, \code{"all"}, \code{"shared_all_asv"}).}
+\item{\code{label}}{Character.  Human-readable label for the UI
+(e.g. \code{"ASV HV20"}).}
+\item{\code{graph_file}}{Character.  Path to an RDS file containing
+the \code{gflow} \code{iknn.selection} object.}
+\item{\code{k_values}}{Integer vector of available \emph{k} values
+for this graph family.}
+\item{\code{data_type_id}}{Character (optional).  Identifier for
+the underlying data type.  Defaults to \code{id}.}
+\item{\code{data_type_label}}{Character (optional).  UI label for
+the data type.  Defaults to \code{label}.}
+\item{\code{n_samples}}{Integer (optional).  Number of samples in
+the graph.}
+\item{\code{n_features}}{Integer (optional).  Number of features
+used.}
+\item{\code{optimal_k_artifacts}}{Named list (optional).  Paths to
+files supporting optimal-\emph{k} selection (e.g. GCV plots,
+summary CSVs).  Common names: \code{"median_norm_gcv"},
+\code{"response_gcv"}, \code{"median_norm_gcv_summary"}.}
+\item{\code{color_assets}}{Named list (optional).  Describes
+categorical metadata for vertex coloring.  Fields:
+\code{metadata_file} (path to RDA), \code{metadata_object}
+(object name), \code{vector_columns}, \code{preferred_order},
+\code{labels}.}
+}
+Each element is passed through
+\code{gflowui_normalize_graph_set_manifest()} which fills defaults
+and discovers grip layout files adjacent to the graph file.}
 
-\item{endpoint_runs}{Optional explicit endpoint run list.}
+\item{condexp_sets}{Optional list of conditional-expectation set
+specifications.  When non-\code{NULL} this \emph{replaces} any sets
+found by discovery.  Each element is a named list whose structure
+depends on the \code{type} field:
+\describe{
+\item{Type \code{"fit_files"} (symptoms-style)}{
+\describe{
+\item{\code{id}}{Character.  Unique identifier
+(e.g. \code{"vag_odor_binary"}).}
+\item{\code{label}}{Character.  UI label.}
+\item{\code{type}}{\code{"fit_files"}.}
+\item{\code{outcomes}}{Character vector of outcome names
+(e.g. \code{c("vag_odor")}).}
+\item{\code{family_runs}}{List of per-family sub-lists each
+with \code{family} (character), \code{summary_file} (path to
+GCV-by-k CSV), \code{fits_dir} (directory of per-k RDS fit
+files), \code{fit_files} (character vector of absolute
+paths), and \code{k_values} (integer vector).}
+\item{\code{summary_file}}{Character (optional).  Path to a
+combined cross-family GCV summary CSV.}
+\item{\code{k_values}}{Integer vector.  Union of k values
+across families.}
+}
+}
+\item{Type \code{"long_table"} (AGP-style)}{
+\describe{
+\item{\code{id}}{Character.  Unique identifier.}
+\item{\code{label}}{Character.  UI label.}
+\item{\code{type}}{\code{"long_table"}.}
+\item{\code{run_dir}}{Character.  Path to the benchmark
+directory.}
+\item{\code{long_table_file}}{Character.  Path to the RDS
+file containing the long-format conditional expectation
+data frame.}
+\item{\code{gcv_summary_file}}{Character (optional).  Path
+to GCV summary CSV.}
+\item{\code{outcomes}}{Character vector of outcome names
+(e.g. \code{c("ibs", "ibd")}).}
+\item{\code{k_values}}{Integer vector.}
+}
+}
+}}
 
-\item{defaults}{Optional list overriding discovered defaults.}
+\item{endpoint_runs}{Optional list of endpoint-run specifications.  When
+non-\code{NULL} this \emph{replaces} any runs found by discovery.
+Each element is a named list with:
+\describe{
+\item{\code{id}}{Character.  Unique identifier (e.g.
+\code{"evenness_k05"}, \code{"evenness_endpoints_k07"}).}
+\item{\code{label}}{Character.  UI label (e.g.
+\code{"Evenness Endpoints (k=5)"}).}
+\item{\code{method}}{Character (optional).  Endpoint detection
+method name (e.g. \code{"evenness_minima"}).  Used for display
+in the Endpoint panel.  When absent the method is inferred from
+the run id or label.}
+\item{\code{methods}}{Character vector (optional).  When multiple
+methods are present (read from the \code{endpoint.method} column
+of the summary CSV).}
+\item{\code{run_dir}}{Character (optional).  Path to the directory
+containing endpoint artifacts.}
+\item{\code{bundle_file}}{Character (optional).  Path to an RDS
+bundle file containing fields such as \code{end.vertices.global},
+\code{end.labels}, and \code{k}.}
+\item{\code{summary_csv}}{Character (optional).  Path to a CSV
+with columns including \code{k}, and optionally
+\code{endpoint.method}, \code{vertex.global}, and label columns.}
+\item{\code{labels_csv}}{Character (optional).  Path to a CSV
+mapping endpoint vertices to labels.  Expected columns include a
+vertex column (\code{vertex.global}, \code{vertex}, etc.) and a
+label column (\code{label}, \code{endpoint.label}, \code{name},
+etc.).  May contain a \code{k} column for filtering.}
+\item{\code{per_k_bundles}}{Character vector (optional).  Paths to
+per-\emph{k} RDS files (named like
+\code{evenness_k07_endpoints.rds}).  Each file is a list with
+\code{end.vertices.global} (or similar) and \code{end.labels}.}
+\item{\code{k_values}}{Integer vector (optional).  Explicit list
+of k values available in this run.  When omitted, k values are
+inferred from \code{summary_csv}, \code{labels_csv},
+\code{per_k_bundles} file names, or the \code{bundle_file}.}
+}}
 
-\item{scan_results}{Whether to run discovery from on-disk outputs.}
+\item{landmark_pts_runs}{Optional landmark-point runs. This is a soft alias
+for the richer 3x3/DCST terminology and is normalized to the current
+external \code{endpoint_runs} contract when \code{endpoint_runs} is not
+supplied.}
 
-\item{overwrite}{Whether to overwrite an existing project with same id.}
+\item{metadata}{Optional project-level metadata to persist alongside the
+manifest. When \code{project_spec} is supplied, these values are merged on
+top of \code{project_spec$metadata}.}
+
+\item{artifacts}{Optional project-level artifacts to persist alongside the
+manifest. When \code{project_spec} is supplied, these values are merged on
+top of \code{project_spec$artifacts}.}
+
+\item{defaults}{Named list of default selections applied when the project
+is first opened in the UI.  Recognized fields:
+\describe{
+\item{\code{graph_set_id}}{Character.  The \code{id} of the graph
+set to select initially.}
+\item{\code{condexp_set_id}}{Character.  The \code{id} of the
+conditional-expectation set to select initially.}
+\item{\code{endpoint_run_id}}{Character.  The \code{id} of the
+endpoint run to select initially.}
+}
+When \code{scan_results = TRUE}, defaults are populated automatically
+by the discovery function (e.g. \code{"all"} graph set in symptoms,
+\code{"shared_all_asv"} in AGP).  Any values supplied here are
+\emph{merged on top} of the discovered defaults, overriding them
+field-by-field.}
+
+\item{scan_results}{Logical (default \code{TRUE}).  When \code{TRUE},
+\code{\link{discover_project_artifacts}} is called to walk the
+\code{project_root} tree and automatically populate \code{graph_sets},
+\code{condexp_sets}, \code{endpoint_runs}, and \code{defaults} based
+on the resolved \code{profile}.  The profile determines which
+subdirectory conventions are expected (see \code{profile} above).
+When \code{FALSE}, discovery is skipped entirely and only the
+explicitly supplied asset lists are used -- useful for custom projects
+whose layout does not match any built-in profile.}
+
+\item{overwrite}{Logical (default \code{FALSE}).  Whether to overwrite an
+existing project with the same \code{project_id}.  When \code{FALSE}
+and a matching id already exists, an error is raised.}
 }
 \value{
-Invisibly returns a list with \code{project_id}, \code{manifest_file}, and
-the manifest object.
+Invisibly returns a list with three elements:
+\describe{
+\item{\code{project_id}}{The (possibly auto-generated) project id.}
+\item{\code{manifest_file}}{Absolute path to the written manifest
+RDS file.}
+\item{\code{manifest}}{The full manifest list written to disk.}
+}
 }
 \description{
 Creates or updates a \code{gflowui} project registry entry with a persisted
-project manifest so the project appears in the app \code{Projects} dropdown.
+project manifest so the project appears in the app \strong{Projects}
+dropdown.  The function (1) resolves the discovery profile, (2) optionally
+scans the on-disk project tree for graph, conditional-expectation and
+endpoint assets, (3) optionally normalizes a richer \code{project_spec},
+(4) merges any explicitly supplied asset lists on top of discovered ones,
+(5) writes an RDS manifest and (6) upserts the global project registry.
 }
 \examples{
 \dontrun{
+# Register using automatic profile detection and on-disk discovery
 register_project(
   project_root = "~/current_projects/AGP",
-  profile = "agp_restart",
   project_name = "AGP Restart"
+)
+
+# Register with explicit profile, overwriting any previous registration
+register_project(
+  project_root = "~/current_projects/symptoms",
+  profile = "symptoms_restart",
+  project_name = "Symptoms",
+  overwrite = TRUE
+)
+
+# Custom project: skip discovery, supply assets explicitly
+register_project(
+  project_root = "~/my_project",
+  profile = "custom",
+  scan_results = FALSE,
+  graph_sets = list(
+    list(
+      id = "main",
+      label = "Main Graph",
+      graph_file = "~/my_project/results/iknn.selection.rds",
+      k_values = c(5L, 7L, 10L)
+    )
+  ),
+  endpoint_runs = list(
+    list(
+      id = "evenness_k5",
+      label = "Evenness (k=5)",
+      method = "evenness_minima",
+      labels_csv = "~/my_project/results/endpoint_labels.csv",
+      k_values = 5L
+    )
+  ),
+  defaults = list(graph_set_id = "main", endpoint_run_id = "evenness_k5")
+)
+
+# Rich project-spec workflow for a 3x3/DCST-style project
+spec <- build_project_spec_iknn_3x3(
+  project_root = "~/my_project",
+  graph_sets = list(
+    list(
+      id = "all",
+      label = "All Samples",
+      graph_file = "~/my_project/results/iknn.selection.rds",
+      k_values = 3:20
+    )
+  )
+)
+register_project(
+  project_root = "~/my_project",
+  project_name = "My 3x3 Project",
+  profile = "iknn_3x3",
+  project_spec = spec,
+  overwrite = TRUE
 )
 }
 }

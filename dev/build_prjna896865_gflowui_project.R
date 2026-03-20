@@ -521,10 +521,22 @@ for (screen_name in names(screen_labels)) {
     asset_dir <- file.path(project_root, "data", "graph_sets", set_id)
     dir.create(asset_dir, recursive = TRUE, showWarnings = FALSE)
 
-    samples_retained <- read_tsv(file.path(branch_root, "samples_retained_after_usability.tsv"))
-    embedding <- read_tsv(file.path(branch_root, "embedding.tsv"))
-    graph_edges <- read_tsv(file.path(branch_root, "graph_edges.tsv"))
     rep_qc <- read_tsv(file.path(branch_root, "representation_qc.tsv"))
+    latent_embedding_name <- if ("latent_embedding_artifact" %in% names(rep_qc)) {
+      first_non_missing(as.character(rep_qc$latent_embedding_artifact), default = "embedding.tsv")
+    } else {
+      "embedding.tsv"
+    }
+    graph_layout_name <- if ("graph_layout_artifact" %in% names(rep_qc)) {
+      first_non_missing(as.character(rep_qc$graph_layout_artifact), default = "embedding.tsv")
+    } else {
+      "embedding.tsv"
+    }
+
+    samples_retained <- read_tsv(file.path(branch_root, "samples_retained_after_usability.tsv"))
+    latent_embedding <- read_tsv(file.path(branch_root, latent_embedding_name))
+    graph_layout <- read_tsv(file.path(branch_root, graph_layout_name))
+    graph_edges <- read_tsv(file.path(branch_root, "graph_edges.tsv"))
     norm_gcv_top20 <- read_tsv(file.path(branch_root, "median_norm_gcv_top20.tsv"))
     norm_gcv_top30 <- read_tsv(file.path(branch_root, "median_norm_gcv_top30.tsv"))
 
@@ -537,8 +549,12 @@ for (screen_name in names(screen_labels)) {
     assert_that(nrow(graph_row) == 1L, sprintf("Expected one graph quality row for %s.", set_id))
 
     assert_that(
-      nrow(samples_retained) == nrow(embedding),
-      sprintf("Embedding/sample row count mismatch for %s.", set_id)
+      nrow(samples_retained) == nrow(latent_embedding),
+      sprintf("Latent embedding/sample row count mismatch for %s.", set_id)
+    )
+    assert_that(
+      nrow(samples_retained) == nrow(graph_layout),
+      sprintf("Graph layout/sample row count mismatch for %s.", set_id)
     )
     assert_that(
       nrow(graph_edges) == first_integer(graph_row$graph_edge_count),
@@ -652,7 +668,7 @@ for (screen_name in names(screen_labels)) {
     )
 
     embedding_mat <- read_embedding_matrix(
-      embedding_df = embedding,
+      embedding_df = latent_embedding,
       sample_ids = samples_retained$sample_id,
       set_id = set_id
     )
@@ -872,7 +888,8 @@ for (screen_name in names(screen_labels)) {
       graph_variant_metadata_file = normalizePath(graph_variant_file, mustWork = TRUE),
       source_artifacts = list(
         graph_edges = normalizePath(file.path(branch_root, "graph_edges.tsv"), mustWork = TRUE),
-        embedding = normalizePath(file.path(branch_root, "embedding.tsv"), mustWork = TRUE),
+        latent_embedding = normalizePath(file.path(branch_root, latent_embedding_name), mustWork = TRUE),
+        graph_layout = normalizePath(file.path(branch_root, graph_layout_name), mustWork = TRUE),
         selected_graph = normalizePath(selected_graph_path, mustWork = TRUE),
         samples_retained_after_usability = normalizePath(file.path(branch_root, "samples_retained_after_usability.tsv"), mustWork = TRUE),
         representation_qc = normalizePath(file.path(branch_root, "representation_qc.tsv"), mustWork = TRUE),

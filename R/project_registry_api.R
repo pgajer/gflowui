@@ -287,6 +287,483 @@ gflowui_write_manifest <- function(manifest, path) {
   tryCatch(normalizePath(path.expand(pp), mustWork = TRUE), error = function(e) "")
 }
 
+.is_absolute_path <- function(path) {
+  pp <- .as_scalar_chr(path, default = "")
+  grepl("^(/|~|[A-Za-z]:[/\\\\])", pp, perl = TRUE)
+}
+
+.normalize_project_path <- function(path, project_root = "", must_work = FALSE) {
+  pp <- .as_scalar_chr(path, default = "")
+  if (!nzchar(pp)) {
+    return("")
+  }
+  if (.is_url_path(pp)) {
+    return(pp)
+  }
+
+  root <- .as_scalar_chr(project_root, default = "")
+  candidate <- if (.is_absolute_path(pp) || !nzchar(root)) {
+    path.expand(pp)
+  } else {
+    file.path(root, pp)
+  }
+
+  tryCatch(
+    normalizePath(candidate, mustWork = must_work),
+    error = function(e) {
+      if (isTRUE(must_work)) {
+        return("")
+      }
+      normalizePath(candidate, mustWork = FALSE)
+    }
+  )
+}
+
+.looks_like_single_entry <- function(x, entry_keys = character(0)) {
+  if (!is.list(x) || length(x) < 1L) {
+    return(FALSE)
+  }
+  nms <- names(x)
+  if (is.null(nms) || length(nms) < 1L) {
+    return(FALSE)
+  }
+  any(nzchar(nms) & nms %in% entry_keys)
+}
+
+.rows_to_list <- function(x) {
+  if (!is.data.frame(x) || nrow(x) < 1L) {
+    return(list())
+  }
+  lapply(seq_len(nrow(x)), function(ii) as.list(x[ii, , drop = FALSE]))
+}
+
+.normalize_named_labels <- function(labels, default_names = character(0)) {
+  raw <- labels
+  if (is.list(raw)) {
+    raw <- unlist(raw, recursive = TRUE, use.names = TRUE)
+  }
+  if (!is.character(raw) || length(raw) < 1L) {
+    return(character(0))
+  }
+
+  if (is.null(names(raw))) {
+    vals <- as.character(raw[nzchar(as.character(raw))])
+    if (length(vals) < 1L) {
+      return(character(0))
+    }
+    if (length(default_names) >= length(vals)) {
+      names(vals) <- default_names[seq_along(vals)]
+    }
+    return(vals)
+  }
+
+  keep <- nzchar(names(raw)) & nzchar(as.character(raw))
+  vals <- as.character(raw[keep])
+  names(vals) <- as.character(names(raw)[keep])
+  vals
+}
+
+.merge_named_lists <- function(base, override) {
+  out <- if (is.list(base)) base else list()
+  add <- if (is.list(override)) override else list()
+  if (length(add) < 1L) {
+    return(out)
+  }
+
+  nms <- names(add)
+  if (is.null(nms) || any(!nzchar(nms))) {
+    return(add)
+  }
+  out[nms] <- add
+  out
+}
+
+.normalize_profile_choice <- function(profile, allow_auto = TRUE) {
+  default <- if (isTRUE(allow_auto)) "auto" else "custom"
+  profile_use <- .as_scalar_chr(profile, default = default)
+  profile_use <- match.arg(
+    profile_use,
+    choices = c(
+      if (isTRUE(allow_auto)) "auto",
+      "symptoms_restart",
+      "agp_restart",
+      "iknn_3x3",
+      "3x3",
+      "custom"
+    )
+  )
+  if (identical(profile_use, "3x3")) {
+    return("iknn_3x3")
+  }
+  profile_use
+}
+
+.normalize_document_entry <- function(doc, project_root = "", fallback_id = "document") {
+  one <- if (is.character(doc)) {
+    list(path = doc[[1]])
+  } else {
+    doc
+  }
+  if (!is.list(one)) {
+    return(NULL)
+  }
+
+  path_use <- .normalize_project_path(
+    one$path %||% one$file %||% one$doc_file %||% "",
+    project_root = project_root,
+    must_work = FALSE
+  )
+  if (!nzchar(path_use)) {
+    return(NULL)
+  }
+
+  id_default <- tools::file_path_sans_ext(basename(path_use))
+  out <- one
+  out$id <- .sanitize_variant_id(out$id %||% id_default, fallback = fallback_id)
+  out$label <- .as_scalar_chr(out$label, default = out$id)
+  out$title <- .as_scalar_chr(out$title, default = out$label)
+  out$type <- .as_scalar_chr(out$type, default = tolower(tools::file_ext(path_use)))
+  out$path <- path_use
+  out$file <- NULL
+  out$doc_file <- NULL
+  out
+}
+
+.normalize_document_entries <- function(doc_sets, project_root = "") {
+  if (is.null(doc_sets)) {
+    return(list())
+  }
+
+  raw <- if (is.character(doc_sets)) {
+    as.list(doc_sets)
+  } else if (is.data.frame(doc_sets)) {
+    .rows_to_list(doc_sets)
+  } else if (.looks_like_single_entry(doc_sets, c("id", "label", "path", "file", "doc_file", "type"))) {
+    list(doc_sets)
+  } else if (is.list(doc_sets)) {
+    doc_sets
+  } else {
+    list()
+  }
+
+  out <- list()
+  seen_ids <- character(0)
+  for (ii in seq_along(raw)) {
+    one <- .normalize_document_entry(
+      raw[[ii]],
+      project_root = project_root,
+      fallback_id = sprintf("document_%d", ii)
+    )
+    if (is.null(one)) {
+      next
+    }
+    while (one$id %in% seen_ids) {
+      one$id <- sprintf("%s_%d", one$id, length(out) + 1L)
+    }
+    seen_ids <- c(seen_ids, one$id)
+    out[[length(out) + 1L]] <- one
+  }
+  out
+}
+
+.normalize_annotation_entry <- function(entry, value_type = "factor", project_root = "", fallback_id = "annotation") {
+  one <- if (is.character(entry)) {
+    list(columns = as.character(entry))
+  } else {
+    entry
+  }
+  if (!is.list(one)) {
+    return(NULL)
+  }
+
+  out <- one
+  metadata_file <- .normalize_project_path(
+    out$metadata_file %||% out$data_file %||% out$file %||% "",
+    project_root = project_root,
+    must_work = FALSE
+  )
+  columns <- as.character(out$columns %||% out$vector_columns %||% out$vars %||% out$variables %||% character(0))
+  columns <- unique(columns[nzchar(columns)])
+  preferred <- as.character(out$preferred_order %||% columns)
+  preferred <- unique(preferred[nzchar(preferred)])
+
+  id_default <- if (length(columns) > 0L) {
+    columns[[1L]]
+  } else if (nzchar(metadata_file)) {
+    tools::file_path_sans_ext(basename(metadata_file))
+  } else {
+    fallback_id
+  }
+
+  out$id <- .sanitize_variant_id(out$id %||% id_default, fallback = fallback_id)
+  out$label <- .as_scalar_chr(out$label, default = out$id)
+  out$value_type <- .as_scalar_chr(out$value_type, default = value_type)
+  out$metadata_file <- metadata_file
+  out$metadata_object <- .as_scalar_chr(out$metadata_object %||% out$data_object, default = "")
+  out$columns <- columns
+  out$preferred_order <- preferred
+  out$labels <- .normalize_named_labels(out$labels, default_names = columns)
+  out$data_file <- NULL
+  out$file <- NULL
+  out$data_object <- NULL
+  out$vector_columns <- NULL
+  out$vars <- NULL
+  out$variables <- NULL
+  out
+}
+
+.normalize_annotation_entries <- function(entries, value_type = "factor", project_root = "") {
+  if (is.null(entries)) {
+    return(list())
+  }
+
+  raw <- if (is.character(entries)) {
+    list(list(columns = as.character(entries)))
+  } else if (is.data.frame(entries)) {
+    .rows_to_list(entries)
+  } else if (.looks_like_single_entry(entries, c("id", "label", "metadata_file", "data_file", "file", "columns", "vector_columns", "vars", "variables"))) {
+    list(entries)
+  } else if (is.list(entries)) {
+    entries
+  } else {
+    list()
+  }
+
+  out <- list()
+  seen_ids <- character(0)
+  for (ii in seq_along(raw)) {
+    one <- .normalize_annotation_entry(
+      raw[[ii]],
+      value_type = value_type,
+      project_root = project_root,
+      fallback_id = sprintf("%s_%d", value_type, ii)
+    )
+    if (is.null(one)) {
+      next
+    }
+    while (one$id %in% seen_ids) {
+      one$id <- sprintf("%s_%d", one$id, length(out) + 1L)
+    }
+    seen_ids <- c(seen_ids, one$id)
+    out[[length(out) + 1L]] <- one
+  }
+  out
+}
+
+.normalize_landmark_pts_run <- function(run, project_root = "", fallback_id = "landmark_points") {
+  if (!is.list(run)) {
+    return(NULL)
+  }
+
+  out <- run
+  out$id <- .as_scalar_chr(out$id, default = fallback_id)
+  out$label <- .as_scalar_chr(out$label, default = out$id)
+  out$kind <- .as_scalar_chr(out$kind, default = "landmark_points")
+  out$method <- .as_scalar_chr(out$method, default = out$kind)
+  out$run_dir <- .normalize_project_path(out$run_dir %||% out$landmark_dir %||% "", project_root = project_root, must_work = FALSE)
+  out$bundle_file <- .normalize_project_path(out$bundle_file %||% out$landmark_file %||% out$points_file %||% "", project_root = project_root, must_work = FALSE)
+  out$summary_csv <- .normalize_project_path(out$summary_csv %||% out$landmark_summary_csv %||% out$points_summary_csv %||% "", project_root = project_root, must_work = FALSE)
+  out$labels_csv <- .normalize_project_path(out$labels_csv %||% out$landmark_labels_csv %||% out$points_labels_csv %||% "", project_root = project_root, must_work = FALSE)
+  per_k <- out$per_k_bundles %||% out$landmark_files %||% out$points_files %||% character(0)
+  if (!is.null(per_k)) {
+    per_k <- as.character(per_k)
+    per_k <- per_k[nzchar(per_k)]
+    per_k <- vapply(
+      per_k,
+      function(pp) .normalize_project_path(pp, project_root = project_root, must_work = FALSE),
+      character(1)
+    )
+    per_k <- per_k[nzchar(per_k)]
+  } else {
+    per_k <- character(0)
+  }
+  out$per_k_bundles <- per_k
+  out$k_values <- .extract_int_values(out$k_values %||% integer(0))
+  out$landmark_dir <- NULL
+  out$landmark_file <- NULL
+  out$points_file <- NULL
+  out$landmark_summary_csv <- NULL
+  out$points_summary_csv <- NULL
+  out$landmark_labels_csv <- NULL
+  out$points_labels_csv <- NULL
+  out$landmark_files <- NULL
+  out$points_files <- NULL
+  out
+}
+
+.normalize_landmark_pts_runs <- function(runs, project_root = "") {
+  if (is.null(runs)) {
+    return(list())
+  }
+
+  raw <- if (is.data.frame(runs)) {
+    .rows_to_list(runs)
+  } else if (.looks_like_single_entry(runs, c("id", "label", "bundle_file", "landmark_file", "summary_csv", "labels_csv", "k_values"))) {
+    list(runs)
+  } else if (is.list(runs)) {
+    runs
+  } else {
+    list()
+  }
+
+  out <- list()
+  seen_ids <- character(0)
+  for (ii in seq_along(raw)) {
+    one <- .normalize_landmark_pts_run(
+      raw[[ii]],
+      project_root = project_root,
+      fallback_id = sprintf("landmark_points_%d", ii)
+    )
+    if (is.null(one)) {
+      next
+    }
+    while (one$id %in% seen_ids) {
+      one$id <- sprintf("%s_%d", one$id, length(out) + 1L)
+    }
+    seen_ids <- c(seen_ids, one$id)
+    out[[length(out) + 1L]] <- one
+  }
+  out
+}
+
+.prepare_reference_data_descriptor <- function(project_root, X = NULL, X_file = NULL) {
+  root <- normalizePath(path.expand(project_root[1]), mustWork = TRUE)
+  x_file <- .as_scalar_chr(X_file, default = "")
+
+  if (!is.null(X)) {
+    X_mat <- tryCatch(as.matrix(X), error = function(e) NULL)
+    if (is.null(X_mat) || length(dim(X_mat)) != 2L) {
+      stop("X must be matrix-like.", call. = FALSE)
+    }
+    target <- if (nzchar(x_file)) {
+      .normalize_project_path(x_file, project_root = root, must_work = FALSE)
+    } else {
+      normalizePath(file.path(root, "metadata", "gflowui_reference_data.rds"), mustWork = FALSE)
+    }
+    dir.create(dirname(target), recursive = TRUE, showWarnings = FALSE)
+    saveRDS(X, file = target)
+    return(list(
+      path = normalizePath(target, mustWork = TRUE),
+      format = "rds",
+      source = "saved_from_X",
+      n_samples = as.integer(nrow(X_mat)),
+      n_features = as.integer(ncol(X_mat))
+    ))
+  }
+
+  if (!nzchar(x_file)) {
+    return(NULL)
+  }
+
+  list(
+    path = .normalize_project_path(x_file, project_root = root, must_work = FALSE),
+    format = .as_scalar_chr(tools::file_ext(x_file), default = "rds"),
+    source = "file",
+    n_samples = NA_integer_,
+    n_features = NA_integer_
+  )
+}
+
+.build_project_spec_components <- function(
+    project_root,
+    profile = "iknn_3x3",
+    graph_sets = list(),
+    condexp_sets = list(),
+    endpoint_runs = list(),
+    landmark_pts_runs = NULL,
+    X = NULL,
+    X_file = NULL,
+    factor_sets = NULL,
+    ordered_factor_sets = NULL,
+    cont_vars_sets = NULL,
+    doc_sets = NULL,
+    defaults = list(),
+    metadata = list(),
+    artifacts = list()) {
+  root <- normalizePath(path.expand(project_root[1]), mustWork = TRUE)
+
+  graph_sets_use <- gflowui_normalize_graph_sets_manifest(graph_sets %||% list())
+  condexp_sets_use <- if (is.list(condexp_sets)) condexp_sets else list()
+  endpoint_runs_use <- if (!is.null(endpoint_runs) && length(endpoint_runs) > 0L) {
+    endpoint_runs
+  } else {
+    .normalize_landmark_pts_runs(landmark_pts_runs, project_root = root)
+  }
+
+  metadata_use <- if (is.list(metadata)) metadata else list()
+  artifacts_use <- if (is.list(artifacts)) artifacts else list()
+
+  reference_data <- .prepare_reference_data_descriptor(project_root = root, X = X, X_file = X_file)
+  if (is.list(reference_data)) {
+    metadata_use$reference_data <- reference_data
+  }
+
+  annotation_sets <- c(
+    .normalize_annotation_entries(factor_sets, value_type = "factor", project_root = root),
+    .normalize_annotation_entries(ordered_factor_sets, value_type = "ordered_factor", project_root = root),
+    .normalize_annotation_entries(cont_vars_sets, value_type = "continuous", project_root = root)
+  )
+  if (length(annotation_sets) > 0L) {
+    existing <- if (is.list(metadata_use$annotation_sets)) metadata_use$annotation_sets else list()
+    metadata_use$annotation_sets <- c(existing, annotation_sets)
+  }
+
+  documents <- .normalize_document_entries(doc_sets, project_root = root)
+  if (length(documents) > 0L) {
+    existing_docs <- if (is.list(artifacts_use$documents)) artifacts_use$documents else list()
+    artifacts_use$documents <- c(existing_docs, documents)
+  }
+
+  list(
+    profile = .normalize_profile_choice(profile, allow_auto = FALSE),
+    project_root = root,
+    graph_sets = graph_sets_use,
+    condexp_sets = condexp_sets_use,
+    endpoint_runs = endpoint_runs_use,
+    metadata = metadata_use,
+    artifacts = artifacts_use,
+    defaults = if (is.list(defaults)) defaults else list()
+  )
+}
+
+.normalize_project_spec <- function(project_spec, project_root, profile = "custom") {
+  if (is.null(project_spec)) {
+    return(NULL)
+  }
+  if (!is.list(project_spec)) {
+    stop("project_spec must be a list.", call. = FALSE)
+  }
+
+  profile_default <- .normalize_profile_choice(profile, allow_auto = TRUE)
+  if (identical(profile_default, "auto")) {
+    profile_default <- "custom"
+  }
+  profile_from_spec <- .as_scalar_chr(project_spec$profile, default = "")
+  profile_use <- if (nzchar(profile_from_spec)) {
+    .normalize_profile_choice(profile_from_spec, allow_auto = FALSE)
+  } else {
+    .normalize_profile_choice(profile_default, allow_auto = FALSE)
+  }
+
+  .build_project_spec_components(
+    project_root = project_root,
+    profile = profile_use,
+    graph_sets = project_spec$graph_sets %||% list(),
+    condexp_sets = project_spec$condexp_sets %||% list(),
+    endpoint_runs = project_spec$endpoint_runs %||% list(),
+    landmark_pts_runs = project_spec$landmark_pts_runs %||% NULL,
+    X = project_spec$X %||% NULL,
+    X_file = project_spec$X_file %||% NULL,
+    factor_sets = project_spec$factor_sets %||% NULL,
+    ordered_factor_sets = project_spec$ordered_factor_sets %||% NULL,
+    cont_vars_sets = project_spec$cont_vars_sets %||% NULL,
+    doc_sets = project_spec$doc_sets %||% NULL,
+    defaults = project_spec$defaults %||% list(),
+    metadata = project_spec$metadata %||% list(),
+    artifacts = project_spec$artifacts %||% list()
+  )
+}
+
 .sanitize_variant_id <- function(x, fallback = "variant") {
   id <- tolower(gsub("[^a-zA-Z0-9]+", "_", .as_scalar_chr(x, default = "")))
   id <- gsub("^_+|_+$", "", id)
@@ -783,10 +1260,7 @@ gflowui_normalize_graph_sets_manifest <- function(graph_sets) {
 }
 
 .resolve_profile <- function(profile, project_root) {
-  profile <- match.arg(
-    profile,
-    choices = c("auto", "symptoms_restart", "agp_restart", "custom")
-  )
+  profile <- .normalize_profile_choice(profile, allow_auto = TRUE)
 
   if (!identical(profile, "auto")) {
     return(profile)
@@ -1053,6 +1527,8 @@ gflowui_normalize_graph_sets_manifest <- function(graph_sets) {
     graph_sets = graph_sets,
     condexp_sets = condexp_sets,
     endpoint_runs = endpoint_runs,
+    metadata = list(),
+    artifacts = list(),
     defaults = list(
       graph_set_id = if (any(vapply(graph_sets, function(x) identical(x$id, "all"), logical(1)))) "all" else {
         if (length(graph_sets) > 0L) graph_sets[[1L]]$id else NA_character_
@@ -1225,6 +1701,8 @@ gflowui_normalize_graph_sets_manifest <- function(graph_sets) {
     graph_sets = graph_sets,
     condexp_sets = condexp_sets,
     endpoint_runs = endpoint_runs,
+    metadata = list(),
+    artifacts = list(),
     defaults = list(
       graph_set_id = pick_default(graph_ids, c("shared_all_asv")),
       condexp_set_id = pick_default(condexp_ids, c("ibs_ibd_benchmark_k071230")),
@@ -1241,10 +1719,11 @@ gflowui_normalize_graph_sets_manifest <- function(graph_sets) {
 #' @param project_root Path to the external analysis project root.
 #' @param profile Discovery profile. Use `"auto"` to infer from project folder
 #'   name (`symptoms`, `AGP`), or set one of `"symptoms_restart"`,
-#'   `"agp_restart"`, or `"custom"`.
+#'   `"agp_restart"`, `"iknn_3x3"`, or `"custom"`.
 #'
-#' @return A list with `graph_sets`, `condexp_sets`, `endpoint_runs`, and
-#'   suggested `defaults`.
+#' @return A list with `graph_sets`, `condexp_sets`, `endpoint_runs`,
+#'   project-level `metadata`, project-level `artifacts`, and suggested
+#'   `defaults`.
 #' @export
 #'
 #' @examples
@@ -1253,7 +1732,7 @@ gflowui_normalize_graph_sets_manifest <- function(graph_sets) {
 #' }
 discover_project_artifacts <- function(
     project_root,
-    profile = c("auto", "symptoms_restart", "agp_restart", "custom")) {
+    profile = c("auto", "symptoms_restart", "agp_restart", "iknn_3x3", "custom")) {
   if (!is.character(project_root) || !nzchar(project_root[1])) {
     stop("project_root must be a non-empty string.", call. = FALSE)
   }
@@ -1268,16 +1747,96 @@ discover_project_artifacts <- function(
   }
 
   list(
-    profile = "custom",
+    profile = if (identical(profile_use, "iknn_3x3")) "iknn_3x3" else "custom",
     project_root = root,
     graph_sets = list(),
     condexp_sets = list(),
     endpoint_runs = list(),
+    metadata = list(),
+    artifacts = list(),
     defaults = list(
       graph_set_id = NA_character_,
       condexp_set_id = NA_character_,
       endpoint_run_id = NA_character_
     )
+  )
+}
+
+#' Build A Project Spec For IKNN 3x3 Projects
+#'
+#' Normalizes a richer project description for later use with
+#' \code{register_project(project_spec = ...)}. When \code{X} is supplied, it
+#' is persisted as an RDS file under \code{project_root} (or to \code{X_file}
+#' when provided) and referenced from the returned spec rather than embedded
+#' inline.
+#'
+#' @param project_root Path to the external analysis project root.
+#' @param graph_sets Graph-set specifications to include in the project spec.
+#' @param X Optional matrix-like reference data to persist and register as
+#'   project-level \code{metadata$reference_data}.
+#' @param X_file Optional file path for the persisted reference data. When
+#'   relative, it is resolved against \code{project_root}.
+#' @param factor_sets Optional categorical metadata bundles. These are
+#'   normalized into \code{metadata$annotation_sets} with
+#'   \code{value_type = "factor"}.
+#' @param ordered_factor_sets Optional ordered metadata bundles. These are
+#'   normalized into \code{metadata$annotation_sets} with
+#'   \code{value_type = "ordered_factor"}.
+#' @param cont_vars_sets Optional continuous-variable bundles. These are
+#'   normalized into \code{metadata$annotation_sets} with
+#'   \code{value_type = "continuous"}.
+#' @param landmark_pts_runs Optional landmark-point runs. These are normalized
+#'   to the current external \code{endpoint_runs} manifest contract while
+#'   preserving \code{kind = "landmark_points"}.
+#' @param doc_sets Optional document/report descriptors. These are normalized
+#'   into \code{artifacts$documents}.
+#' @param defaults Optional default UI selections to include in the returned
+#'   spec.
+#' @param metadata Optional additional metadata merged into the returned spec.
+#'
+#' @return A normalized list suitable for
+#'   \code{register_project(project_spec = ...)}.
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' spec <- build_project_spec_iknn_3x3(
+#'   project_root = "~/my_project",
+#'   graph_sets = list(
+#'     list(
+#'       id = "all",
+#'       label = "All Samples",
+#'       graph_file = "~/my_project/results/iknn.selection.rds",
+#'       k_values = 3:20
+#'     )
+#'   )
+#' )
+#' }
+build_project_spec_iknn_3x3 <- function(
+    project_root,
+    graph_sets,
+    X = NULL,
+    X_file = NULL,
+    factor_sets = NULL,
+    ordered_factor_sets = NULL,
+    cont_vars_sets = NULL,
+    landmark_pts_runs = NULL,
+    doc_sets = NULL,
+    defaults = list(),
+    metadata = list()) {
+  .build_project_spec_components(
+    project_root = project_root,
+    profile = "iknn_3x3",
+    graph_sets = graph_sets,
+    X = X,
+    X_file = X_file,
+    factor_sets = factor_sets,
+    ordered_factor_sets = ordered_factor_sets,
+    cont_vars_sets = cont_vars_sets,
+    landmark_pts_runs = landmark_pts_runs,
+    doc_sets = doc_sets,
+    defaults = defaults,
+    metadata = metadata
   )
 }
 
@@ -1287,9 +1846,9 @@ discover_project_artifacts <- function(
 #' project manifest so the project appears in the app \strong{Projects}
 #' dropdown.  The function (1) resolves the discovery profile, (2) optionally
 #' scans the on-disk project tree for graph, conditional-expectation and
-#' endpoint assets, (3) merges any explicitly supplied asset lists on top of
-#' discovered ones, (4) writes a JSON manifest and (5) upserts the global
-#' project registry.
+#' endpoint assets, (3) optionally normalizes a richer \code{project_spec},
+#' (4) merges any explicitly supplied asset lists on top of discovered ones,
+#' (5) writes an RDS manifest and (6) upserts the global project registry.
 #'
 #' @param project_root Absolute or \code{~}-prefixed path to the root of an
 #'   external analysis project (e.g. \code{"~/current_projects/symptoms"}).
@@ -1321,10 +1880,20 @@ discover_project_artifacts <- function(
 #'       \code{results/asv_hv_k_gcv_sweep/} containing shared graphs,
 #'       sensitivity bundles, IBS/IBD benchmark conditional expectations,
 #'       and evenness endpoint directories with per-k RDS bundles.}
+#'     \item{\code{"iknn_3x3"}}{Disables built-in discovery and is intended
+#'       for richer, explicitly assembled project specs such as 3x3/DCST
+#'       graph-family projects. The legacy alias \code{"3x3"} is also
+#'       accepted and normalized to \code{"iknn_3x3"}.}
 #'     \item{\code{"custom"}}{Performs no automatic discovery; all asset
 #'       lists must be supplied explicitly via \code{graph_sets},
 #'       \code{condexp_sets}, and \code{endpoint_runs}.}
 #'   }
+#'
+#' @param project_spec Optional rich project specification. When supplied, it
+#'   becomes the preferred source for \code{graph_sets}, \code{condexp_sets},
+#'   \code{endpoint_runs}, \code{metadata}, \code{artifacts}, and
+#'   \code{defaults}. Use \code{\link{build_project_spec_iknn_3x3}} for the
+#'   current 3x3/DCST-oriented workflow.
 #'
 #' @param graph_sets Optional list of graph-set specifications.  When
 #'   non-\code{NULL} this \emph{replaces} any graph sets found by automatic
@@ -1441,6 +2010,19 @@ discover_project_artifacts <- function(
 #'       \code{per_k_bundles} file names, or the \code{bundle_file}.}
 #'   }
 #'
+#' @param landmark_pts_runs Optional landmark-point runs. This is a soft alias
+#'   for the richer 3x3/DCST terminology and is normalized to the current
+#'   external \code{endpoint_runs} contract when \code{endpoint_runs} is not
+#'   supplied.
+#'
+#' @param metadata Optional project-level metadata to persist alongside the
+#'   manifest. When \code{project_spec} is supplied, these values are merged on
+#'   top of \code{project_spec$metadata}.
+#'
+#' @param artifacts Optional project-level artifacts to persist alongside the
+#'   manifest. When \code{project_spec} is supplied, these values are merged on
+#'   top of \code{project_spec$artifacts}.
+#'
 #' @param defaults Named list of default selections applied when the project
 #'   is first opened in the UI.  Recognized fields:
 #'   \describe{
@@ -1475,7 +2057,7 @@ discover_project_artifacts <- function(
 #'   \describe{
 #'     \item{\code{project_id}}{The (possibly auto-generated) project id.}
 #'     \item{\code{manifest_file}}{Absolute path to the written manifest
-#'       JSON.}
+#'       RDS file.}
 #'     \item{\code{manifest}}{The full manifest list written to disk.}
 #'   }
 #' @export
@@ -1520,15 +2102,39 @@ discover_project_artifacts <- function(
 #'   ),
 #'   defaults = list(graph_set_id = "main", endpoint_run_id = "evenness_k5")
 #' )
+#'
+#' # Rich project-spec workflow for a 3x3/DCST-style project
+#' spec <- build_project_spec_iknn_3x3(
+#'   project_root = "~/my_project",
+#'   graph_sets = list(
+#'     list(
+#'       id = "all",
+#'       label = "All Samples",
+#'       graph_file = "~/my_project/results/iknn.selection.rds",
+#'       k_values = 3:20
+#'     )
+#'   )
+#' )
+#' register_project(
+#'   project_root = "~/my_project",
+#'   project_name = "My 3x3 Project",
+#'   profile = "iknn_3x3",
+#'   project_spec = spec,
+#'   overwrite = TRUE
+#' )
 #' }
 register_project <- function(
     project_root,
     project_id = NULL,
     project_name = NULL,
-    profile = c("auto", "symptoms_restart", "agp_restart", "custom"),
+    profile = c("auto", "symptoms_restart", "agp_restart", "iknn_3x3", "custom"),
+    project_spec = NULL,
     graph_sets = NULL,
     condexp_sets = NULL,
     endpoint_runs = NULL,
+    landmark_pts_runs = NULL,
+    metadata = list(),
+    artifacts = list(),
     defaults = list(),
     scan_results = TRUE,
     overwrite = FALSE) {
@@ -1556,25 +2162,76 @@ register_project <- function(
     stop(sprintf("Project id '%s' already exists. Use overwrite = TRUE.", project_id), call. = FALSE)
   }
 
+  profile_requested <- .normalize_profile_choice(profile[1], allow_auto = TRUE)
+  spec_use <- .normalize_project_spec(
+    project_spec = project_spec,
+    project_root = root,
+    profile = profile_requested
+  )
+  profile_resolved <- if (identical(profile_requested, "auto") &&
+      is.list(spec_use) &&
+      nzchar(.as_scalar_chr(spec_use$profile, default = ""))) {
+    .normalize_profile_choice(spec_use$profile, allow_auto = FALSE)
+  } else {
+    .resolve_profile(profile = profile_requested, project_root = root)
+  }
+
   discovered <- list(
-    profile = .resolve_profile(profile = profile[1], project_root = root),
+    profile = profile_resolved,
     project_root = root,
     graph_sets = list(),
     condexp_sets = list(),
     endpoint_runs = list(),
+    metadata = list(),
+    artifacts = list(),
     defaults = list()
   )
 
   if (isTRUE(scan_results)) {
-    discovered <- discover_project_artifacts(project_root = root, profile = profile[1])
+    discovered <- discover_project_artifacts(project_root = root, profile = profile_resolved)
   }
 
-  graph_sets_use <- if (!is.null(graph_sets)) graph_sets else discovered$graph_sets
-  condexp_sets_use <- if (!is.null(condexp_sets)) condexp_sets else discovered$condexp_sets
-  endpoint_runs_use <- if (!is.null(endpoint_runs)) endpoint_runs else discovered$endpoint_runs
+  graph_sets_use <- if (is.list(spec_use)) {
+    spec_use$graph_sets
+  } else if (!is.null(graph_sets)) {
+    graph_sets
+  } else {
+    discovered$graph_sets
+  }
+  condexp_sets_use <- if (is.list(spec_use)) {
+    spec_use$condexp_sets
+  } else if (!is.null(condexp_sets)) {
+    condexp_sets
+  } else {
+    discovered$condexp_sets
+  }
+  endpoint_runs_use <- if (is.list(spec_use)) {
+    spec_use$endpoint_runs
+  } else if (!is.null(endpoint_runs)) {
+    endpoint_runs
+  } else if (!is.null(landmark_pts_runs)) {
+    .normalize_landmark_pts_runs(landmark_pts_runs, project_root = root)
+  } else {
+    discovered$endpoint_runs
+  }
   graph_sets_use <- gflowui_normalize_graph_sets_manifest(graph_sets_use)
 
-  defaults_use <- discovered$defaults
+  metadata_use <- if (is.list(discovered$metadata)) discovered$metadata else list()
+  if (is.list(spec_use)) {
+    metadata_use <- .merge_named_lists(metadata_use, spec_use$metadata)
+  }
+  metadata_use <- .merge_named_lists(metadata_use, metadata)
+
+  artifacts_use <- if (is.list(discovered$artifacts)) discovered$artifacts else list()
+  if (is.list(spec_use)) {
+    artifacts_use <- .merge_named_lists(artifacts_use, spec_use$artifacts)
+  }
+  artifacts_use <- .merge_named_lists(artifacts_use, artifacts)
+
+  defaults_use <- if (is.list(discovered$defaults)) discovered$defaults else list()
+  if (is.list(spec_use)) {
+    defaults_use <- .merge_named_lists(defaults_use, spec_use$defaults)
+  }
   if (length(defaults) > 0L) {
     defaults_use[names(defaults)] <- defaults
   }
@@ -1595,6 +2252,8 @@ register_project <- function(
     graph_sets = graph_sets_use,
     condexp_sets = condexp_sets_use,
     endpoint_runs = endpoint_runs_use,
+    metadata = metadata_use,
+    artifacts = artifacts_use,
     defaults = defaults_use
   )
 
@@ -1604,7 +2263,7 @@ register_project <- function(
   entry <- gflowui_registry_entry(
     id = project_id,
     label = project_name,
-    origin = sprintf("registered:%s", as.character(discovered$profile %||% "custom")),
+    origin = sprintf("registered:%s", as.character(profile_resolved %||% "custom")),
     has_graphs = length(graph_sets_use) > 0L,
     has_condexp = length(condexp_sets_use) > 0L,
     has_endpoints = length(endpoint_runs_use) > 0L,
