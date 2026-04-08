@@ -215,3 +215,126 @@ test_that("graph selection resolver honors preferred project-open default before
   expect_equal(resolved$set_id, "shared_all_asv")
   expect_equal(resolved$k_selected, 6L)
 })
+
+test_that("graph selection resolver supports grouped selector schemas", {
+  rv <- new.env(parent = emptyenv())
+  helpers <- gflowui:::gflowui_make_server_graph_structure_helpers(rv = rv)
+
+  manifest <- list(
+    defaults = list(
+      graph_set_id = "ct_biological__kegg__ge_1pct__hellinger_pca",
+      reference_graph_set_id = "ct_biological__kegg__ge_1pct__hellinger_pca",
+      reference_k = 5L
+    ),
+    metadata = list(
+      graph_selector_schema = list(
+        summary_label = "Graph family",
+        fields = list(
+          list(
+            id = "dataset",
+            field = "dataset_id",
+            label = "Sample set",
+            order = c("ct_clearance", "ct_biological"),
+            labels = c(
+              ct_clearance = "CT clearance",
+              ct_biological = "CT biological"
+            )
+          ),
+          list(
+            id = "modality",
+            field = "modality_id",
+            label = "Feature space",
+            order = c("vog_cluster", "kegg"),
+            labels = c(
+              vog_cluster = "VOG cluster",
+              kegg = "KEGG"
+            )
+          ),
+          list(
+            id = "screen",
+            field = "screen_name",
+            label = "Prevalence screen"
+          ),
+          list(
+            id = "representation",
+            field = "representation",
+            label = "Representation"
+          )
+        )
+      )
+    ),
+    graph_sets = list(
+      list(
+        id = "ct_clearance__kegg__ge_1pct__relative_abundance_pca",
+        label = "CT clearance / KEGG / ge_1pct / relative_abundance_pca",
+        dataset_id = "ct_clearance",
+        modality_id = "kegg",
+        screen_name = "ge_1pct",
+        representation = "relative_abundance_pca",
+        k_values = c(5L, 6L)
+      ),
+      list(
+        id = "ct_clearance__kegg__ge_1pct__hellinger_pca",
+        label = "CT clearance / KEGG / ge_1pct / hellinger_pca",
+        dataset_id = "ct_clearance",
+        modality_id = "kegg",
+        screen_name = "ge_1pct",
+        representation = "hellinger_pca",
+        k_values = c(4L, 5L)
+      ),
+      list(
+        id = "ct_biological__kegg__ge_1pct__hellinger_pca",
+        label = "CT biological / KEGG / ge_1pct / hellinger_pca",
+        dataset_id = "ct_biological",
+        modality_id = "kegg",
+        screen_name = "ge_1pct",
+        representation = "hellinger_pca",
+        k_values = c(5L, 6L)
+      )
+    )
+  )
+
+  resolved <- helpers$resolve_graph_selection(
+    manifest = manifest,
+    graph_sets = manifest$graph_sets,
+    input_selector_values = list(
+      graph_selector_dataset = "ct_clearance",
+      graph_selector_modality = "kegg",
+      graph_selector_screen = "ge_1pct",
+      graph_selector_representation = "hellinger_pca"
+    ),
+    input_k = NA_integer_
+  )
+
+  expect_true(isTRUE(resolved$grouped_selector_enabled))
+  expect_equal(resolved$set_id, "ct_clearance__kegg__ge_1pct__hellinger_pca")
+  expect_equal(resolved$k_selected, 5L)
+  expect_length(resolved$selector_fields, 4L)
+  expect_equal(unname(resolved$selector_fields[[1]]$choices), c("ct_clearance", "ct_biological"))
+  expect_equal(as.character(resolved$selector_fields[[4]]$selected), "hellinger_pca")
+  expect_match(resolved$selector_summary_value, "CT clearance", fixed = TRUE)
+})
+
+test_that("graph selector schema ignores fields absent from graph sets", {
+  rv <- new.env(parent = emptyenv())
+  helpers <- gflowui:::gflowui_make_server_graph_structure_helpers(rv = rv)
+
+  manifest <- list(
+    metadata = list(
+      graph_selector_schema = list(
+        fields = list(
+          list(id = "dataset", field = "dataset_id", label = "Dataset"),
+          list(id = "missing", field = "not_present", label = "Missing")
+        )
+      )
+    )
+  )
+  graph_sets <- list(
+    list(id = "one", label = "One", dataset_id = "ct_clearance", k_values = 5L)
+  )
+
+  schema <- helpers$graph_selector_schema(manifest, graph_sets)
+  expect_true(isTRUE(schema$enabled))
+  expect_length(schema$fields, 1L)
+  expect_equal(schema$fields[[1]]$field, "dataset_id")
+})

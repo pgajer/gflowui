@@ -245,6 +245,156 @@ gflowui_make_server_graph_structure_helpers <- function(rv) {
     stats::setNames(ids, sprintf("%s (%s)", labels, ids))
   }
 
+  pretty_selector_label <- function(x) {
+    txt <- as.character(x %||% "")
+    txt <- txt[nzchar(txt)]
+    if (length(txt) < 1L) {
+      return("Selector")
+    }
+    txt <- txt[[1]]
+    txt <- gsub("[._]+", " ", txt)
+    txt <- gsub("\\s+", " ", txt)
+    txt <- trimws(txt)
+    parts <- strsplit(tolower(txt), " ", fixed = TRUE)[[1]]
+    parts <- parts[nzchar(parts)]
+    if (length(parts) < 1L) {
+      return("Selector")
+    }
+    parts <- vapply(parts, function(one) {
+      paste0(toupper(substr(one, 1L, 1L)), substr(one, 2L, nchar(one)))
+    }, character(1))
+    paste(parts, collapse = " ")
+  }
+
+  normalize_selector_labels <- function(x) {
+    out <- character(0)
+    if (is.list(x)) {
+      x <- unlist(x, recursive = TRUE, use.names = TRUE)
+    }
+    if (is.character(x) && length(x) > 0L) {
+      if (is.null(names(x))) {
+        keep <- nzchar(x)
+        out <- as.character(x[keep])
+        names(out) <- out
+      } else {
+        keep <- nzchar(names(x)) & nzchar(as.character(x))
+        out <- as.character(x[keep])
+        names(out) <- as.character(names(x)[keep])
+      }
+    }
+    out
+  }
+
+  graph_set_field_value <- function(graph_set, field_name) {
+    scalar_chr(graph_set[[field_name]], default = "")
+  }
+
+  graph_selector_schema <- function(manifest, graph_sets) {
+    raw <- NULL
+    if (is.list(manifest$metadata) && is.list(manifest$metadata$graph_selector_schema)) {
+      raw <- manifest$metadata$graph_selector_schema
+    } else if (is.list(manifest$graph_selector_schema)) {
+      raw <- manifest$graph_selector_schema
+    }
+
+    if (!is.list(raw)) {
+      return(list(
+        enabled = FALSE,
+        fields = list(),
+        summary_label = "Graph family",
+        show_raw_selector = FALSE
+      ))
+    }
+
+    fields_raw <- raw$fields %||% list()
+    if (is.character(fields_raw) && length(fields_raw) > 0L) {
+      fields_raw <- as.list(fields_raw)
+    }
+    if (!is.list(fields_raw) || length(fields_raw) < 1L) {
+      return(list(
+        enabled = FALSE,
+        fields = list(),
+        summary_label = scalar_chr(raw$summary_label, default = "Graph family"),
+        show_raw_selector = isTRUE(raw$show_raw_selector)
+      ))
+    }
+
+    fields <- list()
+    for (ii in seq_along(fields_raw)) {
+      one <- fields_raw[[ii]]
+      if (is.character(one) && length(one) > 0L) {
+        field_name <- scalar_chr(one[[1]], default = "")
+        field_id <- sanitize_token_id(field_name, fallback = sprintf("selector_%d", ii))
+        field_label <- pretty_selector_label(field_name)
+        field_order <- character(0)
+        field_labels <- character(0)
+      } else if (is.list(one)) {
+        field_name <- scalar_chr(one$field %||% one$id %||% one$name, default = "")
+        field_id <- sanitize_token_id(one$id %||% field_name, fallback = sprintf("selector_%d", ii))
+        field_label <- scalar_chr(one$label, default = pretty_selector_label(field_name))
+        field_order <- unique(as.character(one$order %||% one$values %||% character(0)))
+        field_order <- field_order[nzchar(field_order)]
+        field_labels <- normalize_selector_labels(one$labels)
+      } else {
+        next
+      }
+
+      if (!nzchar(field_name)) {
+        next
+      }
+
+      has_field <- any(vapply(graph_sets, function(gs) {
+        nzchar(graph_set_field_value(gs, field_name))
+      }, logical(1)))
+      if (!isTRUE(has_field)) {
+        next
+      }
+
+      fields[[length(fields) + 1L]] <- list(
+        id = field_id,
+        field = field_name,
+        label = field_label,
+        order = field_order,
+        labels = field_labels,
+        input_id = sprintf("graph_selector_%s", field_id)
+      )
+    }
+
+    list(
+      enabled = length(fields) > 0L,
+      fields = fields,
+      summary_label = scalar_chr(raw$summary_label, default = "Graph family"),
+      show_raw_selector = isTRUE(raw$show_raw_selector)
+    )
+  }
+
+  graph_selector_choices <- function(values, field_spec) {
+    vals <- unique(as.character(values %||% character(0)))
+    vals <- vals[nzchar(vals)]
+    if (length(vals) < 1L) {
+      return(c())
+    }
+
+    pref <- as.character(field_spec$order %||% character(0))
+    pref <- pref[nzchar(pref)]
+    ordered_vals <- if (length(pref) > 0L) {
+      c(pref[pref %in% vals], sort(setdiff(vals, pref)))
+    } else {
+      sort(vals)
+    }
+    ordered_vals <- unique(ordered_vals)
+
+    display <- ordered_vals
+    label_map <- field_spec$labels
+    if (is.character(label_map) && length(label_map) > 0L && !is.null(names(label_map))) {
+      idx <- match(ordered_vals, names(label_map))
+      keep <- is.finite(idx)
+      display[keep] <- unname(label_map[idx[keep]])
+    }
+
+    stats::setNames(ordered_vals, display)
+  }
+
   graph_set_k_values <- function(graph_sets, set_id) {
     if (!is.list(graph_sets) || length(graph_sets) < 1L || !nzchar(as.character(set_id %||% ""))) {
       return(integer(0))
@@ -336,6 +486,7 @@ gflowui_make_server_graph_structure_helpers <- function(rv) {
       manifest,
       graph_sets,
       input_set_id = "",
+      input_selector_values = list(),
       input_k = NA_integer_,
       preferred_default_set_id = "",
       preferred_default_k = NA_integer_,
@@ -346,42 +497,114 @@ gflowui_make_server_graph_structure_helpers <- function(rv) {
         set_id = "",
         k_selected = NA_integer_,
         data_type_choices = c(),
-        k_choices = c()
+        k_choices = c(),
+        grouped_selector_enabled = FALSE,
+        selector_fields = list(),
+        selector_summary_label = "Graph family",
+        selector_summary_value = ""
       ))
     }
 
-    choices <- graph_data_type_choices(graph_sets)
-    if (length(choices) < 1L) {
+    all_choices <- graph_data_type_choices(graph_sets)
+    if (length(all_choices) < 1L) {
       return(list(
         set_id = "",
         k_selected = NA_integer_,
         data_type_choices = c(),
-        k_choices = c()
+        k_choices = c(),
+        grouped_selector_enabled = FALSE,
+        selector_fields = list(),
+        selector_summary_label = "Graph family",
+        selector_summary_value = ""
       ))
     }
 
     ref <- current_reference_info(manifest)
+    resolve_set_id_from_choices <- function(choice_ids) {
+      ids_use <- unique(as.character(choice_ids %||% character(0)))
+      ids_use <- ids_use[nzchar(ids_use)]
+      if (length(ids_use) < 1L) {
+        return("")
+      }
 
-    set_id <- scalar_chr(input_set_id %||% "", default = "")
-    if (!(set_id %in% unname(choices))) {
+      set_id_use <- scalar_chr(input_set_id %||% "", default = "")
+      if (set_id_use %in% ids_use) {
+        return(set_id_use)
+      }
+
       sticky_set <- scalar_chr(sticky_set_id %||% "", default = "")
-      if (sticky_set %in% unname(choices)) {
-        set_id <- sticky_set
-      } else {
-        preferred_set <- scalar_chr(preferred_default_set_id %||% "", default = "")
-        fallback <- if (preferred_set %in% unname(choices)) {
-          preferred_set
-        } else {
-          scalar_chr(ref$set_id %||% manifest$defaults$graph_set_id %||% "", default = "")
+      if (sticky_set %in% ids_use) {
+        return(sticky_set)
+      }
+
+      preferred_set <- scalar_chr(preferred_default_set_id %||% "", default = "")
+      if (preferred_set %in% ids_use) {
+        return(preferred_set)
+      }
+
+      fallback <- scalar_chr(ref$set_id %||% manifest$defaults$graph_set_id %||% "", default = "")
+      if (fallback %in% ids_use) {
+        return(fallback)
+      }
+
+      ids_use[[1]]
+    }
+
+    selector_schema <- graph_selector_schema(manifest, graph_sets)
+    grouped_enabled <- isTRUE(selector_schema$enabled)
+    selector_fields <- list()
+    selector_summary_value <- ""
+    choices <- all_choices
+
+    if (grouped_enabled) {
+      default_set_id <- resolve_set_id_from_choices(unname(all_choices))
+      default_graph_set <- graph_set_by_id(graph_sets, default_set_id)
+      candidate_sets <- graph_sets
+
+      for (field_spec in selector_schema$fields) {
+        field_name <- field_spec$field
+        field_vals <- vapply(candidate_sets, function(gs) {
+          graph_set_field_value(gs, field_name)
+        }, character(1))
+        field_vals <- field_vals[nzchar(field_vals)]
+        choice_vec <- graph_selector_choices(field_vals, field_spec)
+        if (length(choice_vec) < 1L) {
+          next
         }
-        if (fallback %in% unname(choices)) {
-          set_id <- fallback
-        } else {
-          set_id <- unname(choices)[1]
+
+        input_val <- scalar_chr(
+          input_selector_values[[field_spec$id]] %||% input_selector_values[[field_spec$input_id]],
+          default = ""
+        )
+        default_val <- graph_set_field_value(default_graph_set, field_name)
+        if (!(input_val %in% unname(choice_vec))) {
+          if (default_val %in% unname(choice_vec)) {
+            input_val <- default_val
+          } else {
+            input_val <- unname(choice_vec)[1]
+          }
         }
+
+        selector_fields[[length(selector_fields) + 1L]] <- c(field_spec, list(
+          choices = choice_vec,
+          selected = input_val
+        ))
+
+        candidate_sets <- Filter(function(gs) {
+          identical(graph_set_field_value(gs, field_name), input_val)
+        }, candidate_sets)
+      }
+
+      candidate_ids <- vapply(candidate_sets, function(gs) as.character(gs$id %||% ""), character(1))
+      candidate_ids <- candidate_ids[nzchar(candidate_ids)]
+      if (length(candidate_ids) > 0L) {
+        choices <- graph_data_type_choices(candidate_sets)
+        selector_graph_set <- graph_set_by_id(candidate_sets, resolve_set_id_from_choices(candidate_ids))
+        selector_summary_value <- as.character(selector_graph_set$label %||% infer_data_type_label(selector_graph_set))
       }
     }
 
+    set_id <- resolve_set_id_from_choices(unname(choices))
     k_choices <- graph_k_choices(graph_sets, set_id)
     kvals <- suppressWarnings(as.integer(unname(k_choices)))
     kvals <- kvals[is.finite(kvals)]
@@ -407,7 +630,11 @@ gflowui_make_server_graph_structure_helpers <- function(rv) {
       set_id = set_id,
       k_selected = k_sel,
       data_type_choices = choices,
-      k_choices = k_choices
+      k_choices = k_choices,
+      grouped_selector_enabled = grouped_enabled,
+      selector_fields = selector_fields,
+      selector_summary_label = scalar_chr(selector_schema$summary_label, default = "Graph family"),
+      selector_summary_value = selector_summary_value
     )
   }
 
@@ -1081,6 +1308,8 @@ gflowui_make_server_graph_structure_helpers <- function(rv) {
     sanitize_token_id = sanitize_token_id,
     parse_k_values_text = parse_k_values_text,
     graph_set_choices = graph_set_choices,
+    graph_selector_schema = graph_selector_schema,
+    graph_selector_choices = graph_selector_choices,
     graph_set_k_values = graph_set_k_values,
     graph_k_choices = graph_k_choices,
     collect_outcomes_from_condexp = collect_outcomes_from_condexp,

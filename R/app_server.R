@@ -283,10 +283,13 @@ app_server <- function(input, output, session) {
       manifest = manifest,
       graph_sets = graph_sets
     )
+    selector_input_values <- reactiveValuesToList(input)
+    selector_input_values <- selector_input_values[grepl("^graph_selector_", names(selector_input_values))]
     resolved <- resolve_graph_selection(
       manifest = manifest,
       graph_sets = graph_sets,
       input_set_id = input$graph_data_type,
+      input_selector_values = selector_input_values,
       input_k = input$graph_k,
       preferred_default_set_id = project_defaults$set_id,
       preferred_default_k = project_defaults$k,
@@ -8584,6 +8587,10 @@ app_server <- function(input, output, session) {
       set_id = set_id,
       data_type_choices = choices,
       data_type_label = infer_data_type_label(gs),
+      grouped_selector_enabled = isTRUE(sel$grouped_selector_enabled),
+      selector_fields = sel$selector_fields %||% list(),
+      selector_summary_label = as.character(sel$selector_summary_label %||% "Graph family"),
+      selector_summary_value = as.character(sel$selector_summary_value %||% gs$label %||% infer_data_type_label(gs)),
       dims_text = dims_text,
       k_choices = k_choices,
       k_selected = k_sel,
@@ -10143,19 +10150,49 @@ app_server <- function(input, output, session) {
           size_choices <- unique(c(size_choices, graph_ui$size_selected))
         }
 
+        selector_rows <- if (isTRUE(graph_ui$grouped_selector_enabled) &&
+            length(graph_ui$selector_fields %||% list()) > 0L) {
+          rows <- lapply(graph_ui$selector_fields, function(spec) {
+            shiny::div(
+              class = "gf-graph-row gf-graph-row-tight",
+              shiny::span(class = "gf-graph-row-label", paste0(as.character(spec$label %||% "Selector"), ":")),
+              shiny::selectInput(
+                as.character(spec$input_id %||% ""),
+                label = NULL,
+                choices = spec$choices %||% c(),
+                selected = as.character(spec$selected %||% ""),
+                width = "205px"
+              )
+            )
+          })
+
+          c(rows, list(
+            shiny::div(
+              class = "gf-graph-row gf-graph-row-tight",
+              shiny::span(class = "gf-graph-row-label", paste0(as.character(graph_ui$selector_summary_label %||% "Graph family"), ":")),
+              shiny::span(class = "gf-graph-row-value", as.character(graph_ui$selector_summary_value %||% graph_ui$data_type_label %||% "")),
+              shiny::span(class = "gf-graph-dims", graph_ui$dims_text)
+            )
+          ))
+        } else {
+          list(
+            shiny::div(
+              class = "gf-graph-row gf-graph-row-tight",
+              shiny::span(class = "gf-graph-row-label", "Data Type:"),
+              shiny::selectInput(
+                "graph_data_type",
+                label = NULL,
+                choices = graph_ui$data_type_choices,
+                selected = graph_ui$set_id,
+                width = "160px"
+              ),
+              shiny::span(class = "gf-graph-dims", graph_ui$dims_text)
+            )
+          )
+        }
+
         shiny::tagList(
-          shiny::div(
-            class = "gf-graph-row gf-graph-row-tight",
-            shiny::span(class = "gf-graph-row-label", "Data Type:"),
-            shiny::selectInput(
-              "graph_data_type",
-              label = NULL,
-              choices = graph_ui$data_type_choices,
-              selected = graph_ui$set_id,
-              width = "160px"
-            ),
-            shiny::span(class = "gf-graph-dims", graph_ui$dims_text)
-          ),
+          selector_rows,
           shiny::div(
             class = "gf-graph-row gf-graph-row-tight gf-graph-row-k",
             shiny::span(class = "gf-graph-row-label", "k:"),
