@@ -80,6 +80,13 @@ app_server <- function(input, output, session) {
     }
     default_use[[1]]
   }
+  set_reactive_val_if_changed <- function(rv, value) {
+    current <- shiny::isolate(rv())
+    if (!identical(current, value)) {
+      rv(value)
+    }
+    invisible(value)
+  }
   normalize_plotly_camera <- function(cam) {
     if (!is.list(cam)) {
       return(NULL)
@@ -4777,23 +4784,24 @@ app_server <- function(input, output, session) {
     st <- endpoint_panel_state()
     rows <- if (is.list(st) && is.data.frame(st$rows)) st$rows else data.frame()
     if (nrow(rows) < 1L) {
-      endpoint_overlay_selection(character(0))
-      endpoint_dataset_load_counts(structure(integer(0), names = character(0)))
-      endpoint_dataset_rename_counts(structure(integer(0), names = character(0)))
-      endpoint_dataset_delete_counts(structure(integer(0), names = character(0)))
-      endpoint_dataset_default_counts(structure(integer(0), names = character(0)))
+      empty_counts <- structure(integer(0), names = character(0))
+      set_reactive_val_if_changed(endpoint_overlay_selection, character(0))
+      set_reactive_val_if_changed(endpoint_dataset_load_counts, empty_counts)
+      set_reactive_val_if_changed(endpoint_dataset_rename_counts, empty_counts)
+      set_reactive_val_if_changed(endpoint_dataset_delete_counts, empty_counts)
+      set_reactive_val_if_changed(endpoint_dataset_default_counts, empty_counts)
       return()
     }
 
-    prev <- endpoint_overlay_selection()
+    prev <- shiny::isolate(endpoint_overlay_selection())
     sel <- character(0)
-    load_counts_prev <- endpoint_dataset_load_counts()
+    load_counts_prev <- shiny::isolate(endpoint_dataset_load_counts())
     load_counts_next <- structure(integer(0), names = character(0))
-    rename_counts_prev <- endpoint_dataset_rename_counts()
+    rename_counts_prev <- shiny::isolate(endpoint_dataset_rename_counts())
     rename_counts_next <- structure(integer(0), names = character(0))
-    delete_counts_prev <- endpoint_dataset_delete_counts()
+    delete_counts_prev <- shiny::isolate(endpoint_dataset_delete_counts())
     delete_counts_next <- structure(integer(0), names = character(0))
-    default_counts_prev <- endpoint_dataset_default_counts()
+    default_counts_prev <- shiny::isolate(endpoint_dataset_default_counts())
     default_counts_next <- structure(integer(0), names = character(0))
 
     for (ii in seq_len(nrow(rows))) {
@@ -4883,11 +4891,11 @@ app_server <- function(input, output, session) {
       }
     }
 
-    endpoint_overlay_selection(unique(sel))
-    endpoint_dataset_load_counts(load_counts_next)
-    endpoint_dataset_rename_counts(rename_counts_next)
-    endpoint_dataset_delete_counts(delete_counts_next)
-    endpoint_dataset_default_counts(default_counts_next)
+    set_reactive_val_if_changed(endpoint_overlay_selection, unique(sel))
+    set_reactive_val_if_changed(endpoint_dataset_load_counts, load_counts_next)
+    set_reactive_val_if_changed(endpoint_dataset_rename_counts, rename_counts_next)
+    set_reactive_val_if_changed(endpoint_dataset_delete_counts, delete_counts_next)
+    set_reactive_val_if_changed(endpoint_dataset_default_counts, default_counts_next)
   })
 
   shiny::observeEvent(input$endpoint_replace_working_set, {
@@ -4987,11 +4995,11 @@ app_server <- function(input, output, session) {
     st <- endpoint_panel_state()
     working_rows <- accepted_visible_working_rows(if (is.list(st)) st$working else NULL)
     ctx <- if (is.list(st)) st$context else NULL
-    prev_values <- endpoint_working_label_event_values()
+    prev_values <- shiny::isolate(endpoint_working_label_event_values())
     next_values <- structure(character(0), names = character(0))
 
     if (nrow(working_rows) < 1L || !is.list(ctx)) {
-      endpoint_working_label_event_values(next_values)
+      set_reactive_val_if_changed(endpoint_working_label_event_values, next_values)
       return()
     }
 
@@ -5034,18 +5042,18 @@ app_server <- function(input, output, session) {
       }
     }
 
-    endpoint_working_label_event_values(next_values)
+    set_reactive_val_if_changed(endpoint_working_label_event_values, next_values)
   })
 
   shiny::observe({
     st <- endpoint_panel_state()
     working_rows <- accepted_visible_working_rows(if (is.list(st)) st$working else NULL)
     ctx <- if (is.list(st)) st$context else NULL
-    prev_counts <- endpoint_working_hide_counts()
+    prev_counts <- shiny::isolate(endpoint_working_hide_counts())
     next_counts <- structure(integer(0), names = character(0))
 
     if (nrow(working_rows) < 1L || !is.list(ctx)) {
-      endpoint_working_hide_counts(next_counts)
+      set_reactive_val_if_changed(endpoint_working_hide_counts, next_counts)
       return()
     }
 
@@ -5071,18 +5079,18 @@ app_server <- function(input, output, session) {
       next_counts[[input_id]] <- if (is.finite(cur_count)) as.integer(cur_count) else 0L
     }
 
-    endpoint_working_hide_counts(next_counts)
+    set_reactive_val_if_changed(endpoint_working_hide_counts, next_counts)
   })
 
   shiny::observe({
     st <- endpoint_panel_state()
     hidden_rows <- accepted_hidden_working_rows(if (is.list(st)) st$working else NULL)
     ctx <- if (is.list(st)) st$context else NULL
-    prev_counts <- endpoint_working_restore_counts()
+    prev_counts <- shiny::isolate(endpoint_working_restore_counts())
     next_counts <- structure(integer(0), names = character(0))
 
     if (nrow(hidden_rows) < 1L || !is.list(ctx)) {
-      endpoint_working_restore_counts(next_counts)
+      set_reactive_val_if_changed(endpoint_working_restore_counts, next_counts)
       return()
     }
 
@@ -5108,18 +5116,18 @@ app_server <- function(input, output, session) {
       next_counts[[input_id]] <- if (is.finite(cur_count)) as.integer(cur_count) else 0L
     }
 
-    endpoint_working_restore_counts(next_counts)
+    set_reactive_val_if_changed(endpoint_working_restore_counts, next_counts)
   })
 
   shiny::observe({
     st <- endpoint_panel_state()
     hidden_rows <- accepted_hidden_working_rows(if (is.list(st)) st$working else NULL)
     ctx <- if (is.list(st)) st$context else NULL
-    prev_counts <- endpoint_working_delete_counts()
+    prev_counts <- shiny::isolate(endpoint_working_delete_counts())
     next_counts <- structure(integer(0), names = character(0))
 
     if (nrow(hidden_rows) < 1L || !is.list(ctx)) {
-      endpoint_working_delete_counts(next_counts)
+      set_reactive_val_if_changed(endpoint_working_delete_counts, next_counts)
       return()
     }
 
@@ -5145,7 +5153,7 @@ app_server <- function(input, output, session) {
       next_counts[[input_id]] <- if (is.finite(cur_count)) as.integer(cur_count) else 0L
     }
 
-    endpoint_working_delete_counts(next_counts)
+    set_reactive_val_if_changed(endpoint_working_delete_counts, next_counts)
   })
 
   shiny::observeEvent(input$endpoint_working_clear, {

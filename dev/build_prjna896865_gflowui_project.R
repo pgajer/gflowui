@@ -63,6 +63,17 @@ write_tsv <- function(x, path) {
   invisible(path)
 }
 
+write_csv <- function(x, path) {
+  dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
+  utils::write.csv(
+    x,
+    file = path,
+    row.names = FALSE,
+    na = ""
+  )
+  invisible(path)
+}
+
 assert_that <- function(ok, msg) {
   if (!isTRUE(ok)) {
     stop(msg, call. = FALSE)
@@ -189,6 +200,26 @@ connected_component_count <- function(adj_list) {
 
 safe_bool_string <- function(x) {
   if (isTRUE(first_logical(x))) "yes" else "no"
+}
+
+collapse_unique_chr <- function(x, sep = "; ") {
+  vals <- trimws(as.character(x))
+  vals <- vals[!is.na(vals) & nzchar(vals)]
+  vals <- unique(vals)
+  if (length(vals) < 1L) {
+    return(NA_character_)
+  }
+  paste(vals, collapse = sep)
+}
+
+landmark_type_display <- function(x) {
+  vals <- as.character(x)
+  out <- vals
+  out[vals == "endpoint.max"] <- "max"
+  out[vals == "endpoint.min"] <- "min"
+  out[vals == "mean.rep"] <- "mean"
+  out[vals == "median.rep"] <- "median"
+  out
 }
 
 default_grip_layout_params <- function() {
@@ -388,6 +419,10 @@ dcst_depth2_rare <- read_tsv(file.path(dcst_dir, "prjna896865_depth2_dcst_assign
 dcst_depth2_absorb <- read_tsv(file.path(dcst_dir, "prjna896865_depth2_dcst_assignments_absorb.tsv"))
 dcst_summary <- read_tsv(file.path(dcst_dir, "prjna896865_dcst_summary.tsv"))
 dcst_depth2_summary <- read_tsv(file.path(dcst_dir, "prjna896865_depth2_dcst_summary.tsv"))
+dcst_depth1_landmarks <- read_tsv(file.path(dcst_dir, "dcst_depth1_landmarks.tsv"))
+dcst_depth1_landmark_cells <- read_tsv(file.path(dcst_dir, "dcst_depth1_landmark_cells.tsv"))
+dcst_depth2_landmarks <- read_tsv(file.path(dcst_dir, "dcst_depth2_landmarks.tsv"))
+dcst_depth2_landmark_cells <- read_tsv(file.path(dcst_dir, "dcst_depth2_landmark_cells.tsv"))
 
 detection_manifest$display_taxon <- choose_display_taxon(detection_manifest)
 ord_detection <- order(
@@ -452,6 +487,128 @@ report_cell_label <- function(label_vec) {
     }, character(1L))
     paste(mapped, collapse = " > ")
   }, character(1L))
+}
+
+build_dcst_landmark_endpoint_run <- function(
+    project_root,
+    run_id,
+    run_label,
+    landmarks_tbl,
+    cells_tbl,
+    depth,
+    dcst_policy,
+    created_at = now_txt) {
+  depth_int <- as.integer(depth)
+  landmark_rows <- landmarks_tbl[
+    as.character(landmarks_tbl$dcst_policy) == dcst_policy &
+      suppressWarnings(as.integer(landmarks_tbl$depth)) == depth_int,
+    ,
+    drop = FALSE
+  ]
+  cell_rows <- cells_tbl[
+    as.character(cells_tbl$dcst_policy) == dcst_policy &
+      suppressWarnings(as.integer(cells_tbl$depth)) == depth_int,
+    ,
+    drop = FALSE
+  ]
+
+  assert_that(nrow(landmark_rows) > 0L, sprintf("No DCST landmark rows were found for %s.", run_id))
+  assert_that(
+    all(is.finite(suppressWarnings(as.integer(landmark_rows$point.index)))),
+    sprintf("Non-finite point.index values were found for %s.", run_id)
+  )
+
+  landmark_rows$vertex_global <- suppressWarnings(as.integer(landmark_rows$point.index))
+  landmark_rows$vertex <- landmark_rows$vertex_global
+  landmark_rows$sample_id <- as.character(landmark_rows$point.name)
+  landmark_rows$landmark_type_display <- landmark_type_display(landmark_rows$landmark.type)
+  landmark_rows$cell_label_display <- as.character(landmark_rows$cell.label)
+  landmark_rows$target_feature_display <- as.character(landmark_rows$target.feature.label)
+
+  ord_rows <- order(
+    landmark_rows$vertex_global,
+    landmark_rows$sample_id,
+    landmark_rows$cell_label_display,
+    landmark_rows$landmark_type_display
+  )
+  landmark_rows <- landmark_rows[ord_rows, , drop = FALSE]
+  rownames(landmark_rows) <- NULL
+
+  row_groups <- split(seq_len(nrow(landmark_rows)), landmark_rows$vertex_global)
+  endpoint_label_rows <- lapply(seq_along(row_groups), function(ii) {
+    idx <- row_groups[[ii]]
+    rows_one <- landmark_rows[idx, , drop = FALSE]
+    sample_id <- first_string(rows_one$sample_id, default = sprintf("v%d", first_integer(rows_one$vertex_global)))
+    data.frame(
+      vertex_global = first_integer(rows_one$vertex_global),
+      vertex = first_integer(rows_one$vertex_global),
+      label = sample_id,
+      sample_id = sample_id,
+      cell_labels = collapse_unique_chr(rows_one$cell_label_display),
+      landmark_types = collapse_unique_chr(rows_one$landmark_type_display),
+      landmark_roles = collapse_unique_chr(sprintf("%s (%s)", rows_one$cell_label_display, rows_one$landmark_type_display)),
+      target_feature_labels = collapse_unique_chr(rows_one$target_feature_display),
+      n_landmark_roles = nrow(rows_one),
+      stringsAsFactors = FALSE
+    )
+  })
+  endpoint_labels <- do.call(rbind, endpoint_label_rows)
+  rownames(endpoint_labels) <- NULL
+  endpoint_labels <- endpoint_labels[order(endpoint_labels$vertex_global), , drop = FALSE]
+
+  run_dir <- file.path(project_root, "data", "endpoint_runs", run_id)
+  dir.create(run_dir, recursive = TRUE, showWarnings = FALSE)
+  labels_csv <- file.path(run_dir, "endpoint_labels.csv")
+  summary_csv <- file.path(run_dir, "endpoint_summary.csv")
+  bundle_file <- file.path(run_dir, "endpoint_bundle.rds")
+
+  summary_tbl <- data.frame(
+    run_id = run_id,
+    label = run_label,
+    kind = "landmark_points",
+    method = "dcst_landmarks",
+    depth = depth_int,
+    dcst_policy = dcst_policy,
+    landmark_view = first_non_missing(as.character(landmark_rows$landmark_view), default = ""),
+    n_landmark_rows = nrow(landmark_rows),
+    n_landmark_cells = nrow(cell_rows),
+    n_endpoints = nrow(endpoint_labels),
+    landmark_types = collapse_unique_chr(landmark_type_display(sort(unique(landmark_rows$landmark.type)))),
+    created_at = created_at,
+    stringsAsFactors = FALSE
+  )
+
+  write_csv(endpoint_labels, labels_csv)
+  write_csv(summary_tbl, summary_csv)
+  saveRDS(
+    list(
+      end.vertices.global = as.integer(endpoint_labels$vertex_global),
+      end.labels = as.character(endpoint_labels$label),
+      kind = "landmark_points",
+      method = "dcst_landmarks",
+      depth = depth_int,
+      dcst_policy = dcst_policy,
+      landmark_view = first_non_missing(as.character(landmark_rows$landmark_view), default = ""),
+      created_at = created_at
+    ),
+    file = bundle_file,
+    compress = "xz"
+  )
+
+  list(
+    id = run_id,
+    label = run_label,
+    kind = "landmark_points",
+    method = "dcst_landmarks",
+    run_dir = normalizePath(run_dir, mustWork = TRUE),
+    bundle_file = normalizePath(bundle_file, mustWork = TRUE),
+    summary_csv = normalizePath(summary_csv, mustWork = TRUE),
+    labels_csv = normalizePath(labels_csv, mustWork = TRUE),
+    depth = depth_int,
+    dcst_policy = dcst_policy,
+    landmark_view = first_non_missing(as.character(landmark_rows$landmark_view), default = ""),
+    created_at = created_at
+  )
 }
 
 source_artifact_rows <- data.frame(
@@ -979,6 +1136,7 @@ readme_lines <- c(
   "- branch-specific graph-family RDS files for k = 3:20 rebuilt from the saved representation embeddings",
   "- branch-specific grip.layout() RDS files for each available k",
   "- branch-specific metadata `.rda` files for VALENCIA and DCST overlays",
+  "- four DCST landmark endpoint datasets (depth-1/depth-2 x rare/absorb)",
   "- readable feature manifests and graph/sample index tables",
   "- overview and graph-variant summary tables for the app",
   "",
@@ -1003,9 +1161,49 @@ doc_sets <- lapply(seq_len(nrow(source_artifact_rows)), function(ii) {
   )
 })
 
+landmark_pts_runs <- list(
+  build_dcst_landmark_endpoint_run(
+    project_root = normalizePath(project_root, mustWork = TRUE),
+    run_id = "dcst_depth1_absorb",
+    run_label = "DCST Landmarks (Depth 1, Absorb)",
+    landmarks_tbl = dcst_depth1_landmarks,
+    cells_tbl = dcst_depth1_landmark_cells,
+    depth = 1L,
+    dcst_policy = "absorb"
+  ),
+  build_dcst_landmark_endpoint_run(
+    project_root = normalizePath(project_root, mustWork = TRUE),
+    run_id = "dcst_depth1_rare",
+    run_label = "DCST Landmarks (Depth 1, Rare)",
+    landmarks_tbl = dcst_depth1_landmarks,
+    cells_tbl = dcst_depth1_landmark_cells,
+    depth = 1L,
+    dcst_policy = "rare"
+  ),
+  build_dcst_landmark_endpoint_run(
+    project_root = normalizePath(project_root, mustWork = TRUE),
+    run_id = "dcst_depth2_absorb",
+    run_label = "DCST Landmarks (Depth 2, Absorb)",
+    landmarks_tbl = dcst_depth2_landmarks,
+    cells_tbl = dcst_depth2_landmark_cells,
+    depth = 2L,
+    dcst_policy = "absorb"
+  ),
+  build_dcst_landmark_endpoint_run(
+    project_root = normalizePath(project_root, mustWork = TRUE),
+    run_id = "dcst_depth2_rare",
+    run_label = "DCST Landmarks (Depth 2, Rare)",
+    landmarks_tbl = dcst_depth2_landmarks,
+    cells_tbl = dcst_depth2_landmark_cells,
+    depth = 2L,
+    dcst_policy = "rare"
+  )
+)
+
 project_spec <- gflowui::build_project_spec_iknn_3x3(
   project_root = normalizePath(project_root, mustWork = TRUE),
   graph_sets = graph_sets,
+  landmark_pts_runs = landmark_pts_runs,
   doc_sets = doc_sets,
   defaults = list(
     graph_set_id = default_graph_set_id,
@@ -1013,7 +1211,8 @@ project_spec <- gflowui::build_project_spec_iknn_3x3(
     reference_k = first_integer(
       graph_variant_summary$selected_k[graph_variant_summary$graph_set_id == default_graph_set_id]
     ),
-    reference_reason = "median norm-GCV top20"
+    reference_reason = "median norm-GCV top20",
+    endpoint_run_id = "dcst_depth1_absorb"
   ),
   metadata = list(
     graph_selector_schema = list(
@@ -1101,4 +1300,5 @@ message(sprintf("Source root: %s", normalizePath(source_root, mustWork = TRUE)))
 message(sprintf("Project root: %s", normalizePath(project_root, mustWork = TRUE)))
 message(sprintf("Manifest file: %s", reg_result$manifest_file))
 message(sprintf("Graph sets: %d", length(manifest$graph_sets %||% list())))
+message(sprintf("Endpoint runs: %d", length(manifest$endpoint_runs %||% list())))
 message(sprintf("Profile: %s", as.character(manifest$profile %||% "")))
