@@ -135,6 +135,30 @@ test_that("renderer selection survives transient NULL during UI rebuild", {
   })
 })
 
+test_that("project open reactive graph settles after endpoint UI sync", {
+  local_projects_data_sandbox()
+
+  reg <- gflowui::list_projects()
+  if (!("agp" %in% reg$id)) {
+    skip("AGP project is not registered in this environment")
+  }
+
+  shiny::testServer(gflowui:::app_server, {
+    open_project("agp")
+
+    settled <- FALSE
+    for (ii in seq_len(12)) {
+      if (!isTRUE(session$flushReact())) {
+        settled <- TRUE
+        break
+      }
+    }
+
+    expect_true(settled)
+    expect_false(isTRUE(session$flushReact()))
+  })
+})
+
 test_that("legacy html renderer state is normalized to plotly", {
   skip_if_not_installed("plotly")
   local_projects_data_sandbox()

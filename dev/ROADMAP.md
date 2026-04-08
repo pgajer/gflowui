@@ -1,5 +1,12 @@
 # gflowui roadmap
 
+To start `gflowui` from R:
+
+```r
+pkgload::load_all("/Users/pgajer/current_projects/gflowui", export_all = FALSE)
+gflowui::run_gflowui()
+```
+
 ## MVP
 
 - Replace graph adapter stub with `gflow::build.iknn.graphs.and.selectk()`.
