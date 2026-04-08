@@ -18,6 +18,14 @@ Separated by a horizontal rule.
 
 - Dropdown selects a graph family built from a specific data matrix/feature space.
 - Right-side text shows dimensions of the matrix used for graph construction.
+- For projects with many graph variants, this row may instead become a
+  project-specific selector stack that resolves to one concrete graph family.
+  Example grouped selectors:
+  - `Sample set`
+  - `Feature space`
+  - `Prevalence screen`
+  - `Representation`
+  - then a resolved `Graph family` summary with `(n_samples x n_features)`
 
 ### Row 2
 `k:` `[dropdown]` `Set As Reference Graph`
@@ -84,6 +92,10 @@ Each data type entry should provide:
 - `k_values`: available k values
 - `reference_k`: current reference k for this type (optional; global default still stored in project defaults)
 - `optimal_k_methods`: available methods and their result artifacts
+
+Projects may optionally add `metadata$graph_selector_schema` so `gflowui`
+renders grouped selectors instead of a single flat `Data Type` dropdown.
+That schema maps project-specific dimensions to the underlying `graph_set_id`.
 
 ## Initial Supported Data Types (Symptoms)
 

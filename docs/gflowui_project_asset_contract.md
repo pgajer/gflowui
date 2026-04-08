@@ -18,6 +18,10 @@ For robust startup and UI population, each graph set should include explicit met
 - `layout_assets` with `grip_layouts`
 - `color_assets` for metadata-driven color options (for example `CST`, `subCST`)
 
+Projects may also include an optional grouped-selector schema under
+`metadata$graph_selector_schema` so the UI can resolve many concrete graph
+sets through a small number of project-specific dropdowns.
+
 ## 2) Graph-set contract
 
 Each graph set should provide at minimum:
@@ -45,6 +49,26 @@ list(
   labels = c(CST = "CST", subCST = "subCST")
 )
 ```
+
+Optional grouped-selector schema example:
+
+```r
+metadata = list(
+  graph_selector_schema = list(
+    summary_label = "Graph family",
+    fields = list(
+      list(id = "dataset", field = "dataset_id", label = "Sample set"),
+      list(id = "modality", field = "modality_id", label = "Feature space"),
+      list(id = "screen", field = "screen_name", label = "Prevalence screen"),
+      list(id = "representation", field = "representation", label = "Representation")
+    )
+  )
+)
+```
+
+Each listed `field` should be present on the graph-set manifests. When this
+schema is absent, `gflowui` falls back to the current flat `Data Type`
+dropdown.
 
 ## 3) Conditional expectation contract
 

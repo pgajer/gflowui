@@ -31,8 +31,11 @@ After selection, the app switches into project workspace mode.
 Top section:
 
 1. `Data Type`
-   - Select graph family (for example `ASV`, `ASV-top20`, `ASV-top30`, `ASV-top50`).
-   - Right side shows matrix dimensions as `(samples x features)`.
+  - Select graph family (for example `ASV`, `ASV-top20`, `ASV-top30`, `ASV-top50`).
+  - Right side shows matrix dimensions as `(samples x features)`.
+  - Some projects may show several project-specific dropdowns instead of one
+    flat `Data Type` list. In that case, those selectors resolve the active
+    graph family and the UI still shows the resulting matrix dimensions.
 2. `k`
    - Choose the graph `k` value.
    - Click `Set As Reference Graph` to make current data type + k the project default.

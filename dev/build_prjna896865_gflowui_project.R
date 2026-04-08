@@ -1016,6 +1016,25 @@ project_spec <- gflowui::build_project_spec_iknn_3x3(
     reference_reason = "median norm-GCV top20"
   ),
   metadata = list(
+    graph_selector_schema = list(
+      summary_label = "Graph family",
+      fields = list(
+        list(
+          id = "screen",
+          field = "screen_name",
+          label = "Prevalence screen",
+          order = names(screen_labels),
+          labels = screen_labels
+        ),
+        list(
+          id = "representation",
+          field = "representation",
+          label = "Representation",
+          order = names(representation_labels),
+          labels = representation_labels
+        )
+      )
+    ),
     overview = list(
       summary_table = overview_summary,
       artifact_paths = stats::setNames(
