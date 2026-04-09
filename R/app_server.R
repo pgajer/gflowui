@@ -87,6 +87,13 @@ app_server <- function(input, output, session) {
     }
     invisible(value)
   }
+  set_reactive_field_if_changed <- function(rv, field, value) {
+    current <- shiny::isolate(rv[[field]])
+    if (!identical(current, value)) {
+      rv[[field]] <- value
+    }
+    invisible(value)
+  }
   normalize_plotly_camera <- function(cam) {
     if (!is.list(cam)) {
       return(NULL)
@@ -197,36 +204,40 @@ app_server <- function(input, output, session) {
   shiny::observe({
     renderer_val <- normalize_live_renderer_choice(input$graph_layout_renderer, default = "")
     if (renderer_val %in% c("rglwidget", "plotly")) {
-      graph_layout_state$renderer <- renderer_val
+      set_reactive_field_if_changed(graph_layout_state, "renderer", renderer_val)
     }
 
     vertex_val <- tolower(trimws(as.character(input$graph_layout_vertex %||% "")))
     if (vertex_val %in% c("sphere", "point")) {
-      graph_layout_state$vertex_layout <- vertex_val
+      set_reactive_field_if_changed(graph_layout_state, "vertex_layout", vertex_val)
     }
 
     size_val <- as.character(input$graph_layout_size %||% "")
     if (length(size_val) > 0L && nzchar(size_val[[1]])) {
-      graph_layout_state$size_label <- size_val[[1]]
+      set_reactive_field_if_changed(graph_layout_state, "size_label", size_val[[1]])
     }
 
     color_by_val <- as.character(input$graph_layout_color_by %||% "")
     if (length(color_by_val) > 0L && nzchar(color_by_val[[1]])) {
-      graph_layout_state$color_by <- color_by_val[[1]]
+      set_reactive_field_if_changed(graph_layout_state, "color_by", color_by_val[[1]])
     }
 
     vertex_color_val <- as.character(input$graph_layout_vertex_color %||% "")
     if (length(vertex_color_val) > 0L && nzchar(vertex_color_val[[1]])) {
-      graph_layout_state$vertex_color <- normalize_palette_choice(
-        vertex_color_val[[1]],
-        graph_vertex_color_choices(),
-        default = graph_solid_color_default
+      set_reactive_field_if_changed(
+        graph_layout_state,
+        "vertex_color",
+        normalize_palette_choice(
+          vertex_color_val[[1]],
+          graph_vertex_color_choices(),
+          default = graph_solid_color_default
+        )
       )
     }
 
     component_val <- tolower(trimws(as.character(input$graph_layout_component %||% "")))
     if (component_val %in% c("all", "lcc")) {
-      graph_layout_state$component <- component_val
+      set_reactive_field_if_changed(graph_layout_state, "component", component_val)
     }
   })
 
@@ -356,7 +367,11 @@ app_server <- function(input, output, session) {
     if (!isTRUE(rv$project.active) || is.null(rv$project.baseline.signature)) {
       return()
     }
-    rv$project.dirty <- !identical(current_state_signature(), rv$project.baseline.signature)
+    set_reactive_field_if_changed(
+      rv,
+      "project.dirty",
+      !identical(current_state_signature(), rv$project.baseline.signature)
+    )
   })
 
   shiny::observeEvent(
@@ -1276,7 +1291,7 @@ app_server <- function(input, output, session) {
     }
     vals <- as.character(input$workflow_accordion %||% character(0))
     vals <- unique(vals[nzchar(vals)])
-    workflow_open_panels(vals)
+    set_reactive_val_if_changed(workflow_open_panels, vals)
   }, ignoreInit = TRUE)
 
   read_csv_safely <- function(path) {
@@ -2849,55 +2864,67 @@ app_server <- function(input, output, session) {
   shiny::observe({
     subject_ids_val <- input$subject_ids
     if (!is.null(subject_ids_val)) {
-      subject_state$selected_ids <- unique(as.character(subject_ids_val %||% character(0)))
+      set_reactive_field_if_changed(
+        subject_state,
+        "selected_ids",
+        unique(as.character(subject_ids_val %||% character(0)))
+      )
     }
     show_val <- input$subject_show_overlay
     if (!is.null(show_val)) {
-      subject_state$show_overlay <- isTRUE(show_val)
+      set_reactive_field_if_changed(subject_state, "show_overlay", isTRUE(show_val))
     }
     dim_val <- input$subject_dim_background
     if (!is.null(dim_val)) {
-      subject_state$dim_background <- isTRUE(dim_val)
+      set_reactive_field_if_changed(subject_state, "dim_background", isTRUE(dim_val))
     }
     bg_opacity_val <- suppressWarnings(as.numeric(input$subject_background_opacity %||% NA_real_))
     if (is.finite(bg_opacity_val) && bg_opacity_val > 0 && bg_opacity_val <= 1) {
-      subject_state$background_opacity <- as.numeric(bg_opacity_val)
+      set_reactive_field_if_changed(subject_state, "background_opacity", as.numeric(bg_opacity_val))
     }
     color_val <- as.character(input$subject_vertex_color %||% "")
     if (length(color_val) > 0L && nzchar(color_val[[1]])) {
-      subject_state$vertex_color <- normalize_palette_choice(
-        color_val[[1]],
-        subject_vertex_color_choices(),
-        default = "#dc2626"
+      set_reactive_field_if_changed(
+        subject_state,
+        "vertex_color",
+        normalize_palette_choice(
+          color_val[[1]],
+          subject_vertex_color_choices(),
+          default = "#dc2626"
+        )
       )
     }
     size_val <- suppressWarnings(as.numeric(input$subject_vertex_size %||% NA_real_))
     if (is.finite(size_val) && size_val > 0) {
-      subject_state$vertex_size <- as.numeric(size_val)
+      set_reactive_field_if_changed(subject_state, "vertex_size", as.numeric(size_val))
     }
     edge_mode_val <- as.character(input$subject_edge_mode %||% "")
     if (edge_mode_val %in% unname(subject_edge_mode_choices)) {
-      subject_state$edge_mode <- edge_mode_val
+      set_reactive_field_if_changed(subject_state, "edge_mode", edge_mode_val)
     }
     edge_color_val <- as.character(input$subject_edge_color %||% "")
     if (length(edge_color_val) > 0L && nzchar(edge_color_val[[1]])) {
-      subject_state$edge_color <- normalize_palette_choice(
-        edge_color_val[[1]],
-        subject_vertex_color_choices(),
-        default = "#dc2626"
+      set_reactive_field_if_changed(
+        subject_state,
+        "edge_color",
+        normalize_palette_choice(
+          edge_color_val[[1]],
+          subject_vertex_color_choices(),
+          default = "#dc2626"
+        )
       )
     }
     edge_width_val <- suppressWarnings(as.numeric(input$subject_edge_width %||% NA_real_))
     if (is.finite(edge_width_val) && edge_width_val > 0) {
-      subject_state$edge_width <- as.numeric(edge_width_val)
+      set_reactive_field_if_changed(subject_state, "edge_width", as.numeric(edge_width_val))
     }
     label_mode_val <- as.character(input$subject_label_mode %||% "")
     if (nzchar(label_mode_val)) {
-      subject_state$label_mode <- label_mode_val
+      set_reactive_field_if_changed(subject_state, "label_mode", label_mode_val)
     }
     label_size_val <- suppressWarnings(as.numeric(input$subject_label_size %||% NA_real_))
     if (is.finite(label_size_val) && label_size_val > 0) {
-      subject_state$label_size <- as.numeric(label_size_val)
+      set_reactive_field_if_changed(subject_state, "label_size", as.numeric(label_size_val))
     }
   })
 
@@ -3310,7 +3337,7 @@ app_server <- function(input, output, session) {
   shiny::observe({
     vv <- input$endpoint_show_working_set
     if (!is.null(vv)) {
-      endpoint_show_working_set(isTRUE(vv))
+      set_reactive_val_if_changed(endpoint_show_working_set, isTRUE(vv))
     }
   })
 
@@ -3522,7 +3549,7 @@ app_server <- function(input, output, session) {
       if (is.null(cam_norm)) {
         return()
       }
-      reference_plot_camera_state(cam_norm)
+      set_reactive_val_if_changed(reference_plot_camera_state, cam_norm)
     }, ignoreInit = TRUE)
   }
 
@@ -3581,7 +3608,7 @@ app_server <- function(input, output, session) {
   shiny::observe({
     vv <- input$endpoint_datasets_open
     if (!is.null(vv)) {
-      endpoint_datasets_open(isTRUE(vv))
+      set_reactive_val_if_changed(endpoint_datasets_open, isTRUE(vv))
     }
   })
 
@@ -6197,21 +6224,21 @@ app_server <- function(input, output, session) {
   shiny::observe({
     vv <- input$arm_show_working_set
     if (!is.null(vv)) {
-      arm_show_working_set(isTRUE(vv))
+      set_reactive_val_if_changed(arm_show_working_set, isTRUE(vv))
     }
   })
 
   shiny::observe({
     vv <- input$arm_datasets_open
     if (!is.null(vv)) {
-      arm_datasets_open(isTRUE(vv))
+      set_reactive_val_if_changed(arm_datasets_open, isTRUE(vv))
     }
   })
 
   shiny::observe({
     vv <- input$arm_preview_layout_open
     if (!is.null(vv)) {
-      arm_preview_layout_open(isTRUE(vv))
+      set_reactive_val_if_changed(arm_preview_layout_open, isTRUE(vv))
     }
   })
 
@@ -6300,7 +6327,7 @@ app_server <- function(input, output, session) {
     if (is.list(req) && is.list(req$camera)) {
       cam_norm <- normalize_plotly_camera(req$camera)
       if (is.list(cam_norm)) {
-        reference_plot_camera_state(cam_norm)
+        set_reactive_val_if_changed(reference_plot_camera_state, cam_norm)
       }
     }
     preview <- build_arm_preview_from_inputs(show_error = TRUE)
