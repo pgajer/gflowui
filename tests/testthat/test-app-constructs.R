@@ -48,6 +48,31 @@ local_projects_data_sandbox <- function() {
   invisible(sandbox_dir)
 }
 
+grouped_selector_project_id <- function() {
+  listed <- gflowui::list_projects(include_manifests = TRUE)
+  reg <- listed$registry
+  manifests <- listed$manifests
+  if (!is.data.frame(reg) || nrow(reg) < 1L) {
+    return("")
+  }
+
+  for (project_id in as.character(reg$id)) {
+    manifest <- manifests[[project_id]]
+    schema <- NULL
+    if (is.list(manifest$metadata) && is.list(manifest$metadata$graph_selector_schema)) {
+      schema <- manifest$metadata$graph_selector_schema
+    } else if (is.list(manifest$graph_selector_schema)) {
+      schema <- manifest$graph_selector_schema
+    }
+    fields <- schema$fields
+    if (!is.null(fields) && length(fields) > 0L) {
+      return(project_id)
+    }
+  }
+
+  ""
+}
+
 
 test_that("graph adapter returns expected shape", {
   skip_if_not_installed("gflow")
@@ -156,6 +181,82 @@ test_that("project open reactive graph settles after endpoint UI sync", {
 
     expect_true(settled)
     expect_false(isTRUE(session$flushReact()))
+  })
+})
+
+test_that("grouped selector project settles after project open", {
+  local_projects_data_sandbox()
+
+  project_id <- grouped_selector_project_id()
+  if (!nzchar(project_id)) {
+    skip("No grouped selector project is registered in this environment")
+  }
+
+  shiny::testServer(gflowui:::app_server, {
+    open_project(project_id)
+
+    settled <- FALSE
+    for (ii in seq_len(12)) {
+      if (!isTRUE(session$flushReact())) {
+        settled <- TRUE
+        break
+      }
+    }
+
+    expect_true(settled)
+    expect_false(isTRUE(session$flushReact()))
+  })
+})
+
+test_that("grouped selector graph selection ignores unrelated inputs", {
+  local_projects_data_sandbox()
+
+  project_id <- grouped_selector_project_id()
+  if (!nzchar(project_id)) {
+    skip("No grouped selector project is registered in this environment")
+  }
+
+  shiny::testServer(gflowui:::app_server, {
+    open_project(project_id)
+    for (ii in seq_len(12)) {
+      if (!isTRUE(session$flushReact())) {
+        break
+      }
+    }
+
+    invalidations <- 0L
+    obs <- shiny::observeEvent(current_graph_selection(), {
+      invalidations <<- invalidations + 1L
+    }, ignoreInit = TRUE)
+    withr::defer(obs$destroy())
+
+    session$setInputs(graph_layout_renderer = "rglwidget")
+    session$flushReact()
+    expect_equal(invalidations, 0L)
+
+    selector_fields <- current_graph_selection()$selector_fields
+    selector_fields <- if (is.list(selector_fields)) selector_fields else list()
+    multi_choice_idx <- which(vapply(selector_fields, function(spec) {
+      choices <- unname(as.character(spec$choices %||% character(0)))
+      length(unique(choices[nzchar(choices)])) > 1L
+    }, logical(1)))
+    if (length(multi_choice_idx) < 1L) {
+      skip("Grouped selector project does not expose a multi-choice selector")
+    }
+
+    spec <- selector_fields[[multi_choice_idx[[1L]]]]
+    choices <- unique(unname(as.character(spec$choices %||% character(0))))
+    choices <- choices[nzchar(choices)]
+    alt_choice <- setdiff(choices, as.character(spec$selected %||% ""))
+    if (length(alt_choice) < 1L) {
+      skip("No alternate grouped selector choice is available")
+    }
+
+    args <- list()
+    args[[as.character(spec$input_id %||% "")]] <- alt_choice[[1L]]
+    do.call(session$setInputs, args)
+    session$flushReact()
+    expect_gte(invalidations, 1L)
   })
 })
 

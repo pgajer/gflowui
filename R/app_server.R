@@ -290,8 +290,19 @@ app_server <- function(input, output, session) {
       manifest = manifest,
       graph_sets = graph_sets
     )
-    selector_input_values <- reactiveValuesToList(input)
-    selector_input_values <- selector_input_values[grepl("^graph_selector_", names(selector_input_values))]
+    selector_schema <- graph_selector_schema(manifest, graph_sets)
+    selector_input_values <- list()
+    selector_fields <- selector_schema$fields %||% list()
+    if (length(selector_fields) > 0L) {
+      for (field_spec in selector_fields) {
+        input_id <- scalar_chr(field_spec$input_id %||% "", default = "")
+        if (!nzchar(input_id)) {
+          next
+        }
+        ## Only depend on the grouped selector inputs for the active project.
+        selector_input_values[[input_id]] <- input[[input_id]]
+      }
+    }
     resolved <- resolve_graph_selection(
       manifest = manifest,
       graph_sets = graph_sets,
