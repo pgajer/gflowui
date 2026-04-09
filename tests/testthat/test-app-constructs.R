@@ -260,6 +260,53 @@ test_that("grouped selector graph selection ignores unrelated inputs", {
   })
 })
 
+test_that("default sidebar control values do not keep re-invalidating the app", {
+  local_projects_data_sandbox()
+
+  reg <- gflowui::list_projects()
+  if (!("agp" %in% reg$id)) {
+    skip("AGP project is not registered in this environment")
+  }
+
+  shiny::testServer(gflowui:::app_server, {
+    open_project("agp")
+    session$flushReact()
+
+    session$setInputs(
+      graph_layout_renderer = "plotly",
+      graph_layout_vertex = "point",
+      graph_layout_size = "1.0x",
+      graph_layout_component = "all",
+      subject_show_overlay = FALSE,
+      subject_dim_background = FALSE,
+      subject_background_opacity = "0.22",
+      subject_vertex_color = "#dc2626",
+      subject_vertex_size = "1.8",
+      subject_edge_mode = "none",
+      subject_edge_color = "#dc2626",
+      subject_edge_width = "2",
+      subject_label_mode = "none",
+      subject_label_size = "1.0",
+      endpoint_show_working_set = FALSE,
+      endpoint_datasets_open = FALSE,
+      arm_show_working_set = FALSE,
+      arm_datasets_open = FALSE,
+      arm_preview_layout_open = FALSE
+    )
+
+    settled <- FALSE
+    for (ii in seq_len(12)) {
+      if (!isTRUE(session$flushReact())) {
+        settled <- TRUE
+        break
+      }
+    }
+
+    expect_true(settled)
+    expect_false(isTRUE(session$flushReact()))
+  })
+})
+
 test_that("legacy html renderer state is normalized to plotly", {
   skip_if_not_installed("plotly")
   local_projects_data_sandbox()
