@@ -387,6 +387,7 @@ gflowui_write_manifest <- function(manifest, path) {
       if (isTRUE(allow_auto)) "auto",
       "symptoms_restart",
       "agp_restart",
+      "quadform_benchmark",
       "iknn_3x3",
       "3x3",
       "custom"
@@ -1273,6 +1274,11 @@ gflowui_normalize_graph_sets_manifest <- function(graph_sets) {
   if (identical(root_name, "AGP")) {
     return("agp_restart")
   }
+  if (file.exists(file.path(project_root, "quadform_benchmark_manifest.rds")) &&
+      file.exists(file.path(project_root, "graph_assets.csv")) &&
+      file.exists(file.path(project_root, "layout_assets.csv"))) {
+    return("quadform_benchmark")
+  }
   "custom"
 }
 
@@ -1719,7 +1725,7 @@ gflowui_normalize_graph_sets_manifest <- function(graph_sets) {
 #' @param project_root Path to the external analysis project root.
 #' @param profile Discovery profile. Use `"auto"` to infer from project folder
 #'   name (`symptoms`, `AGP`), or set one of `"symptoms_restart"`,
-#'   `"agp_restart"`, `"iknn_3x3"`, or `"custom"`.
+#'   `"agp_restart"`, `"quadform_benchmark"`, `"iknn_3x3"`, or `"custom"`.
 #'
 #' @return A list with `graph_sets`, `condexp_sets`, `endpoint_runs`,
 #'   project-level `metadata`, project-level `artifacts`, and suggested
@@ -1732,7 +1738,7 @@ gflowui_normalize_graph_sets_manifest <- function(graph_sets) {
 #' }
 discover_project_artifacts <- function(
     project_root,
-    profile = c("auto", "symptoms_restart", "agp_restart", "iknn_3x3", "custom")) {
+    profile = c("auto", "symptoms_restart", "agp_restart", "quadform_benchmark", "iknn_3x3", "custom")) {
   if (!is.character(project_root) || !nzchar(project_root[1])) {
     stop("project_root must be a non-empty string.", call. = FALSE)
   }
@@ -1744,6 +1750,9 @@ discover_project_artifacts <- function(
   }
   if (identical(profile_use, "agp_restart")) {
     return(.discover_agp_artifacts(root))
+  }
+  if (identical(profile_use, "quadform_benchmark")) {
+    return(quadform_discover_benchmark_artifacts(root))
   }
 
   list(
@@ -1880,6 +1889,12 @@ build_project_spec_iknn_3x3 <- function(
 #'       \code{results/asv_hv_k_gcv_sweep/} containing shared graphs,
 #'       sensitivity bundles, IBS/IBD benchmark conditional expectations,
 #'       and evenness endpoint directories with per-k RDS bundles.}
+#'     \item{\code{"quadform_benchmark"}}{Expects one quadratic-surface
+#'       benchmark run directory containing
+#'       \code{quadform_benchmark_manifest.rds},
+#'       \code{dataset_assets.csv}, \code{graph_assets.csv},
+#'       \code{layout_assets.csv}, and \code{metrics.csv}. These benchmark
+#'       asset-index files are treated as read-only source-of-truth tables.}
 #'     \item{\code{"iknn_3x3"}}{Disables built-in discovery and is intended
 #'       for richer, explicitly assembled project specs such as 3x3/DCST
 #'       graph-family projects. The legacy alias \code{"3x3"} is also
@@ -2103,6 +2118,14 @@ build_project_spec_iknn_3x3 <- function(
 #'   defaults = list(graph_set_id = "main", endpoint_run_id = "evenness_k5")
 #' )
 #'
+#' # Register a quadratic-surface benchmark run
+#' register_project(
+#'   project_root = "~/current_projects/gflow/dev/data-geodesic-reconstruction/quadform-first-benchmark/runs/full",
+#'   profile = "quadform_benchmark",
+#'   project_name = "Quadform Benchmark",
+#'   overwrite = TRUE
+#' )
+#'
 #' # Rich project-spec workflow for a 3x3/DCST-style project
 #' spec <- build_project_spec_iknn_3x3(
 #'   project_root = "~/my_project",
@@ -2127,7 +2150,7 @@ register_project <- function(
     project_root,
     project_id = NULL,
     project_name = NULL,
-    profile = c("auto", "symptoms_restart", "agp_restart", "iknn_3x3", "custom"),
+    profile = c("auto", "symptoms_restart", "agp_restart", "quadform_benchmark", "iknn_3x3", "custom"),
     project_spec = NULL,
     graph_sets = NULL,
     condexp_sets = NULL,

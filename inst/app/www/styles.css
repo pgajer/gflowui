@@ -703,6 +703,39 @@ body {
   background: rgba(215, 209, 187, 0.18);
 }
 
+.gf-quadform-header {
+  padding: 0.85rem 1rem 0;
+}
+
+.gf-quadform-header h4 {
+  margin: 0 0 0.2rem;
+  font-size: 1.05rem;
+}
+
+.gf-quadform-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0.75rem;
+  padding: 0.75rem;
+}
+
+.gf-quadform-panel {
+  min-width: 0;
+  border: 1px solid #d7d1bb;
+  border-radius: 0.5rem;
+  overflow: hidden;
+  background: #fffaf0;
+}
+
+.gf-quadform-metrics {
+  padding: 0 1rem 1rem;
+}
+
+.gf-quadform-metrics h5 {
+  font-size: 0.95rem;
+  margin: 0.3rem 0 0.55rem;
+}
+
 @keyframes gf-fadein {
   from {
     opacity: 0;
@@ -738,6 +771,10 @@ body {
   }
 
   .gf-assets-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .gf-quadform-grid {
     grid-template-columns: 1fr;
   }
 }

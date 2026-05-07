@@ -189,6 +189,7 @@ app_server <- function(input, output, session) {
     stop(sprintf("Neither '%s' nor '%s' is available in gflow.", preferred, legacy), call. = FALSE)
   }
   endpoint_session_id <- paste(session$token %||% "session", as.integer(Sys.time()), sep = "-")
+  quadform_layout_revision <- shiny::reactiveVal(0L)
 
   shiny::observeEvent(list(rv$project.active, rv$project.id), {
     graph_selection_state$set_id <- ""
@@ -199,6 +200,7 @@ app_server <- function(input, output, session) {
     graph_layout_state$color_by <- NA_character_
     graph_layout_state$vertex_color <- NA_character_
     graph_layout_state$component <- NA_character_
+    quadform_layout_revision(0L)
   }, ignoreInit = FALSE)
 
   shiny::observe({
@@ -1301,6 +1303,249 @@ app_server <- function(input, output, session) {
     }
     tryCatch(utils::read.csv(pp, stringsAsFactors = FALSE), error = function(e) NULL)
   }
+
+  quadform_project_active <- shiny::reactive({
+    manifest <- active_manifest()
+    quadform_is_benchmark_manifest(manifest)
+  })
+
+  quadform_index_state <- shiny::reactive({
+    manifest <- active_manifest()
+    qb <- quadform_benchmark_metadata(manifest)
+    if (!is.list(qb)) {
+      return(list(error = "Not a quadform benchmark project."))
+    }
+    quadform_index_from_metadata(qb)
+  })
+
+  quadform_selector_input_values <- shiny::reactive({
+    fields <- c(
+      "selection_mode", "metric_target",
+      "surface", "n", "seed", "graph_family", "k", "radius_rank",
+      "k_scale", "radius_rule", "radius_factor", "prune_method", "stage"
+    )
+    out <- list()
+    for (field in fields) {
+      out[[field]] <- input[[paste0("quadform_", field)]]
+    }
+    out
+  })
+
+  quadform_selection_state <- shiny::reactive({
+    idx <- quadform_index_state()
+    if (!is.list(idx) || !is.null(idx$error)) {
+      return(list(error = as.character(idx$error %||% "Quadform benchmark index unavailable.")))
+    }
+    quadform_benchmark_selector_state(idx$index, idx$metrics, quadform_selector_input_values())
+  })
+
+  quadform_dataset_coords <- function(index_state, dataset_id) {
+    ds_assets <- if (is.list(index_state) && is.data.frame(index_state$dataset_assets)) index_state$dataset_assets else data.frame()
+    if (!is.data.frame(ds_assets) || nrow(ds_assets) < 1L || !("dataset_id" %in% names(ds_assets))) {
+      return(list(status = "missing_dataset", message = "Dataset asset index is missing."))
+    }
+    hit <- which(as.character(ds_assets$dataset_id) == as.character(dataset_id))
+    if (length(hit) != 1L) {
+      return(list(
+        status = if (length(hit) < 1L) "missing_dataset" else "ambiguous_dataset",
+        message = "Could not resolve one dataset asset row."
+      ))
+    }
+    path_col <- quadform_first_col(ds_assets, c("dataset_asset_file", "path", "file"))
+    pp <- if (nzchar(path_col)) as.character(ds_assets[[path_col]][[hit]]) else ""
+    if (!nzchar(pp) || !file.exists(pp)) {
+      return(list(status = "missing_dataset", message = "Dataset asset file is missing.", path = pp))
+    }
+    obj <- tryCatch(readRDS(pp), error = function(e) e)
+    if (inherits(obj, "error")) {
+      return(list(status = "error", message = conditionMessage(obj), path = pp))
+    }
+    coords <- obj$X_embed %||% obj$X %||% obj$coords
+    if (is.data.frame(coords)) {
+      coords <- as.matrix(coords)
+    } else {
+      coords <- suppressWarnings(as.matrix(coords))
+    }
+    if (!is.matrix(coords) || nrow(coords) < 1L || ncol(coords) < 3L) {
+      return(list(status = "error", message = "Dataset asset does not contain X_embed/X 3D coordinates.", path = pp))
+    }
+    coords <- suppressWarnings(matrix(as.numeric(coords), nrow = nrow(coords), ncol = ncol(coords)))
+    if (!is.matrix(coords) || ncol(coords) < 3L || !any(is.finite(coords))) {
+      return(list(status = "error", message = "Dataset coordinates are not numeric.", path = pp))
+    }
+    coords <- coords[, seq_len(3L), drop = FALSE]
+    coords[!is.finite(coords)] <- 0
+    list(status = "ok", coords = coords, obj = obj, path = pp)
+  }
+
+  quadform_view_state <- shiny::reactive({
+    quadform_layout_revision()
+    idx <- quadform_index_state()
+    if (!is.list(idx) || !is.null(idx$error)) {
+      return(list(status = "error", message = as.character(idx$error %||% "Quadform benchmark index unavailable.")))
+    }
+    sel <- quadform_selection_state()
+    if (!is.list(sel) || !is.null(sel$error)) {
+      return(list(status = "error", message = as.character(sel$error %||% "Quadform selection unavailable.")))
+    }
+    if (!identical(sel$status, "ok")) {
+      return(list(
+        status = sel$status,
+        message = sprintf("Benchmark selector matched %s graph-stage rows.", as.integer(sel$n_matches %||% 0L)),
+        selection = sel
+      ))
+    }
+    key <- as.character(sel$key %||% "")
+    selected_row <- sel$row[1, , drop = FALSE]
+    graph_hit <- quadform_exact_graph_row(idx, key)
+    if (!identical(graph_hit$status, "ok")) {
+      return(list(
+        status = "missing_graph",
+        message = sprintf("Could not resolve graph asset row for key %s.", key),
+        key = key,
+        selection = sel,
+        selected_row = selected_row
+      ))
+    }
+    graph_row <- graph_hit$row
+    graph_path <- as.character(graph_row$graph_asset_file[[1]] %||% "")
+    graph <- quadform_parse_graph_asset(graph_path)
+    if (!identical(graph$status, "ok")) {
+      return(list(
+        status = "missing_graph",
+        message = as.character(graph$message %||% "Graph asset unavailable."),
+        key = key,
+        selection = sel,
+        selected_row = selected_row,
+        graph_row = graph_row,
+        graph_asset_file = graph_path
+      ))
+    }
+
+    dataset <- quadform_dataset_coords(idx, selected_row$dataset_id[[1]])
+    metrics <- if (is.data.frame(idx$metrics) && nrow(idx$metrics) > 0L) {
+      idx$metrics[
+        as.character(idx$metrics$dataset_id) == as.character(selected_row$dataset_id[[1]]) &
+          as.character(idx$metrics$setting_id) == as.character(selected_row$setting_id[[1]]),
+        ,
+        drop = FALSE
+      ]
+    } else {
+      data.frame()
+    }
+    diagnostics <- if (is.data.frame(idx$diagnostics) && nrow(idx$diagnostics) > 0L) {
+      idx$diagnostics[
+        as.character(idx$diagnostics$dataset_id) == as.character(selected_row$dataset_id[[1]]) &
+          as.character(idx$diagnostics$setting_id) == as.character(selected_row$setting_id[[1]]),
+        ,
+        drop = FALSE
+      ]
+    } else {
+      data.frame()
+    }
+
+    cache_path <- quadform_generated_layout_cache_path(rv$project.id %||% "project", key)
+    layout_source <- "missing"
+    layout_path <- ""
+    layout <- NULL
+    if (file.exists(cache_path)) {
+      parsed <- quadform_parse_layout_asset(cache_path)
+      if (identical(parsed$status, "ok")) {
+        layout <- parsed
+        layout_source <- "gflowui_cache"
+        layout_path <- cache_path
+      } else {
+        return(list(
+          status = "layout_error",
+          message = as.character(parsed$message %||% "Cached layout could not be read."),
+          key = key,
+          selection = sel,
+          selected_row = selected_row,
+          graph_row = graph_row,
+          graph = graph,
+          graph_asset_file = graph_path,
+          layout_asset_file = cache_path,
+          layout_source = "gflowui_cache",
+          dataset = dataset,
+          metrics = metrics,
+          diagnostics = diagnostics
+        ))
+      }
+    } else {
+      layout_hit <- quadform_exact_layout_row(idx, key, method = "weighted_grip")
+      if (identical(layout_hit$status, "ok")) {
+        layout_row <- layout_hit$row
+        benchmark_layout_path <- as.character(layout_row$layout_asset_file[[1]] %||% "")
+        parsed <- quadform_parse_layout_asset(benchmark_layout_path)
+        if (identical(parsed$status, "ok")) {
+          layout <- parsed
+          layout_source <- "benchmark"
+          layout_path <- benchmark_layout_path
+        } else {
+          return(list(
+            status = "missing_layout",
+            message = as.character(parsed$message %||% "Benchmark layout asset unavailable."),
+            key = key,
+            selection = sel,
+            selected_row = selected_row,
+            graph_row = graph_row,
+            graph = graph,
+            graph_asset_file = graph_path,
+            layout_row = layout_row,
+            layout_asset_file = benchmark_layout_path,
+            layout_source = "benchmark",
+            cache_path = cache_path,
+            dataset = dataset,
+            metrics = metrics,
+            diagnostics = diagnostics
+          ))
+        }
+      }
+    }
+
+    list(
+      status = "ok",
+      key = key,
+      selection = sel,
+      selected_row = selected_row,
+      graph_row = graph_row,
+      graph = graph,
+      graph_asset_file = graph_path,
+      layout = layout,
+      layout_coords = layout$coords,
+      layout_asset_file = layout_path,
+      layout_source = layout_source,
+      cache_path = cache_path,
+      dataset = dataset,
+      metrics = metrics,
+      diagnostics = diagnostics
+    )
+  })
+
+  shiny::observeEvent(input$quadform_generate_layout, {
+    st <- quadform_view_state()
+    if (!is.list(st) || !(st$status %in% c("missing_layout", "layout_error"))) {
+      shiny::showNotification("No missing weighted layout is selected.", type = "message")
+      return()
+    }
+    graph_path <- as.character(st$graph_asset_file %||% "")
+    cache_path <- as.character(st$cache_path %||% quadform_generated_layout_cache_path(rv$project.id %||% "project", st$key %||% ""))
+    set_run_monitor_note("Weighted GRIP layout generation started.")
+    out <- quadform_generate_weighted_layout(
+      graph_asset_path = graph_path,
+      output_path = cache_path,
+      params = list(seed = 6L)
+    )
+    if (!identical(out$status, "ok")) {
+      msg <- as.character(out$message %||% "Weighted layout generation failed.")
+      set_run_monitor_note(msg)
+      shiny::showNotification(msg, type = if (identical(out$status, "unavailable")) "warning" else "error")
+      return()
+    }
+    quadform_layout_revision(shiny::isolate(quadform_layout_revision()) + 1L)
+    set_run_monitor_note("Weighted GRIP layout cached.")
+    shiny::showNotification("Weighted GRIP layout cached.", type = "message")
+  }, ignoreInit = TRUE)
 
   first_existing_col <- function(df, candidates) {
     if (!is.data.frame(df) || length(candidates) < 1L) {
@@ -6786,6 +7031,26 @@ app_server <- function(input, output, session) {
   })
 
   reference_renderer_state <- shiny::reactive({
+    if (isTRUE(quadform_project_active())) {
+      return(list(
+        st = list(error = "Quadform benchmark uses the benchmark viewer."),
+        requested = "none",
+        effective = "none",
+        rgl_ready = requireNamespace("rgl", quietly = TRUE),
+        plotly_ready = requireNamespace("plotly", quietly = TRUE),
+        mode_note = "",
+        color_mode = "source",
+        src_key = "",
+        color_label = "",
+        solid_color = graph_solid_color_default,
+        vertex_mode = "point",
+        size_mult = 1,
+        size_label = "1x",
+        component_mode = "all",
+        keep_idx = integer(0),
+        component_note = ""
+      ))
+    }
     st <- reference_view_state()
     sel <- current_graph_selection()
     manifest <- if (is.list(sel) && is.null(sel$error)) sel$manifest else active_manifest()
@@ -7122,6 +7387,103 @@ app_server <- function(input, output, session) {
   }
 
   if (requireNamespace("plotly", quietly = TRUE)) {
+    output$quadform_original_plot <- plotly::renderPlotly({
+      st <- quadform_view_state()
+      req(is.list(st), st$status %in% c("ok", "missing_layout", "layout_error"))
+      dataset <- st$dataset
+      req(is.list(dataset), identical(dataset$status, "ok"))
+      coords <- normalize_coord_matrix(dataset$coords)
+      row <- st$selected_row
+      title <- sprintf(
+        "Original data: %s, n=%s, seed=%s",
+        as.character(row$surface[[1]] %||% row$dataset_id[[1]] %||% ""),
+        as.character(row$n[[1]] %||% ""),
+        as.character(row$seed[[1]] %||% "")
+      )
+      plotly::plot_ly(
+        x = coords[, 1],
+        y = coords[, 2],
+        z = coords[, 3],
+        type = "scatter3d",
+        mode = "markers",
+        text = sprintf("vertex=%d", seq_len(nrow(coords))),
+        hoverinfo = "text",
+        marker = list(size = 3.5, color = "#2563eb", opacity = 0.88)
+      ) %>%
+        plotly::layout(
+          title = list(text = title, font = list(size = 13)),
+          margin = list(l = 0, r = 0, b = 0, t = 34),
+          scene = list(
+            xaxis = list(title = "", showgrid = FALSE, zeroline = FALSE, visible = FALSE),
+            yaxis = list(title = "", showgrid = FALSE, zeroline = FALSE, visible = FALSE),
+            zaxis = list(title = "", showgrid = FALSE, zeroline = FALSE, visible = FALSE)
+          )
+        )
+    })
+
+    output$quadform_graph_plot <- plotly::renderPlotly({
+      st <- quadform_view_state()
+      req(is.list(st), identical(st$status, "ok"))
+      coords <- normalize_coord_matrix(st$layout_coords)
+      adj <- st$graph$adj_list
+      req(is.matrix(coords), is.list(adj), nrow(coords) == length(adj))
+
+      edges <- adj_to_edge_matrix(adj)
+      if (is.matrix(edges) && nrow(edges) > 4000L) {
+        set.seed(1L)
+        edges <- edges[sort(sample.int(nrow(edges), 4000L)), , drop = FALSE]
+      }
+      edge_xyz <- matrix(NA_real_, nrow = 0L, ncol = 3L)
+      if (is.matrix(edges) && nrow(edges) > 0L) {
+        edge_xyz <- matrix(NA_real_, nrow = nrow(edges) * 3L, ncol = 3L)
+        edge_xyz[seq(1L, nrow(edge_xyz), by = 3L), ] <- coords[edges[, 1], , drop = FALSE]
+        edge_xyz[seq(2L, nrow(edge_xyz), by = 3L), ] <- coords[edges[, 2], , drop = FALSE]
+      }
+
+      row <- st$selected_row
+      title <- sprintf(
+        "Weighted GRIP: %s / %s / %s",
+        as.character(row$graph_family[[1]] %||% ""),
+        as.character(row$prune_method[[1]] %||% ""),
+        as.character(row$stage[[1]] %||% "")
+      )
+      p <- plotly::plot_ly()
+      if (nrow(edge_xyz) > 0L) {
+        p <- p %>%
+          plotly::add_trace(
+            x = edge_xyz[, 1],
+            y = edge_xyz[, 2],
+            z = edge_xyz[, 3],
+            type = "scatter3d",
+            mode = "lines",
+            hoverinfo = "skip",
+            line = list(color = "rgba(17,24,39,0.20)", width = 1),
+            showlegend = FALSE
+          )
+      }
+      p %>%
+        plotly::add_trace(
+          x = coords[, 1],
+          y = coords[, 2],
+          z = coords[, 3],
+          type = "scatter3d",
+          mode = "markers",
+          text = sprintf("vertex=%d", seq_len(nrow(coords))),
+          hoverinfo = "text",
+          marker = list(size = 3.5, color = "#0f8b77", opacity = 0.9),
+          showlegend = FALSE
+        ) %>%
+        plotly::layout(
+          title = list(text = title, font = list(size = 13)),
+          margin = list(l = 0, r = 0, b = 0, t = 34),
+          scene = list(
+            xaxis = list(title = "", showgrid = FALSE, zeroline = FALSE, visible = FALSE),
+            yaxis = list(title = "", showgrid = FALSE, zeroline = FALSE, visible = FALSE),
+            zaxis = list(title = "", showgrid = FALSE, zeroline = FALSE, visible = FALSE)
+          )
+        )
+    })
+
     output$reference_plot <- plotly::renderPlotly({
       rr <- reference_renderer_state()
       st <- rr$st
@@ -9056,6 +9418,101 @@ app_server <- function(input, output, session) {
     }
 
     manifest <- active_manifest()
+    if (quadform_is_benchmark_manifest(manifest)) {
+      idx <- quadform_index_state()
+      sel <- quadform_selection_state()
+      st <- quadform_view_state()
+
+      if (!is.list(idx) || !is.null(idx$error)) {
+        return(shiny::div(class = "gf-hint", as.character(idx$error %||% "Quadform benchmark index unavailable.")))
+      }
+
+      selector_controls <- if (is.list(sel$fields) && length(sel$fields) > 0L) {
+        lapply(sel$fields, function(field_spec) {
+          shiny::div(
+            class = "gf-graph-row gf-graph-layout-row",
+            shiny::span(class = "gf-graph-row-label", as.character(field_spec$label %||% field_spec$id)),
+            shiny::selectInput(
+              inputId = as.character(field_spec$input_id %||% ""),
+              label = NULL,
+              choices = field_spec$choices,
+              selected = as.character(field_spec$selected %||% ""),
+              width = "220px"
+            )
+          )
+        })
+      } else {
+        list(shiny::p(class = "gf-hint", "No benchmark selector fields are available."))
+      }
+
+      status_text <- if (is.list(st) && identical(st$status, "ok") &&
+          is.list(sel) && identical(sel$mode, "optimal") && is.data.frame(sel$optimal_metric)) {
+        metric <- sel$optimal_metric
+        row <- st$selected_row
+        err_col <- as.character(sel$error_column %||% "rel_rms_error")
+        err_val <- if (err_col %in% names(metric)) suppressWarnings(as.numeric(metric[[err_col]][[1]])) else NA_real_
+        params <- c(
+          sprintf("target=%s", as.character(metric$target[[1]] %||% "")),
+          sprintf("%s=%s", err_col, if (is.finite(err_val)) formatC(err_val, digits = 4, format = "fg") else ""),
+          sprintf("family=%s", as.character(row$graph_family[[1]] %||% "")),
+          sprintf("k=%s", as.character(row$k[[1]] %||% "")),
+          sprintf("pruning=%s", as.character(row$prune_method[[1]] %||% "")),
+          sprintf("stage=%s", as.character(row$stage[[1]] %||% ""))
+        )
+        params <- params[nzchar(sub("^[^=]+=", "", params))]
+        sprintf("Optimal graph selected: %s.", paste(params, collapse = ", "))
+      } else if (is.list(st) && identical(st$status, "ok")) {
+        sprintf(
+          "Selected %s / %s / %s.",
+          as.character(st$selected_row$dataset_id[[1]] %||% ""),
+          as.character(st$selected_row$setting_id[[1]] %||% ""),
+          as.character(st$selected_row$stage[[1]] %||% "")
+        )
+      } else {
+        as.character(st$message %||% "Select one benchmark graph stage.")
+      }
+
+      return(bslib::accordion(
+        id = "quadform_workflow_accordion",
+        open = "quadform_graph_stage",
+        bslib::accordion_panel(
+          "Quadform Benchmark",
+          value = "quadform_graph_stage",
+          shiny::tagList(
+            selector_controls,
+            shiny::hr(),
+            shiny::p(class = "gf-hint", status_text),
+            if (is.list(st) && st$status %in% c("missing_layout", "layout_error")) {
+              shiny::actionButton(
+                "quadform_generate_layout",
+                "Generate Weighted Layout",
+                class = "btn-primary gf-btn-wide"
+              )
+            } else {
+              NULL
+            },
+            shiny::tags$details(
+              class = "gf-endpoint-metrics-details",
+              shiny::tags$summary("Benchmark assets"),
+              build_html_table(
+                data.frame(
+                  Asset = c("datasets", "graph stages", "layouts", "metrics"),
+                  Rows = c(
+                    idx$dataset_assets |> nrow(),
+                    idx$graph_assets |> nrow(),
+                    idx$layout_assets |> nrow(),
+                    idx$metrics |> nrow()
+                  ),
+                  stringsAsFactors = FALSE
+                ),
+                empty_text = "No benchmark assets loaded."
+              )
+            )
+          )
+        )
+      ))
+    }
+
     defaults <- if (is.list(manifest$defaults)) manifest$defaults else list()
     graph_sets <- if (is.list(manifest$graph_sets)) manifest$graph_sets else list()
     condexp_sets <- if (is.list(manifest$condexp_sets)) manifest$condexp_sets else list()
@@ -11125,6 +11582,123 @@ app_server <- function(input, output, session) {
   })
 
   output$workspace_view <- shiny::renderUI({
+    if (isTRUE(quadform_project_active())) {
+      st <- quadform_view_state()
+
+      metric_table <- function(metrics) {
+        if (!is.data.frame(metrics) || nrow(metrics) < 1L) {
+          return(data.frame())
+        }
+        keep <- intersect(
+          c("target", "status", "rel_rms_error", "rel_abs_error_median", "rel_abs_error_q95", "pearson_cor", "spearman_cor"),
+          names(metrics)
+        )
+        out <- metrics[, keep, drop = FALSE]
+        for (cc in names(out)) {
+          if (is.numeric(out[[cc]])) {
+            out[[cc]] <- ifelse(is.finite(out[[cc]]), formatC(out[[cc]], digits = 4, format = "fg"), "")
+          } else {
+            out[[cc]] <- as.character(out[[cc]])
+          }
+        }
+        out
+      }
+
+      header <- if (is.list(st) && !is.null(st$selected_row) && is.data.frame(st$selected_row)) {
+        row <- st$selected_row
+        sprintf(
+          "%s / n=%s / seed=%s / %s / %s",
+          as.character(row$surface[[1]] %||% row$dataset_id[[1]] %||% ""),
+          as.character(row$n[[1]] %||% ""),
+          as.character(row$seed[[1]] %||% ""),
+          as.character(row$graph_family[[1]] %||% ""),
+          as.character(row$stage[[1]] %||% "")
+        )
+      } else {
+        "Quadform Benchmark"
+      }
+
+      status <- as.character(st$status %||% "error")
+      message <- as.character(st$message %||% "")
+      plot_body <- if (identical(status, "ok")) {
+        if (!requireNamespace("plotly", quietly = TRUE)) {
+          shiny::div(
+            class = "gf-viewer-canvas",
+            shiny::div(
+              class = "gf-viewer-overlay",
+              shiny::h3("Quadform Benchmark"),
+              shiny::p("Install `plotly` to enable the two-panel 3D benchmark viewer.")
+            )
+          )
+        } else {
+          shiny::div(
+            class = "gf-quadform-grid",
+            shiny::div(class = "gf-quadform-panel", plotly::plotlyOutput("quadform_original_plot", height = "58vh")),
+            shiny::div(class = "gf-quadform-panel", plotly::plotlyOutput("quadform_graph_plot", height = "58vh"))
+          )
+        }
+      } else if (identical(status, "missing_layout")) {
+        shiny::div(
+          class = "gf-viewer-canvas",
+          shiny::div(
+            class = "gf-viewer-overlay",
+            shiny::h3("Weighted Layout Missing"),
+            shiny::p(message),
+            shiny::p("Use the sidebar action to generate a weighted GRIP layout from the saved graph-stage asset.")
+          )
+        )
+      } else if (identical(status, "missing_graph")) {
+        shiny::div(
+          class = "gf-viewer-canvas",
+          shiny::div(
+            class = "gf-viewer-overlay",
+            shiny::h3("Graph Asset Missing"),
+            shiny::p(message),
+            shiny::p("gflowui will not reconstruct benchmark graph assets in this implementation pass.")
+          )
+        )
+      } else {
+        shiny::div(
+          class = "gf-viewer-canvas",
+          shiny::div(
+            class = "gf-viewer-overlay",
+            shiny::h3("Quadform Benchmark"),
+            shiny::p(if (nzchar(message)) message else sprintf("State: %s", status))
+          )
+        )
+      }
+
+      shiny::div(
+        class = "gf-reference-view gf-reference-view-plain",
+        shiny::div(
+          class = "gf-quadform-header",
+          shiny::h4(header),
+          if (is.list(st) && nzchar(as.character(st$key %||% ""))) {
+            shiny::p(class = "gf-hint", sprintf("graph-stage key: %s", as.character(st$key)))
+          } else {
+            NULL
+          }
+        ),
+        plot_body,
+        if (is.list(st) && is.data.frame(st$metrics) && nrow(st$metrics) > 0L) {
+          shiny::div(
+            class = "gf-quadform-metrics",
+            shiny::h5("Metrics"),
+            build_html_table(metric_table(st$metrics), empty_text = "No metrics found.")
+          )
+        } else {
+          NULL
+        },
+        if (is.list(st) && nzchar(as.character(st$layout_source %||% ""))) {
+          shiny::p(
+            class = "gf-mode-note",
+            sprintf("Layout source: %s", as.character(st$layout_source))
+          )
+        } else {
+          NULL
+        }
+      )
+    } else {
     rr <- reference_renderer_state()
     st <- rr$st
     mode_note <- as.character(rr$mode_note %||% "")
@@ -11295,5 +11869,6 @@ app_server <- function(input, output, session) {
         }
       }
     )
+    }
   })
 }

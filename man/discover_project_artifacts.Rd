@@ -6,7 +6,8 @@
 \usage{
 discover_project_artifacts(
   project_root,
-  profile = c("auto", "symptoms_restart", "agp_restart", "iknn_3x3", "custom")
+  profile = c("auto", "symptoms_restart", "agp_restart", "quadform_benchmark",
+    "iknn_3x3", "custom")
 )
 }
 \arguments{
@@ -14,7 +15,7 @@ discover_project_artifacts(
 
 \item{profile}{Discovery profile. Use \code{"auto"} to infer from project folder
 name (\code{symptoms}, \code{AGP}), or set one of \code{"symptoms_restart"},
-\code{"agp_restart"}, \code{"iknn_3x3"}, or \code{"custom"}.}
+\code{"agp_restart"}, \code{"quadform_benchmark"}, \code{"iknn_3x3"}, or \code{"custom"}.}
 }
 \value{
 A list with \code{graph_sets}, \code{condexp_sets}, \code{endpoint_runs},
