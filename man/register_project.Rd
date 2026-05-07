@@ -8,7 +8,8 @@ register_project(
   project_root,
   project_id = NULL,
   project_name = NULL,
-  profile = c("auto", "symptoms_restart", "agp_restart", "iknn_3x3", "custom"),
+  profile = c("auto", "symptoms_restart", "agp_restart", "quadform_benchmark",
+    "iknn_3x3", "custom"),
   project_spec = NULL,
   graph_sets = NULL,
   condexp_sets = NULL,
@@ -52,6 +53,12 @@ odor conditional expectations, and evenness-based endpoint runs.}
 \code{results/asv_hv_k_gcv_sweep/} containing shared graphs,
 sensitivity bundles, IBS/IBD benchmark conditional expectations,
 and evenness endpoint directories with per-k RDS bundles.}
+\item{\code{"quadform_benchmark"}}{Expects one quadratic-surface
+benchmark run directory containing
+\code{quadform_benchmark_manifest.rds},
+\code{dataset_assets.csv}, \code{graph_assets.csv},
+\code{layout_assets.csv}, and \code{metrics.csv}. These benchmark
+asset-index files are treated as read-only source-of-truth tables.}
 \item{\code{"iknn_3x3"}}{Disables built-in discovery and is intended
 for richer, explicitly assembled project specs such as 3x3/DCST
 graph-family projects. The legacy alias \code{"3x3"} is also
@@ -282,6 +289,14 @@ register_project(
     )
   ),
   defaults = list(graph_set_id = "main", endpoint_run_id = "evenness_k5")
+)
+
+# Register a quadratic-surface benchmark run
+register_project(
+  project_root = "~/current_projects/gflow/dev/data-geodesic-reconstruction/quadform-first-benchmark/runs/full",
+  profile = "quadform_benchmark",
+  project_name = "Quadform Benchmark",
+  overwrite = TRUE
 )
 
 # Rich project-spec workflow for a 3x3/DCST-style project
