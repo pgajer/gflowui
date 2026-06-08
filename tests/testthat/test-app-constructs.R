@@ -935,3 +935,118 @@ test_that("symptoms subjects panel resolves subject rows and overlay vertices", 
     expect_equal(nrow(ov2$rows), nrow(sp2$selected_rows))
   })
 })
+
+test_that("manifest subject provider supports active graph-set filtering and temporal edges", {
+  local_projects_data_sandbox()
+
+  root <- tempfile("generic-subject-project-")
+  dir.create(file.path(root, "data"), recursive = TRUE, showWarnings = FALSE)
+  dir.create(file.path(root, "results"), recursive = TRUE, showWarnings = FALSE)
+
+  make_graph <- function(edges, n = 4L) {
+    adj <- vector("list", n)
+    wt <- vector("list", n)
+    for (ii in seq_len(n)) {
+      adj[[ii]] <- integer(0)
+      wt[[ii]] <- numeric(0)
+    }
+    for (ii in seq_len(nrow(edges))) {
+      aa <- as.integer(edges[ii, 1])
+      bb <- as.integer(edges[ii, 2])
+      adj[[aa]] <- c(adj[[aa]], bb)
+      adj[[bb]] <- c(adj[[bb]], aa)
+      wt[[aa]] <- c(wt[[aa]], 1)
+      wt[[bb]] <- c(wt[[bb]], 1)
+    }
+    list(adj_list = adj, weight_list = wt)
+  }
+
+  graph_a <- file.path(root, "results", "set_a_graph.rds")
+  graph_b <- file.path(root, "results", "set_b_graph.rds")
+  saveRDS(
+    list(X.graphs = list(make_graph(matrix(c(1, 2, 2, 3, 3, 4), ncol = 2, byrow = TRUE))), k.values = 3L, selected.k = 3L),
+    graph_a
+  )
+  saveRDS(
+    list(X.graphs = list(make_graph(matrix(c(4, 3, 3, 2, 2, 1), ncol = 2, byrow = TRUE))), k.values = 3L, selected.k = 3L),
+    graph_b
+  )
+
+  subject_rows <- data.frame(
+    graph_set_id = c(rep("set_a", 3L), rep("set_b", 3L)),
+    vertex = c(1L, 2L, 3L, 4L, 3L, 2L),
+    subject_id = "S1",
+    sample_id = paste0("sample_", seq_len(6L)),
+    week = c(1L, 1L, 2L, 1L, 1L, 2L),
+    day = c(1L, 2L, 1L, 1L, 2L, 1L),
+    time_idx = c(1, 2, 3, 1, 2, 3),
+    stringsAsFactors = FALSE
+  )
+  utils::write.table(
+    subject_rows,
+    file.path(root, "data", "subject_rows.tsv"),
+    sep = "\t",
+    quote = FALSE,
+    row.names = FALSE
+  )
+
+  spec <- gflowui::build_project_spec_iknn_3x3(
+    project_root = root,
+    graph_sets = list(
+      list(id = "set_a", label = "Set A", graph_file = graph_a, k_values = 3L, selected_k = 3L),
+      list(id = "set_b", label = "Set B", graph_file = graph_b, k_values = 3L, selected_k = 3L)
+    ),
+    defaults = list(graph_set_id = "set_a", reference_graph_set_id = "set_a", reference_k = 3L),
+    metadata = list(
+      subject_provider = list(
+        mode = "sample_vertex_map",
+        rows_file = "data/subject_rows.tsv",
+        graph_set_col = "graph_set_id",
+        vertex_col = "vertex",
+        subject_col = "subject_id",
+        sample_col = "sample_id",
+        week_col = "week",
+        day_col = "day",
+        order_col = "time_idx"
+      )
+    )
+  )
+  gflowui::register_project(
+    project_root = root,
+    project_id = "generic_subject_project",
+    project_name = "Generic Subject Project",
+    profile = "iknn_3x3",
+    project_spec = spec,
+    scan_results = FALSE,
+    overwrite = TRUE
+  )
+
+  shiny::testServer(gflowui:::app_server, {
+    open_project("generic_subject_project")
+    session$flushReact()
+
+    sp0 <- subject_panel_state()
+    expect_true(isTRUE(sp0$available))
+    expect_equal(unique(as.character(sp0$rows$graph_set_id)), "set_a")
+
+    session$setInputs(
+      subject_ids = "S1",
+      subject_show_overlay = TRUE,
+      subject_edge_mode = "temporal"
+    )
+    session$flushReact()
+
+    ov_a <- subject_overlay_active()
+    expect_equal(as.integer(ov_a$vertices), c(1L, 2L, 3L))
+    expect_equal(ov_a$edges, matrix(c(1L, 2L, 2L, 3L), ncol = 2, byrow = TRUE, dimnames = list(NULL, c("from", "to"))))
+
+    session$setInputs(graph_data_type = "set_b")
+    session$flushReact()
+
+    sp1 <- subject_panel_state()
+    expect_equal(unique(as.character(sp1$rows$graph_set_id)), "set_b")
+    ov_b <- subject_overlay_active()
+    expect_equal(as.integer(ov_b$vertices), c(4L, 3L, 2L))
+    expect_equal(ov_b$edges, matrix(c(4L, 3L, 3L, 2L), ncol = 2, byrow = TRUE, dimnames = list(NULL, c("from", "to"))))
+  })
+})

@@ -2733,8 +2733,164 @@ app_server <- function(input, output, session) {
       sample_id = character(0),
       week = integer(0),
       day = integer(0),
+      time_order = numeric(0),
       visit_label = character(0),
+      graph_set_id = character(0),
+      representation_id = character(0),
       stringsAsFactors = FALSE
+    )
+  }
+
+  resolve_manifest_subject_provider_path <- function(path, project_root) {
+    pp <- trimws(as.character(path %||% ""))
+    if (!nzchar(pp)) {
+      return("")
+    }
+    pp <- path.expand(pp)
+    if (!grepl("^(/|~)", pp) && nzchar(as.character(project_root %||% ""))) {
+      pp <- file.path(project_root, pp)
+    }
+    normalizePath(pp, mustWork = FALSE)
+  }
+
+  read_manifest_subject_provider_rows <- function(path) {
+    if (!nzchar(as.character(path %||% "")) || !file.exists(path)) {
+      return(NULL)
+    }
+    ext <- tolower(tools::file_ext(path))
+    if (identical(ext, "rds")) {
+      obj <- tryCatch(readRDS(path), error = function(e) NULL)
+      if (is.data.frame(obj)) {
+        return(obj)
+      }
+      if (is.list(obj) && is.data.frame(obj$rows)) {
+        return(obj$rows)
+      }
+      return(NULL)
+    }
+    sep <- if (ext %in% c("tsv", "tab")) "\t" else ","
+    tryCatch(
+      utils::read.table(
+        path,
+        sep = sep,
+        header = TRUE,
+        quote = "\"",
+        comment.char = "",
+        check.names = FALSE,
+        stringsAsFactors = FALSE
+      ),
+      error = function(e) NULL
+    )
+  }
+
+  build_manifest_subject_provider <- function(project_id, manifest) {
+    provider_spec <- NULL
+    if (is.list(manifest$metadata) && is.list(manifest$metadata$subject_provider)) {
+      provider_spec <- manifest$metadata$subject_provider
+    } else if (is.list(manifest$subject_provider)) {
+      provider_spec <- manifest$subject_provider
+    }
+    if (!is.list(provider_spec)) {
+      return(NULL)
+    }
+
+    project_root <- as.character(manifest$project_root %||% "")
+    rows_file <- resolve_manifest_subject_provider_path(
+      provider_spec$rows_file %||% provider_spec$file %||% provider_spec$path %||% "",
+      project_root = project_root
+    )
+    raw <- read_manifest_subject_provider_rows(rows_file)
+    if (!is.data.frame(raw) || nrow(raw) < 1L) {
+      return(NULL)
+    }
+
+    resolve_col <- function(keys, defaults = character(0), required = FALSE) {
+      candidates <- unique(c(
+        unlist(provider_spec[keys], recursive = TRUE, use.names = FALSE),
+        defaults
+      ))
+      candidates <- as.character(candidates)
+      candidates <- candidates[nzchar(candidates)]
+      hit <- candidates[candidates %in% names(raw)]
+      if (length(hit) > 0L) {
+        return(hit[[1]])
+      }
+      if (isTRUE(required)) {
+        return(NA_character_)
+      }
+      ""
+    }
+
+    vertex_col <- resolve_col(
+      c("vertex_col", "vertex_column"),
+      defaults = c("vertex", "graph_vertex_id", "vertex_id"),
+      required = TRUE
+    )
+    subject_col <- resolve_col(
+      c("subject_col", "subject_column"),
+      defaults = c("subject_id", "subjID", "subject"),
+      required = TRUE
+    )
+    if (is.na(vertex_col) || is.na(subject_col)) {
+      return(NULL)
+    }
+
+    sample_col <- resolve_col(c("sample_col", "sample_column"), defaults = c("sample_id", "UID", "sample"))
+    week_col <- resolve_col(c("week_col", "week_column"), defaults = c("week", "week_num", "WEEK"))
+    day_col <- resolve_col(c("day_col", "day_column"), defaults = c("day", "day_num", "DAY"))
+    order_col <- resolve_col(c("order_col", "time_col", "time_order_col"), defaults = c("time_order", "time_idx", "visit_order"))
+    visit_col <- resolve_col(c("visit_label_col", "visit_col"), defaults = c("visit_label", "visit"))
+    graph_set_col <- resolve_col(c("graph_set_col", "graph_set_column"), defaults = c("graph_set_id", "graph_set"))
+    representation_col <- resolve_col(c("representation_col", "representation_column"), defaults = c("representation_id", "representation"))
+
+    vertex <- suppressWarnings(as.integer(raw[[vertex_col]]))
+    subject_id <- trimws(as.character(raw[[subject_col]]))
+    sample_id <- if (nzchar(sample_col)) as.character(raw[[sample_col]]) else sprintf("v%d", vertex)
+    week <- if (nzchar(week_col)) suppressWarnings(as.integer(raw[[week_col]])) else rep(NA_integer_, nrow(raw))
+    day <- if (nzchar(day_col)) suppressWarnings(as.integer(raw[[day_col]])) else rep(NA_integer_, nrow(raw))
+    time_order <- if (nzchar(order_col)) suppressWarnings(as.numeric(raw[[order_col]])) else rep(NA_real_, nrow(raw))
+    visit_label <- if (nzchar(visit_col)) as.character(raw[[visit_col]]) else rep("", nrow(raw))
+    graph_set_id <- if (nzchar(graph_set_col)) as.character(raw[[graph_set_col]]) else rep("", nrow(raw))
+    representation_id <- if (nzchar(representation_col)) as.character(raw[[representation_col]]) else rep("", nrow(raw))
+
+    subject_id[is.na(subject_id)] <- ""
+    sample_id[is.na(sample_id)] <- ""
+    visit_label[is.na(visit_label)] <- ""
+    graph_set_id[is.na(graph_set_id)] <- ""
+    representation_id[is.na(representation_id)] <- ""
+
+    missing_visit <- !nzchar(visit_label) & (is.finite(week) | is.finite(day))
+    if (any(missing_visit)) {
+      visit_label[missing_visit] <- sprintf(
+        "W%sD%s",
+        ifelse(is.finite(week[missing_visit]), as.character(week[missing_visit]), "?"),
+        ifelse(is.finite(day[missing_visit]), as.character(day[missing_visit]), "?")
+      )
+    }
+
+    rows <- data.frame(
+      vertex = vertex,
+      subject_id = subject_id,
+      sample_id = sample_id,
+      week = week,
+      day = day,
+      time_order = time_order,
+      visit_label = visit_label,
+      graph_set_id = graph_set_id,
+      representation_id = representation_id,
+      stringsAsFactors = FALSE
+    )
+    rows <- rows[is.finite(rows$vertex) & rows$vertex >= 1L & nzchar(rows$subject_id), , drop = FALSE]
+    if (nrow(rows) < 1L) {
+      return(NULL)
+    }
+
+    list(
+      project_id = tolower(trimws(as.character(project_id %||% ""))),
+      project_root = project_root,
+      mode = as.character(provider_spec$mode %||% "manifest"),
+      rows_file = rows_file,
+      rows = rows
     )
   }
 
@@ -2743,6 +2899,11 @@ app_server <- function(input, output, session) {
     project_root <- as.character(manifest$project_root %||% "")
     if (!nzchar(project_root) || identical(project_root, "NA") || !dir.exists(project_root)) {
       return(NULL)
+    }
+
+    generic_provider <- build_manifest_subject_provider(project_id = pid, manifest = manifest)
+    if (is.list(generic_provider) && is.data.frame(generic_provider$rows)) {
+      return(generic_provider)
     }
 
     if (!identical(pid, "symptoms")) {
@@ -2791,7 +2952,10 @@ app_server <- function(input, output, session) {
       sample_id = as.character(sample_ids),
       week = week,
       day = day,
+      time_order = seq_along(sample_ids),
       visit_label = visit_label,
+      graph_set_id = "",
+      representation_id = "",
       stringsAsFactors = FALSE
     )
     rows <- rows[keep, , drop = FALSE]
@@ -3103,7 +3267,8 @@ app_server <- function(input, output, session) {
 
   subject_edge_mode_choices <- c(
     "None" = "none",
-    "Graph edges among subject vertices" = "graph"
+    "Graph edges among subject vertices" = "graph",
+    "Temporal trajectory" = "temporal"
   )
 
   shiny::observe({
@@ -3177,6 +3342,15 @@ app_server <- function(input, output, session) {
     manifest <- active_manifest()
     provider <- if (is.list(manifest)) resolve_live_subject_provider(rv$project.id, manifest) else NULL
     rows <- if (is.list(provider) && is.data.frame(provider$rows)) provider$rows else empty_subject_sample_rows()
+    sel <- current_graph_selection()
+    active_set_id <- if (is.list(sel) && is.null(sel$error)) as.character(sel$set_id %||% "") else ""
+    if (is.data.frame(rows) && nrow(rows) > 0L && nzchar(active_set_id) && "graph_set_id" %in% names(rows)) {
+      row_set <- as.character(rows$graph_set_id %||% rep("", nrow(rows)))
+      row_set[is.na(row_set)] <- ""
+      if (any(nzchar(row_set))) {
+        rows <- rows[!nzchar(row_set) | row_set == active_set_id, , drop = FALSE]
+      }
+    }
     n_vertices <- reference_vertex_count()
     if (is.data.frame(rows) && nrow(rows) > 0L && is.finite(n_vertices) && n_vertices > 0L) {
       rows <- rows[rows$vertex >= 1L & rows$vertex <= as.integer(n_vertices), , drop = FALSE]
@@ -3216,8 +3390,14 @@ app_server <- function(input, output, session) {
       empty_subject_sample_rows()
     }
     if (nrow(selected_rows) > 0L) {
+      time_order <- if ("time_order" %in% names(selected_rows)) {
+        suppressWarnings(as.numeric(selected_rows$time_order))
+      } else {
+        rep(NA_real_, nrow(selected_rows))
+      }
       ord <- order(
         as.character(selected_rows$subject_id),
+        time_order,
         suppressWarnings(as.integer(selected_rows$week)),
         suppressWarnings(as.integer(selected_rows$day)),
         as.character(selected_rows$sample_id),
@@ -3343,6 +3523,41 @@ app_server <- function(input, output, session) {
       out
     }
 
+    compute_subject_temporal_edges <- function(rows_df) {
+      if (!is.data.frame(rows_df) || nrow(rows_df) < 2L) {
+        return(matrix(integer(0), ncol = 2L, dimnames = list(NULL, c("from", "to"))))
+      }
+      rows_use <- rows_df
+      time_order <- if ("time_order" %in% names(rows_use)) {
+        suppressWarnings(as.numeric(rows_use$time_order))
+      } else {
+        rep(NA_real_, nrow(rows_use))
+      }
+      ord <- order(
+        time_order,
+        suppressWarnings(as.integer(rows_use$week)),
+        suppressWarnings(as.integer(rows_use$day)),
+        as.character(rows_use$sample_id),
+        na.last = TRUE
+      )
+      rows_use <- rows_use[ord, , drop = FALSE]
+      verts <- suppressWarnings(as.integer(rows_use$vertex))
+      if (length(verts) < 2L) {
+        return(matrix(integer(0), ncol = 2L, dimnames = list(NULL, c("from", "to"))))
+      }
+      edges <- cbind(from = verts[-length(verts)], to = verts[-1L])
+      keep <- is.finite(edges[, 1]) & is.finite(edges[, 2]) &
+        edges[, 1] >= 1L & edges[, 2] >= 1L &
+        edges[, 1] != edges[, 2]
+      edges <- edges[keep, , drop = FALSE]
+      if (nrow(edges) < 1L) {
+        return(matrix(integer(0), ncol = 2L, dimnames = list(NULL, c("from", "to"))))
+      }
+      storage.mode(edges) <- "integer"
+      colnames(edges) <- c("from", "to")
+      edges
+    }
+
     build_subject_color_map <- function(subject_ids, single_color) {
       ids <- unique(as.character(subject_ids %||% character(0)))
       ids <- ids[nzchar(ids)]
@@ -3436,13 +3651,24 @@ app_server <- function(input, output, session) {
     color_map <- build_subject_color_map(subject_ids_use, st$vertex_color %||% "#dc2626")
     vertex_colors <- unname(color_map[subject_ids_use])
     vertex_colors[is.na(vertex_colors)] <- as.character(st$vertex_color %||% "#dc2626")
-    edge_groups <- if (identical(as.character(st$edge_mode %||% "none"), "graph")) {
+    edge_mode_use <- as.character(st$edge_mode %||% "none")
+    edge_groups <- if (identical(edge_mode_use, "graph")) {
       view_state <- reference_view_state()
       lapply(unique(subject_ids_use[nzchar(subject_ids_use)]), function(ss) {
         edge_mat <- compute_subject_edges(
           vertices = suppressWarnings(as.integer(rows$vertex[as.character(rows$subject_id) == ss])),
           adj_list = view_state$adj_list %||% NULL
         )
+        list(
+          subject_id = ss,
+          edges = edge_mat,
+          color = as.character(color_map[[ss]] %||% st$edge_color %||% "#dc2626")
+        )
+      })
+    } else if (identical(edge_mode_use, "temporal")) {
+      lapply(unique(subject_ids_use[nzchar(subject_ids_use)]), function(ss) {
+        rows_one <- rows[as.character(rows$subject_id) == ss, , drop = FALSE]
+        edge_mat <- compute_subject_temporal_edges(rows_one)
         list(
           subject_id = ss,
           edges = edge_mat,
@@ -9855,10 +10081,13 @@ app_server <- function(input, output, session) {
         rows_use <- rows_use[seq_len(250L), , drop = FALSE]
       }
       show_subject_col <- length(unique(as.character(rows_use$subject_id %||% character(0)))) > 1L
+      show_order_col <- "time_order" %in% names(rows_use) &&
+        any(is.finite(suppressWarnings(as.numeric(rows_use$time_order))))
       head_row <- shiny::tags$tr(
         if (show_subject_col) shiny::tags$th("subject") else NULL,
         shiny::tags$th("vertex"),
         shiny::tags$th("sample"),
+        if (show_order_col) shiny::tags$th("order") else NULL,
         shiny::tags$th("week"),
         shiny::tags$th("day")
       )
@@ -9868,6 +10097,17 @@ app_server <- function(input, output, session) {
           if (show_subject_col) shiny::tags$td(as.character(rr$subject_id[[1]] %||% "")) else NULL,
           shiny::tags$td(sprintf("v%d", suppressWarnings(as.integer(rr$vertex[[1]])))),
           shiny::tags$td(as.character(rr$sample_id[[1]] %||% "")),
+          if (show_order_col) {
+            shiny::tags$td(
+              if (is.finite(suppressWarnings(as.numeric(rr$time_order[[1]])))) {
+                as.character(suppressWarnings(as.numeric(rr$time_order[[1]])))
+              } else {
+                ""
+              }
+            )
+          } else {
+            NULL
+          },
           shiny::tags$td(
             if (is.finite(suppressWarnings(as.integer(rr$week[[1]])))) {
               as.character(suppressWarnings(as.integer(rr$week[[1]])))
