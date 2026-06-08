@@ -2435,6 +2435,48 @@ app_server <- function(input, output, session) {
   endpoint_live_label_provider_cache <- new.env(parent = emptyenv())
   subject_live_provider_cache <- new.env(parent = emptyenv())
 
+  resolve_manifest_project_path <- function(path, project_root) {
+    pp <- trimws(as.character(path %||% ""))
+    if (!nzchar(pp)) {
+      return("")
+    }
+    pp <- path.expand(pp)
+    if (!grepl("^(/|~)", pp) && nzchar(as.character(project_root %||% ""))) {
+      pp <- file.path(project_root, pp)
+    }
+    normalizePath(pp, mustWork = FALSE)
+  }
+
+  read_manifest_table <- function(path) {
+    if (!nzchar(as.character(path %||% "")) || !file.exists(path)) {
+      return(NULL)
+    }
+    ext <- tolower(tools::file_ext(path))
+    if (identical(ext, "rds")) {
+      obj <- tryCatch(readRDS(path), error = function(e) NULL)
+      if (is.data.frame(obj)) {
+        return(obj)
+      }
+      if (is.list(obj) && is.data.frame(obj$rows)) {
+        return(obj$rows)
+      }
+      return(NULL)
+    }
+    sep <- if (ext %in% c("tsv", "tab")) "\t" else ","
+    tryCatch(
+      utils::read.table(
+        path,
+        sep = sep,
+        header = TRUE,
+        quote = "\"",
+        comment.char = "",
+        check.names = FALSE,
+        stringsAsFactors = FALSE
+      ),
+      error = function(e) NULL
+    )
+  }
+
   read_endpoint_profile_csv <- function(path) {
     pp <- as.character(path %||% "")
     if (!nzchar(pp) || !file.exists(pp)) {
@@ -2637,11 +2679,272 @@ app_server <- function(input, output, session) {
     tx
   }
 
+  coerce_endpoint_feature_matrix <- function(x, feature_cols = NULL) {
+    if (is.data.frame(x)) {
+      rn <- rownames(x)
+      x <- as.matrix(x)
+      rownames(x) <- rn
+    }
+    if (!is.matrix(x)) {
+      return(NULL)
+    }
+    storage.mode(x) <- "numeric"
+    if (!is.numeric(x) || nrow(x) < 1L || ncol(x) < 1L) {
+      return(NULL)
+    }
+    if ((is.null(colnames(x)) || any(!nzchar(as.character(colnames(x))))) &&
+        length(feature_cols) == ncol(x)) {
+      colnames(x) <- as.character(feature_cols)
+    }
+    if (is.null(colnames(x))) {
+      colnames(x) <- sprintf("feature_%d", seq_len(ncol(x)))
+    }
+    x
+  }
+
+  endpoint_matrix_from_candidate <- function(obj) {
+    if (is.matrix(obj) || is.data.frame(obj)) {
+      return(obj)
+    }
+    if (!is.list(obj)) {
+      return(NULL)
+    }
+    for (nm in c("matrix", "X", "graph_matrix", "feature_matrix", "data")) {
+      if (!is.null(obj[[nm]]) && (is.matrix(obj[[nm]]) || is.data.frame(obj[[nm]]))) {
+        return(obj[[nm]])
+      }
+    }
+    NULL
+  }
+
+  extract_manifest_endpoint_matrices <- function(obj, provider_spec) {
+    if (!is.list(provider_spec)) {
+      provider_spec <- list()
+    }
+    feature_cols <- if (is.list(obj)) as.character(obj$feature_cols %||% character(0)) else character(0)
+    container_key <- as.character(
+      provider_spec$representations_object %||%
+        provider_spec$matrix_list_object %||%
+        provider_spec$matrices_object %||%
+        ""
+    )
+    container <- obj
+    if (nzchar(container_key) && is.list(obj) && !is.null(obj[[container_key]])) {
+      container <- obj[[container_key]]
+    } else if (is.list(obj) && is.list(obj$graph_representations)) {
+      container <- obj$graph_representations
+    } else if (is.list(obj) && is.list(obj$matrices)) {
+      container <- obj$matrices
+    } else if (is.list(obj) && is.list(obj$representations)) {
+      container <- obj$representations
+    }
+
+    direct <- endpoint_matrix_from_candidate(container)
+    if (!is.null(direct)) {
+      x <- coerce_endpoint_feature_matrix(direct, feature_cols = feature_cols)
+      if (is.matrix(x)) {
+        return(list(default = x))
+      }
+      return(list())
+    }
+
+    if (!is.list(container) || length(container) < 1L) {
+      return(list())
+    }
+    out <- list()
+    nms <- names(container)
+    if (is.null(nms)) {
+      nms <- sprintf("matrix_%d", seq_along(container))
+    }
+    for (ii in seq_along(container)) {
+      x_raw <- endpoint_matrix_from_candidate(container[[ii]])
+      x <- coerce_endpoint_feature_matrix(x_raw, feature_cols = feature_cols)
+      if (is.matrix(x)) {
+        out[[as.character(nms[[ii]])]] <- x
+      }
+    }
+    out
+  }
+
+  sample_ids_for_manifest_endpoint_matrix <- function(meta, graph_set, x, provider_spec) {
+    if (!is.data.frame(meta) || nrow(meta) < 1L || !is.matrix(x)) {
+      ids <- rownames(x)
+      if (length(ids) == nrow(x) && all(nzchar(as.character(ids)))) {
+        return(as.character(ids))
+      }
+      return(sprintf("v%d", seq_len(nrow(x))))
+    }
+
+    representation_col <- as.character(provider_spec$representation_col %||% provider_spec$representation_column %||% "")
+    if (!nzchar(representation_col)) {
+      representation_col <- first_existing_col(meta, c("representation_id", "representation", "data_type_id", "graph_set_id"))
+    }
+    vertex_col <- as.character(provider_spec$vertex_col %||% provider_spec$vertex_column %||% "")
+    if (!nzchar(vertex_col)) {
+      vertex_col <- first_existing_col(meta, c("graph_vertex_id", "vertex", "vertex_id"))
+    }
+    sample_col <- as.character(provider_spec$sample_col %||% provider_spec$sample_column %||% "")
+    if (!nzchar(sample_col)) {
+      sample_col <- first_existing_col(meta, c("first_UID", "UID", "sample_id", "sample"))
+    }
+    if (!nzchar(vertex_col) || !nzchar(sample_col)) {
+      ids <- rownames(x)
+      if (length(ids) == nrow(x) && all(nzchar(as.character(ids)))) {
+        return(as.character(ids))
+      }
+      return(sprintf("v%d", seq_len(nrow(x))))
+    }
+
+    rows <- meta
+    if (nzchar(representation_col)) {
+      candidates <- unique(as.character(c(
+        graph_set$representation_id,
+        graph_set$representation,
+        graph_set$data_type_id,
+        graph_set$id
+      )))
+      candidates <- candidates[nzchar(candidates)]
+      vals <- as.character(rows[[representation_col]])
+      vals[is.na(vals)] <- ""
+      if (length(candidates) > 0L && any(vals %in% candidates)) {
+        rows <- rows[vals %in% candidates, , drop = FALSE]
+      }
+    }
+    if (nrow(rows) < 1L) {
+      return(sprintf("v%d", seq_len(nrow(x))))
+    }
+    rows <- rows[order(suppressWarnings(as.integer(rows[[vertex_col]])), na.last = TRUE), , drop = FALSE]
+    ids <- as.character(rows[[sample_col]])
+    ids[is.na(ids)] <- ""
+    if (length(ids) >= nrow(x)) {
+      ids <- ids[seq_len(nrow(x))]
+      ids[!nzchar(ids)] <- sprintf("v%d", which(!nzchar(ids)))
+      return(ids)
+    }
+    fallback <- rownames(x)
+    if (length(fallback) != nrow(x) || any(!nzchar(as.character(fallback)))) {
+      fallback <- sprintf("v%d", seq_len(nrow(x)))
+    }
+    as.character(fallback)
+  }
+
+  build_manifest_endpoint_label_provider <- function(project_id, manifest) {
+    provider_spec <- NULL
+    if (is.list(manifest$metadata) && is.list(manifest$metadata$endpoint_label_provider)) {
+      provider_spec <- manifest$metadata$endpoint_label_provider
+    } else if (is.list(manifest$endpoint_label_provider)) {
+      provider_spec <- manifest$endpoint_label_provider
+    }
+    if (!is.list(provider_spec)) {
+      return(NULL)
+    }
+
+    project_root <- as.character(manifest$project_root %||% "")
+    matrix_file <- resolve_manifest_project_path(
+      provider_spec$matrix_file %||%
+        provider_spec$feature_matrix_file %||%
+        provider_spec$input_matrices_file %||%
+        provider_spec$file %||%
+        provider_spec$path %||%
+        "",
+      project_root = project_root
+    )
+    if (!nzchar(matrix_file) || !file.exists(matrix_file)) {
+      return(NULL)
+    }
+    matrix_obj <- tryCatch(readRDS(matrix_file), error = function(e) NULL)
+    if (is.null(matrix_obj)) {
+      return(NULL)
+    }
+    matrices <- extract_manifest_endpoint_matrices(matrix_obj, provider_spec)
+    if (!is.list(matrices) || length(matrices) < 1L) {
+      return(NULL)
+    }
+
+    metadata_file <- resolve_manifest_project_path(
+      provider_spec$vertex_metadata_file %||%
+        provider_spec$vertices_file %||%
+        provider_spec$sample_metadata_file %||%
+        "",
+      project_root = project_root
+    )
+    vertex_meta <- read_manifest_table(metadata_file)
+
+    graph_sets <- if (is.list(manifest$graph_sets)) manifest$graph_sets else list()
+    graph_set_matrix_map <- if (is.list(provider_spec$graph_set_matrix_map)) provider_spec$graph_set_matrix_map else list()
+    X_by_graph_set <- list()
+    sample_ids_by_graph_set <- list()
+
+    if (length(graph_sets) > 0L) {
+      for (gs in graph_sets) {
+        set_id <- as.character(gs$id %||% "")
+        if (!nzchar(set_id)) {
+          next
+        }
+        mapped_key <- as.character(graph_set_matrix_map[[set_id]] %||% "")
+        candidates <- unique(as.character(c(
+          mapped_key,
+          gs$representation_id,
+          gs$representation,
+          gs$data_type_id,
+          set_id,
+          "default"
+        )))
+        candidates <- candidates[nzchar(candidates)]
+        hit <- candidates[candidates %in% names(matrices)]
+        if (length(hit) < 1L && length(matrices) == 1L) {
+          hit <- names(matrices)[[1L]]
+        }
+        if (length(hit) < 1L) {
+          next
+        }
+        x <- matrices[[hit[[1L]]]]
+        X_by_graph_set[[set_id]] <- x
+        sample_ids_by_graph_set[[set_id]] <- sample_ids_for_manifest_endpoint_matrix(
+          meta = vertex_meta,
+          graph_set = gs,
+          x = x,
+          provider_spec = provider_spec
+        )
+      }
+    }
+
+    if (length(X_by_graph_set) < 1L && length(matrices) > 0L) {
+      X_by_graph_set[["default"]] <- matrices[[1L]]
+      sample_ids_by_graph_set[["default"]] <- sample_ids_for_manifest_endpoint_matrix(
+        meta = vertex_meta,
+        graph_set = list(id = "default"),
+        x = matrices[[1L]],
+        provider_spec = provider_spec
+      )
+    }
+    if (length(X_by_graph_set) < 1L) {
+      return(NULL)
+    }
+
+    list(
+      project_id = tolower(trimws(as.character(project_id %||% ""))),
+      project_root = project_root,
+      mode = as.character(provider_spec$mode %||% "manifest"),
+      matrix_file = matrix_file,
+      X_by_graph_set = X_by_graph_set,
+      sample_ids_by_graph_set = sample_ids_by_graph_set,
+      taxonomy_map = NULL,
+      label_style = as.character(provider_spec$label_style %||% "taxonomy_profile"),
+      source_detail = as.character(provider_spec$source_detail %||% "Manifest feature profile")
+    )
+  }
+
   build_live_endpoint_label_provider <- function(project_id, manifest) {
     pid <- tolower(trimws(as.character(project_id %||% "")))
     project_root <- as.character(manifest$project_root %||% "")
     if (!nzchar(project_root) || identical(project_root, "NA") || !dir.exists(project_root)) {
       return(NULL)
+    }
+
+    generic_provider <- build_manifest_endpoint_label_provider(project_id = pid, manifest = manifest)
+    if (is.list(generic_provider) && is.list(generic_provider$X_by_graph_set)) {
+      return(generic_provider)
     }
 
     if (identical(pid, "symptoms")) {
@@ -2742,45 +3045,11 @@ app_server <- function(input, output, session) {
   }
 
   resolve_manifest_subject_provider_path <- function(path, project_root) {
-    pp <- trimws(as.character(path %||% ""))
-    if (!nzchar(pp)) {
-      return("")
-    }
-    pp <- path.expand(pp)
-    if (!grepl("^(/|~)", pp) && nzchar(as.character(project_root %||% ""))) {
-      pp <- file.path(project_root, pp)
-    }
-    normalizePath(pp, mustWork = FALSE)
+    resolve_manifest_project_path(path = path, project_root = project_root)
   }
 
   read_manifest_subject_provider_rows <- function(path) {
-    if (!nzchar(as.character(path %||% "")) || !file.exists(path)) {
-      return(NULL)
-    }
-    ext <- tolower(tools::file_ext(path))
-    if (identical(ext, "rds")) {
-      obj <- tryCatch(readRDS(path), error = function(e) NULL)
-      if (is.data.frame(obj)) {
-        return(obj)
-      }
-      if (is.list(obj) && is.data.frame(obj$rows)) {
-        return(obj$rows)
-      }
-      return(NULL)
-    }
-    sep <- if (ext %in% c("tsv", "tab")) "\t" else ","
-    tryCatch(
-      utils::read.table(
-        path,
-        sep = sep,
-        header = TRUE,
-        quote = "\"",
-        comment.char = "",
-        check.names = FALSE,
-        stringsAsFactors = FALSE
-      ),
-      error = function(e) NULL
-    )
+    read_manifest_table(path)
   }
 
   build_manifest_subject_provider <- function(project_id, manifest) {
@@ -2983,31 +3252,75 @@ app_server <- function(input, output, session) {
     provider
   }
 
+  endpoint_provider_active_view <- function(provider) {
+    if (!is.list(provider)) {
+      return(NULL)
+    }
+    if (is.matrix(provider$X)) {
+      return(list(
+        X = provider$X,
+        sample_ids = as.character(provider$sample_ids %||% rownames(provider$X) %||% character(0)),
+        graph_set_id = ""
+      ))
+    }
+    if (!is.list(provider$X_by_graph_set) || length(provider$X_by_graph_set) < 1L) {
+      return(NULL)
+    }
+    ctx <- current_endpoint_graph_context()
+    set_id <- if (is.list(ctx)) as.character(ctx$graph_set_id %||% "") else ""
+    if (!nzchar(set_id) || is.null(provider$X_by_graph_set[[set_id]])) {
+      set_id <- names(provider$X_by_graph_set)[[1L]]
+    }
+    x <- provider$X_by_graph_set[[set_id]]
+    if (!is.matrix(x)) {
+      return(NULL)
+    }
+    sample_ids <- if (is.list(provider$sample_ids_by_graph_set)) {
+      as.character(provider$sample_ids_by_graph_set[[set_id]] %||% character(0))
+    } else {
+      character(0)
+    }
+    if (length(sample_ids) != nrow(x)) {
+      sample_ids <- rownames(x)
+    }
+    if (length(sample_ids) != nrow(x) || any(!nzchar(as.character(sample_ids)))) {
+      sample_ids <- sprintf("v%d", seq_len(nrow(x)))
+    }
+    list(
+      X = x,
+      sample_ids = as.character(sample_ids),
+      graph_set_id = set_id
+    )
+  }
+
   live_endpoint_label_profile_suggestion <- function(vertex_id, manifest) {
     vid <- suppressWarnings(as.integer(vertex_id))
     if (!is.finite(vid) || vid < 1L || !is.list(manifest)) {
       return(empty_endpoint_label_profile_suggestion(vertex_id))
     }
     provider <- resolve_live_endpoint_label_provider(rv$project.id, manifest)
-    if (!is.list(provider) || !is.matrix(provider$X)) {
+    provider_view <- endpoint_provider_active_view(provider)
+    if (!is.list(provider) || !is.list(provider_view) || !is.matrix(provider_view$X)) {
       return(empty_endpoint_label_profile_suggestion(vertex_id))
     }
-    if (as.integer(vid) > nrow(provider$X)) {
+    X_use <- provider_view$X
+    sample_ids_use <- as.character(provider_view$sample_ids %||% character(0))
+    if (as.integer(vid) > nrow(X_use)) {
       return(empty_endpoint_label_profile_suggestion(vertex_id))
     }
 
-    x <- as.numeric(provider$X[as.integer(vid), , drop = TRUE])
+    x <- as.numeric(X_use[as.integer(vid), , drop = TRUE])
     if (length(x) < 1L || all(!is.finite(x))) {
       return(empty_endpoint_label_profile_suggestion(vertex_id))
     }
     ord <- order(x, decreasing = TRUE, na.last = NA)
     keep_idx <- head(ord, 5L)
-    keep_idx <- keep_idx[is.finite(keep_idx) & keep_idx >= 1L & keep_idx <= ncol(provider$X)]
+    keep_idx <- keep_idx[is.finite(keep_idx) & keep_idx >= 1L & keep_idx <= ncol(X_use)]
     if (length(keep_idx) < 1L) {
       return(empty_endpoint_label_profile_suggestion(vertex_id))
     }
 
-    feature_ids <- as.character(colnames(provider$X)[keep_idx])
+    feature_ids <- as.character(colnames(X_use)[keep_idx])
     abund <- x[keep_idx]
     if (identical(provider$mode, "symptoms")) {
       taxonomy <- as.character(provider$taxonomy_map[feature_ids] %||% feature_ids)
@@ -3024,20 +3337,26 @@ app_server <- function(input, output, session) {
       return(list(
         vertex = as.integer(vid),
         label = as.character(label_val %||% NA_character_),
-        sample_id = as.character(provider$sample_ids[[as.integer(vid)]] %||% NA_character_),
+        sample_id = as.character(sample_ids_use[[as.integer(vid)]] %||% NA_character_),
         profile = profile_tbl,
         source_kind = "live",
         source_detail = "Symptoms project ASV profile"
       ))
     }
 
-    taxonomy <- feature_ids
-    above <- which(is.finite(abund) & abund >= 0.05)
-    if (length(above) < 1L) {
-      above <- 1L
+    taxonomy <- as.character(provider$taxonomy_map[feature_ids] %||% feature_ids)
+    taxonomy[is.na(taxonomy) | !nzchar(taxonomy)] <- feature_ids[is.na(taxonomy) | !nzchar(taxonomy)]
+    taxonomy <- vapply(taxonomy, clean_taxonomy_label_for_ui, FUN.VALUE = character(1))
+    if (identical(as.character(provider$label_style %||% ""), "abbrev")) {
+      above <- which(is.finite(abund) & abund >= 0.05)
+      if (length(above) < 1L) {
+        above <- 1L
+      }
+      pick <- head(above, 2L)
+      label_val <- paste(vapply(feature_ids[pick], abbrev_taxon_for_ui, FUN.VALUE = character(1)), collapse = "")
+    } else {
+      label_val <- label_from_taxonomy_profile(taxonomy, abund, separator = " / ")
     }
-    pick <- head(above, 2L)
-    label_val <- paste(vapply(feature_ids[pick], abbrev_taxon_for_ui, FUN.VALUE = character(1)), collapse = "")
     profile_tbl <- normalize_endpoint_feature_profile(data.frame(
       rank = seq_along(feature_ids),
       feature = feature_ids,
@@ -3048,10 +3367,10 @@ app_server <- function(input, output, session) {
     list(
       vertex = as.integer(vid),
       label = as.character(label_val %||% NA_character_),
-      sample_id = as.character(provider$sample_ids[[as.integer(vid)]] %||% NA_character_),
+      sample_id = as.character(sample_ids_use[[as.integer(vid)]] %||% NA_character_),
       profile = profile_tbl,
       source_kind = "live",
-      source_detail = "AGP project ASV profile"
+      source_detail = as.character(provider$source_detail %||% "Live feature profile")
     )
   }
 
