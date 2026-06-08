@@ -9285,10 +9285,13 @@ app_server <- function(input, output, session) {
 
     ids <- names(artifact_paths)
     ids <- ids[nzchar(ids)]
-    choice_labels <- vapply(ids, function(id) {
-      as.character(artifact_labels[[id]] %||% id)
-    }, character(1))
-    artifact_choices <- stats::setNames(ids, choice_labels)
+    artifact_choices <- character(0)
+    if (length(ids) > 0L) {
+      choice_labels <- vapply(ids, function(id) {
+        as.character(artifact_labels[[id]] %||% id)
+      }, character(1))
+      artifact_choices <- stats::setNames(ids, choice_labels)
+    }
 
     default_artifact_id <- if ("report_pdf" %in% ids) {
       "report_pdf"

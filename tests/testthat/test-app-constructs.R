@@ -1008,6 +1008,9 @@ test_that("manifest subject provider supports active graph-set filtering and tem
         week_col = "week",
         day_col = "day",
         order_col = "time_idx"
+      ),
+      overview = list(
+        generated_at = "2026-06-08 00:00:00 EDT"
       )
     )
   )
@@ -1028,6 +1031,9 @@ test_that("manifest subject provider supports active graph-set filtering and tem
     sp0 <- subject_panel_state()
     expect_true(isTRUE(sp0$available))
     expect_equal(unique(as.character(sp0$rows$graph_set_id)), "set_a")
+    overview <- project_overview_state()
+    expect_true(is.list(overview))
+    expect_equal(overview$artifact_choices, character(0))
 
     session$setInputs(
       subject_ids = "S1",
