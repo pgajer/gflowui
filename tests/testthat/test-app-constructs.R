@@ -972,6 +972,48 @@ test_that("manifest subject provider supports active graph-set filtering and tem
     graph_b
   )
 
+  feature_cols <- c("Lactobacillus_crispatus", "Gardnerella_vaginalis", "BVAB1")
+  feature_matrices <- list(
+    graph_representations = list(
+      rep_a = matrix(
+        c(
+          0.90, 0.10, 0.00,
+          1.00, 0.00, 0.00,
+          0.00, 0.80, 0.20,
+          0.00, 0.00, 1.00
+        ),
+        nrow = 4L,
+        byrow = TRUE,
+        dimnames = list(paste0("a", seq_len(4L)), feature_cols)
+      ),
+      rep_b = matrix(
+        c(
+          0.00, 0.00, 1.00,
+          0.00, 1.00, 0.00,
+          1.00, 0.00, 0.00,
+          0.50, 0.50, 0.00
+        ),
+        nrow = 4L,
+        byrow = TRUE,
+        dimnames = list(paste0("b", seq_len(4L)), feature_cols)
+      )
+    )
+  )
+  feature_matrix_file <- file.path(root, "data", "feature_matrices.rds")
+  saveRDS(feature_matrices, feature_matrix_file)
+
+  vertex_metadata <- rbind(
+    data.frame(representation_id = "rep_a", graph_vertex_id = seq_len(4L), first_UID = paste0("A", seq_len(4L))),
+    data.frame(representation_id = "rep_b", graph_vertex_id = seq_len(4L), first_UID = paste0("B", seq_len(4L)))
+  )
+  utils::write.table(
+    vertex_metadata,
+    file.path(root, "data", "vertex_metadata.tsv"),
+    sep = "\t",
+    quote = FALSE,
+    row.names = FALSE
+  )
+
   subject_rows <- data.frame(
     graph_set_id = c(rep("set_a", 3L), rep("set_b", 3L)),
     vertex = c(1L, 2L, 3L, 4L, 3L, 2L),
@@ -993,8 +1035,8 @@ test_that("manifest subject provider supports active graph-set filtering and tem
   spec <- gflowui::build_project_spec_iknn_3x3(
     project_root = root,
     graph_sets = list(
-      list(id = "set_a", label = "Set A", graph_file = graph_a, k_values = 3L, selected_k = 3L),
-      list(id = "set_b", label = "Set B", graph_file = graph_b, k_values = 3L, selected_k = 3L)
+      list(id = "set_a", label = "Set A", graph_file = graph_a, k_values = 3L, selected_k = 3L, representation_id = "rep_a"),
+      list(id = "set_b", label = "Set B", graph_file = graph_b, k_values = 3L, selected_k = 3L, representation_id = "rep_b")
     ),
     defaults = list(graph_set_id = "set_a", reference_graph_set_id = "set_a", reference_k = 3L),
     metadata = list(
@@ -1008,6 +1050,17 @@ test_that("manifest subject provider supports active graph-set filtering and tem
         week_col = "week",
         day_col = "day",
         order_col = "time_idx"
+      ),
+      endpoint_label_provider = list(
+        mode = "feature_matrices",
+        matrix_file = "data/feature_matrices.rds",
+        representations_object = "graph_representations",
+        vertex_metadata_file = "data/vertex_metadata.tsv",
+        graph_set_matrix_map = list(set_a = "rep_a", set_b = "rep_b"),
+        representation_col = "representation_id",
+        vertex_col = "graph_vertex_id",
+        sample_col = "first_UID",
+        label_style = "taxonomy_profile"
       ),
       overview = list(
         generated_at = "2026-06-08 00:00:00 EDT"
@@ -1034,6 +1087,10 @@ test_that("manifest subject provider supports active graph-set filtering and tem
     overview <- project_overview_state()
     expect_true(is.list(overview))
     expect_equal(overview$artifact_choices, character(0))
+    label_a <- endpoint_label_profile_suggestion(2L, endpoint_panel_state())
+    expect_equal(label_a$label, "L crispatus")
+    expect_equal(label_a$sample_id, "A2")
+    expect_equal(label_a$profile$feature[[1L]], "Lactobacillus_crispatus")
 
     session$setInputs(
       subject_ids = "S1",
@@ -1051,6 +1108,9 @@ test_that("manifest subject provider supports active graph-set filtering and tem
 
     sp1 <- subject_panel_state()
     expect_equal(unique(as.character(sp1$rows$graph_set_id)), "set_b")
+    label_b <- endpoint_label_profile_suggestion(2L, endpoint_panel_state())
+    expect_equal(label_b$label, "Gardnerella vaginalis")
+    expect_equal(label_b$sample_id, "B2")
     ov_b <- subject_overlay_active()
     expect_equal(as.integer(ov_b$vertices), c(4L, 3L, 2L))
     expect_equal(ov_b$edges, matrix(c(4L, 3L, 3L, 2L), ncol = 2, byrow = TRUE, dimnames = list(NULL, c("from", "to"))))
