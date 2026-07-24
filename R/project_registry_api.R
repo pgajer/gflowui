@@ -670,6 +670,7 @@ gflowui_write_manifest <- function(manifest, path) {
     profile = "iknn_3x3",
     graph_sets = list(),
     condexp_sets = list(),
+    occupation_density_sets = list(),
     endpoint_runs = list(),
     landmark_pts_runs = NULL,
     X = NULL,
@@ -685,6 +686,11 @@ gflowui_write_manifest <- function(manifest, path) {
 
   graph_sets_use <- gflowui_normalize_graph_sets_manifest(graph_sets %||% list())
   condexp_sets_use <- if (is.list(condexp_sets)) condexp_sets else list()
+  occupation_density_sets_use <- if (is.list(occupation_density_sets)) {
+    occupation_density_sets
+  } else {
+    list()
+  }
   endpoint_runs_use <- if (!is.null(endpoint_runs) && length(endpoint_runs) > 0L) {
     endpoint_runs
   } else {
@@ -720,6 +726,7 @@ gflowui_write_manifest <- function(manifest, path) {
     project_root = root,
     graph_sets = graph_sets_use,
     condexp_sets = condexp_sets_use,
+    occupation_density_sets = occupation_density_sets_use,
     endpoint_runs = endpoint_runs_use,
     metadata = metadata_use,
     artifacts = artifacts_use,
@@ -751,6 +758,7 @@ gflowui_write_manifest <- function(manifest, path) {
     profile = profile_use,
     graph_sets = project_spec$graph_sets %||% list(),
     condexp_sets = project_spec$condexp_sets %||% list(),
+    occupation_density_sets = project_spec$occupation_density_sets %||% list(),
     endpoint_runs = project_spec$endpoint_runs %||% list(),
     landmark_pts_runs = project_spec$landmark_pts_runs %||% NULL,
     X = project_spec$X %||% NULL,
@@ -1781,6 +1789,9 @@ discover_project_artifacts <- function(
 #'
 #' @param project_root Path to the external analysis project root.
 #' @param graph_sets Graph-set specifications to include in the project spec.
+#' @param occupation_density_sets Optional subject-level occupation-density
+#'   asset specifications. These are retained as a first-class manifest
+#'   component and consumed by the occupation-density viewer.
 #' @param X Optional matrix-like reference data to persist and register as
 #'   project-level \code{metadata$reference_data}.
 #' @param X_file Optional file path for the persisted reference data. When
@@ -1824,6 +1835,7 @@ discover_project_artifacts <- function(
 build_project_spec_iknn_3x3 <- function(
     project_root,
     graph_sets,
+    occupation_density_sets = list(),
     X = NULL,
     X_file = NULL,
     factor_sets = NULL,
@@ -1837,6 +1849,7 @@ build_project_spec_iknn_3x3 <- function(
     project_root = project_root,
     profile = "iknn_3x3",
     graph_sets = graph_sets,
+    occupation_density_sets = occupation_density_sets,
     X = X,
     X_file = X_file,
     factor_sets = factor_sets,
@@ -1986,6 +1999,11 @@ build_project_spec_iknn_3x3 <- function(
 #'       }
 #'     }
 #'   }
+#'
+#' @param occupation_density_sets Optional list of subject occupation-density
+#'   asset specifications. Each entry may register selected-fit arrays,
+#'   candidate-score tables, graph-basis templates, chart-coordinate templates,
+#'   available selectors, and the subjects for which estimates exist.
 #'
 #' @param endpoint_runs Optional list of endpoint-run specifications.  When
 #'   non-\code{NULL} this \emph{replaces} any runs found by discovery.
@@ -2154,6 +2172,7 @@ register_project <- function(
     project_spec = NULL,
     graph_sets = NULL,
     condexp_sets = NULL,
+    occupation_density_sets = NULL,
     endpoint_runs = NULL,
     landmark_pts_runs = NULL,
     metadata = list(),
@@ -2204,6 +2223,7 @@ register_project <- function(
     project_root = root,
     graph_sets = list(),
     condexp_sets = list(),
+    occupation_density_sets = list(),
     endpoint_runs = list(),
     metadata = list(),
     artifacts = list(),
@@ -2227,6 +2247,13 @@ register_project <- function(
     condexp_sets
   } else {
     discovered$condexp_sets
+  }
+  occupation_density_sets_use <- if (is.list(spec_use)) {
+    spec_use$occupation_density_sets
+  } else if (!is.null(occupation_density_sets)) {
+    occupation_density_sets
+  } else {
+    discovered$occupation_density_sets %||% list()
   }
   endpoint_runs_use <- if (is.list(spec_use)) {
     spec_use$endpoint_runs
@@ -2274,6 +2301,7 @@ register_project <- function(
     updated_at = .gflowui_now(),
     graph_sets = graph_sets_use,
     condexp_sets = condexp_sets_use,
+    occupation_density_sets = occupation_density_sets_use,
     endpoint_runs = endpoint_runs_use,
     metadata = metadata_use,
     artifacts = artifacts_use,
@@ -2288,7 +2316,8 @@ register_project <- function(
     label = project_name,
     origin = sprintf("registered:%s", as.character(profile_resolved %||% "custom")),
     has_graphs = length(graph_sets_use) > 0L,
-    has_condexp = length(condexp_sets_use) > 0L,
+    has_condexp = length(condexp_sets_use) > 0L ||
+      length(occupation_density_sets_use) > 0L,
     has_endpoints = length(endpoint_runs_use) > 0L,
     project_root = root,
     manifest_file = normalizePath(manifest_file, mustWork = FALSE),

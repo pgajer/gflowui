@@ -13,6 +13,7 @@ register_project(
   project_spec = NULL,
   graph_sets = NULL,
   condexp_sets = NULL,
+  occupation_density_sets = NULL,
   endpoint_runs = NULL,
   landmark_pts_runs = NULL,
   metadata = list(),
@@ -150,6 +151,11 @@ to GCV summary CSV.}
 }
 }
 }}
+
+\item{occupation_density_sets}{Optional list of subject occupation-density
+asset specifications. Each entry may register selected-fit arrays,
+candidate-score tables, graph-basis templates, chart-coordinate templates,
+available selectors, and the subjects for which estimates exist.}
 
 \item{endpoint_runs}{Optional list of endpoint-run specifications.  When
 non-\code{NULL} this \emph{replaces} any runs found by discovery.

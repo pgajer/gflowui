@@ -52,6 +52,10 @@ app_server <- function(input, output, session) {
     vertex_color = NA_character_,
     component = NA_character_
   )
+  occupation_density_result <- shiny::reactiveVal(NULL)
+  occupation_density_status <- shiny::reactiveVal(
+    "Choose a subject, method, and estimate, then show the density."
+  )
   graph_vertex_color_choices <- function() {
     c(
       "Black" = "#111827",
@@ -200,6 +204,10 @@ app_server <- function(input, output, session) {
     graph_layout_state$color_by <- NA_character_
     graph_layout_state$vertex_color <- NA_character_
     graph_layout_state$component <- NA_character_
+    occupation_density_result(NULL)
+    occupation_density_status(
+      "Choose a subject, method, and estimate, then show the density."
+    )
     quadform_layout_revision(0L)
   }, ignoreInit = FALSE)
 
@@ -7326,6 +7334,232 @@ app_server <- function(input, output, session) {
     save_working_arm_state(next_state, ctx = ctx)
   }, ignoreInit = TRUE)
 
+  occupation_density_panel_state <- shiny::reactive({
+    manifest <- active_manifest()
+    sets <- if (is.list(manifest)) {
+      gflowui_occupation_density_sets(manifest)
+    } else {
+      list()
+    }
+    if (length(sets) < 1L) {
+      return(list(has_assets = FALSE))
+    }
+    set_ids <- vapply(sets, function(x) as.character(x$id %||% ""), character(1))
+    set_labels <- vapply(
+      sets,
+      function(x) as.character(x$label %||% x$id %||% "Occupation densities"),
+      character(1)
+    )
+    set_id <- as.character(
+      input$occupation_density_set %||%
+        manifest$defaults$occupation_density_set_id %||%
+        set_ids[[1L]]
+    )
+    if (!(set_id %in% set_ids)) {
+      set_id <- set_ids[[1L]]
+    }
+    set <- sets[[match(set_id, set_ids)]]
+    subjects <- as.character(set$subject_ids %||% character(0))
+    subjects <- subjects[nzchar(subjects)]
+    methods <- set$methods %||% list()
+    method_ids <- vapply(methods, function(x) as.character(x$id %||% ""), character(1))
+    method_labels <- vapply(
+      methods,
+      function(x) as.character(x$label %||% x$id %||% "Method"),
+      character(1)
+    )
+    subject_selected <- as.character(
+      input$occupation_density_subject %||%
+        manifest$defaults$occupation_density_subject_id %||%
+        subjects[[1L]]
+    )
+    if (!(subject_selected %in% subjects)) {
+      subject_selected <- subjects[[1L]]
+    }
+    method_selected <- as.character(
+      input$occupation_density_method %||%
+        manifest$defaults$occupation_density_method_id %||%
+        method_ids[[1L]]
+    )
+    if (!(method_selected %in% method_ids)) {
+      method_selected <- method_ids[[1L]]
+    }
+    list(
+      has_assets = TRUE,
+      set = set,
+      set_id = set_id,
+      set_choices = stats::setNames(set_ids, set_labels),
+      subject_choices = stats::setNames(subjects, paste("Subject", subjects)),
+      subject_selected = subject_selected,
+      method_choices = stats::setNames(method_ids, method_labels),
+      method_selected = method_selected,
+      mode = as.character(input$occupation_density_mode %||% "selected"),
+      selector = as.character(input$occupation_density_selector %||% "minimum_brier")
+    )
+  })
+
+  output$occupation_density_parameters <- shiny::renderUI({
+    st <- occupation_density_panel_state()
+    if (!isTRUE(st$has_assets) ||
+        !identical(as.character(input$occupation_density_mode %||% "selected"), "parameters")) {
+      return(NULL)
+    }
+    method_id <- as.character(input$occupation_density_method %||% st$method_selected)
+    if (identical(method_id, "graph_heat_kernel")) {
+      k_values <- as.integer(st$set$graph_k_values %||% 3L:25L)
+      k_selected <- suppressWarnings(as.integer(
+        input$occupation_density_graph_k %||% st$set$default_graph_k %||% k_values[[1L]]
+      ))
+      if (!(k_selected %in% k_values)) {
+        k_selected <- k_values[[1L]]
+      }
+      method <- st$set$methods[[match(
+        method_id,
+        vapply(st$set$methods, function(x) as.character(x$id %||% ""), character(1))
+      )]]
+      basis_path <- sprintf(as.character(method$basis_file_template), k_selected)
+      basis_path <- tryCatch(
+        gflowui_occupation_density_path(basis_path, active_manifest()$project_root),
+        error = function(e) ""
+      )
+      eta_grid <- if (nzchar(basis_path)) readRDS(basis_path)$eta.grid else numeric(0)
+      eta_choices <- stats::setNames(
+        seq_along(eta_grid),
+        sprintf("%02d: eta=%s", seq_along(eta_grid), formatC(eta_grid, digits = 5, format = "fg"))
+      )
+      shiny::tagList(
+        shiny::selectInput(
+          "occupation_density_graph_k", "Graph k",
+          choices = k_values, selected = k_selected
+        ),
+        shiny::selectInput(
+          "occupation_density_eta_index", "Heat-time candidate",
+          choices = eta_choices,
+          selected = as.character(input$occupation_density_eta_index %||% "1")
+        )
+      )
+    } else if (identical(method_id, "chart_kernel")) {
+      grid <- st$set$chart_parameter_grid
+      shiny::tagList(
+        shiny::selectInput(
+          "occupation_density_support", "Support size",
+          choices = as.integer(grid$support_size),
+          selected = as.character(input$occupation_density_support %||% grid$support_size[[1L]])
+        ),
+        shiny::selectInput(
+          "occupation_density_chart_dim", "Chart dimension",
+          choices = as.integer(grid$chart_dim),
+          selected = as.character(input$occupation_density_chart_dim %||% grid$chart_dim[[1L]])
+        ),
+        shiny::selectInput(
+          "occupation_density_bandwidth", "Bandwidth multiplier",
+          choices = as.numeric(grid$bandwidth_multiplier),
+          selected = as.character(input$occupation_density_bandwidth %||% grid$bandwidth_multiplier[[1L]])
+        )
+      )
+    } else {
+      shiny::p(class = "gf-hint", "Parameterized evaluation is unavailable for this method.")
+    }
+  })
+
+  output$occupation_density_status <- shiny::renderText({
+    occupation_density_status()
+  })
+
+  shiny::observeEvent(input$occupation_density_show, {
+    st <- occupation_density_panel_state()
+    if (!isTRUE(st$has_assets)) {
+      return()
+    }
+    mode <- as.character(input$occupation_density_mode %||% "selected")
+    method_id <- as.character(input$occupation_density_method %||% st$method_selected)
+    subject_id <- as.character(input$occupation_density_subject %||% st$subject_selected)
+    params <- if (identical(method_id, "graph_heat_kernel")) {
+      list(
+        graph_k = suppressWarnings(as.integer(input$occupation_density_graph_k)),
+        eta_index = suppressWarnings(as.integer(input$occupation_density_eta_index))
+      )
+    } else {
+      list(
+        support_size = suppressWarnings(as.integer(input$occupation_density_support)),
+        chart_dim = suppressWarnings(as.integer(input$occupation_density_chart_dim)),
+        bandwidth_multiplier = suppressWarnings(as.numeric(input$occupation_density_bandwidth))
+      )
+    }
+    result <- tryCatch(
+      gflowui_evaluate_occupation_density(
+        manifest = active_manifest(),
+        set_id = st$set_id,
+        subject_id = subject_id,
+        method_id = method_id,
+        mode = mode,
+        selector = as.character(input$occupation_density_selector %||% "minimum_brier"),
+        parameters = params
+      ),
+      error = function(e) e
+    )
+    if (inherits(result, "error")) {
+      occupation_density_status(sprintf("Density evaluation failed: %s", conditionMessage(result)))
+      shiny::showNotification(conditionMessage(result), type = "error")
+      return()
+    }
+    selected <- result$selected
+    graph_k <- if (is.data.frame(selected) && "graph.k" %in% names(selected)) {
+      suppressWarnings(as.integer(selected$graph.k[[1L]]))
+    } else {
+      NA_integer_
+    }
+    method_label <- as.character(result$method$label %||% method_id)
+    selector_label <- if (identical(mode, "selected")) {
+      if (identical(input$occupation_density_selector, "minimum_bernoulli_nll")) {
+        "Bernoulli NLL-selected"
+      } else {
+        "Brier-selected"
+      }
+    } else {
+      "parameter-selected"
+    }
+    result$subject_id <- subject_id
+    result$method_id <- method_id
+    result$method_label <- method_label
+    result$mode <- mode
+    result$selector_label <- selector_label
+    result$graph_k <- graph_k
+    occupation_density_result(result)
+    subject_state$selected_ids <- subject_id
+    subject_state$show_overlay <- TRUE
+    subject_state$edge_mode <- "temporal"
+    shiny::updateSelectInput(session, "subject_ids", selected = subject_id)
+    shiny::updateCheckboxInput(session, "subject_show_overlay", value = TRUE)
+    shiny::updateSelectInput(session, "subject_edge_mode", selected = "temporal")
+    graph_layout_state$color_by <- "occupation_density_active"
+    shiny::updateSelectInput(
+      session, "graph_layout_color_by",
+      selected = "occupation_density_active"
+    )
+    graph_note <- if (is.finite(graph_k)) {
+      sprintf(" The estimate selected G_%d; use the button below to display that graph.", graph_k)
+    } else {
+      " Chart kernel does not select graph k; the density is shown on the currently displayed graph."
+    }
+    occupation_density_status(sprintf(
+      "Showing subject %s, %s, %s.%s",
+      subject_id, method_label, selector_label, graph_note
+    ))
+  }, ignoreInit = TRUE)
+
+  shiny::observeEvent(input$occupation_density_use_graph_k, {
+    result <- occupation_density_result()
+    graph_k <- suppressWarnings(as.integer(result$graph_k %||% NA_integer_))
+    if (!is.finite(graph_k)) {
+      shiny::showNotification("This density estimate does not select graph k.", type = "message")
+      return()
+    }
+    graph_selection_state$k <- graph_k
+    shiny::updateSelectInput(session, "graph_k", selected = as.character(graph_k))
+    shiny::showNotification(sprintf("Displaying symmetric kNN graph k=%d.", graph_k), type = "message")
+  }, ignoreInit = TRUE)
+
   reference_view_state <- shiny::reactive({
     sel <- current_graph_selection()
     if (!is.list(sel) || !is.null(sel$error)) {
@@ -7452,7 +7686,12 @@ app_server <- function(input, output, session) {
     }
 
     sources <- list()
-    add_source <- function(key, label, values, type = c("numeric", "categorical")) {
+    add_source <- function(
+        key,
+        label,
+        values,
+        type = c("numeric", "categorical"),
+        colorbar_title = NULL) {
       type <- match.arg(type)
       vv <- values
       if (length(vv) != n_vertices) {
@@ -7469,7 +7708,8 @@ app_server <- function(input, output, session) {
         key = k,
         label = label,
         type = type,
-        values = vv
+        values = vv,
+        colorbar_title = as.character(colorbar_title %||% label)
       )
       invisible(NULL)
     }
@@ -7506,6 +7746,22 @@ app_server <- function(input, output, session) {
       for (src in endpoint_sources) {
         add_source_entry(src)
       }
+    }
+    occupation_density <- occupation_density_result()
+    if (is.list(occupation_density) &&
+        length(occupation_density$values %||% numeric(0)) == n_vertices) {
+      add_source(
+        key = "occupation_density_active",
+        label = sprintf(
+          "EOD: subject %s, %s, %s",
+          as.character(occupation_density$subject_id %||% ""),
+          as.character(occupation_density$method_label %||% "method"),
+          as.character(occupation_density$selector_label %||% "estimate")
+        ),
+        values = occupation_density$values,
+        type = "numeric",
+        colorbar_title = "EOD mass"
+      )
     }
 
     dat <- data_state()
@@ -8221,7 +8477,7 @@ app_server <- function(input, output, session) {
               color = vv,
               colorscale = "Viridis",
               opacity = base_marker_opacity,
-              colorbar = list(title = src$label)
+              colorbar = list(title = as.character(src$colorbar_title %||% src$label))
             ),
             showlegend = FALSE
           )
@@ -10080,11 +10336,13 @@ app_server <- function(input, output, session) {
     endpoint_rows <- if (is.list(endpoint_panel) && is.data.frame(endpoint_panel$rows)) endpoint_panel$rows else data.frame()
     endpoint_working <- if (is.list(endpoint_panel) && is.list(endpoint_panel$working)) endpoint_panel$working else empty_working_endpoint_state()
     subject_panel <- subject_panel_state()
+    occupation_panel <- occupation_density_panel_state()
     arm_panel <- arm_panel_state()
     arm_rows <- if (is.list(arm_panel) && is.data.frame(arm_panel$rows)) arm_panel$rows else empty_arm_candidate_rows()
     arm_working <- if (is.list(arm_panel) && is.list(arm_panel$working)) arm_panel$working else empty_working_arm_state()
     arm_virtual <- arm_virtual_endpoints()
-    has_asset_views <- nrow(graph_tbl) > 0L || nrow(condexp_tbl) > 0L || length(endpoint_runs) > 0L
+    has_asset_views <- nrow(graph_tbl) > 0L || nrow(condexp_tbl) > 0L ||
+      length(endpoint_runs) > 0L || isTRUE(occupation_panel$has_assets)
 
     build_endpoint_candidate_table <- function(rows_df) {
       if (!is.data.frame(rows_df) || nrow(rows_df) < 1L) {
@@ -11400,6 +11658,72 @@ app_server <- function(input, output, session) {
             value = "workflow_subject_structure",
             build_subject_panel_ui(subject_panel)
           ),
+          if (isTRUE(occupation_panel$has_assets)) {
+            bslib::accordion_panel(
+              "Occupation Densities",
+              value = "workflow_occupation_density",
+              shiny::tagList(
+                shiny::selectInput(
+                  "occupation_density_set",
+                  "Density set",
+                  choices = occupation_panel$set_choices,
+                  selected = occupation_panel$set_id
+                ),
+                shiny::selectizeInput(
+                  "occupation_density_subject",
+                  "Subject",
+                  choices = occupation_panel$subject_choices,
+                  selected = occupation_panel$subject_selected,
+                  multiple = FALSE,
+                  options = list(placeholder = "Choose subject")
+                ),
+                shiny::selectInput(
+                  "occupation_density_method",
+                  "Method",
+                  choices = occupation_panel$method_choices,
+                  selected = occupation_panel$method_selected
+                ),
+                shiny::selectInput(
+                  "occupation_density_mode",
+                  "Estimate",
+                  choices = c(
+                    "CV-selected parameters" = "selected",
+                    "Choose parameters" = "parameters"
+                  ),
+                  selected = occupation_panel$mode
+                ),
+                shiny::conditionalPanel(
+                  condition = "input.occupation_density_mode == 'selected'",
+                  shiny::selectInput(
+                    "occupation_density_selector",
+                    "CV selector",
+                    choices = c(
+                      "Brier score" = "minimum_brier",
+                      "Bernoulli negative log likelihood" = "minimum_bernoulli_nll"
+                    ),
+                    selected = occupation_panel$selector
+                  )
+                ),
+                shiny::uiOutput("occupation_density_parameters"),
+                shiny::actionButton(
+                  "occupation_density_show",
+                  "Show Density",
+                  class = "btn-primary gf-btn-wide"
+                ),
+                shiny::actionButton(
+                  "occupation_density_use_graph_k",
+                  "Use Estimate's Graph k",
+                  class = "btn-light gf-btn-wide"
+                ),
+                shiny::div(
+                  class = "gf-status-block",
+                  shiny::verbatimTextOutput("occupation_density_status")
+                )
+              )
+            )
+          } else {
+            NULL
+          },
           bslib::accordion_panel(
             "Endpoints",
             value = "workflow_endpoint_structure",
@@ -11709,6 +12033,7 @@ app_server <- function(input, output, session) {
         c(
           "workflow_graph_structure",
           "workflow_subject_structure",
+          if (isTRUE(occupation_panel$has_assets)) "workflow_occupation_density" else character(0),
           "workflow_endpoint_structure",
           "workflow_arm_structure",
           "workflow_condexp_structure",

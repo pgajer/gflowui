@@ -21,6 +21,7 @@ Imports:
     bslib,
     gflow
 Suggests:
+    geosmooth,
     knitr,
     plotly,
     rmarkdown,

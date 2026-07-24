@@ -7,6 +7,7 @@
 build_project_spec_iknn_3x3(
   project_root,
   graph_sets,
+  occupation_density_sets = list(),
   X = NULL,
   X_file = NULL,
   factor_sets = NULL,
@@ -22,6 +23,10 @@ build_project_spec_iknn_3x3(
 \item{project_root}{Path to the external analysis project root.}
 
 \item{graph_sets}{Graph-set specifications to include in the project spec.}
+
+\item{occupation_density_sets}{Optional subject-level occupation-density
+asset specifications. These are retained as a first-class manifest
+component and consumed by the occupation-density viewer.}
 
 \item{X}{Optional matrix-like reference data to persist and register as
 project-level \code{metadata$reference_data}.}
