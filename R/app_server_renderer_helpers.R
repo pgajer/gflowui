@@ -259,7 +259,7 @@ gflowui_make_server_renderer_helpers <- function(rv, current_reference_info) {
       return(integer(0))
     }
     comp <- tryCatch(
-      gflow::graph.connected.components(adj_list),
+      dgraphs::graph.connected.components(adj_list),
       error = function(e) NULL
     )
     comp <- suppressWarnings(as.integer(comp))

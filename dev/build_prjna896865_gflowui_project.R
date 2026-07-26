@@ -291,7 +291,7 @@ build_graph_family_from_embedding <- function(embedding_mat, k_values, selected_
 
   for (ii in seq_along(k_values)) {
     k_use <- as.integer(k_values[[ii]])
-    graph_raw <- gflow::create.single.iknn.graph(embedding_mat, k = k_use, verbose = FALSE)
+    graph_raw <- dgraphs::create.single.iknn.graph(embedding_mat, k = k_use, verbose = FALSE)
     adj_use <- graph_raw$pruned_adj_list %||% graph_raw$adj_list
     wt_use <- graph_raw$pruned_weight_list %||% graph_raw$weight_list
     if (!is.list(adj_use) || length(adj_use) != nrow(embedding_mat)) {
