@@ -9,9 +9,15 @@ require_gflow <- function() {
   }
 }
 
+require_dgraphs <- function() {
+  if (!requireNamespace("dgraphs", quietly = TRUE)) {
+    stop("Package 'dgraphs' is required. Install it before running gflowui.", call. = FALSE)
+  }
+}
+
 gflow_build_graph <- function(X, kmin, kmax, method = "edit", labels = NULL, verbose = FALSE, ...) {
-  require_gflow()
-  f_build <- .get_gflow_function("build.iknn.graphs.and.selectk")
+  require_dgraphs()
+  f_build <- dgraphs::build.iknn.graphs.and.selectk
 
   method <- match.arg(method, choices = c("both", "edit", "mixing", "none"))
   X <- .as_numeric_matrix(X)
@@ -70,7 +76,7 @@ gflow_build_graph <- function(X, kmin, kmax, method = "edit", labels = NULL, ver
 
   g_list <- res$X.graphs$geom_pruned_graphs
   if (!is.list(g_list) || length(g_list) < selected_idx) {
-    stop("Could not retrieve selected graph from gflow result.", call. = FALSE)
+    stop("Could not retrieve selected graph from dgraphs result.", call. = FALSE)
   }
   selected_graph <- g_list[[selected_idx]]
   adj_list <- selected_graph$adj_list %||% selected_graph$adjacency.list
@@ -201,8 +207,8 @@ gflow_detect_endpoints <- function(graph_obj,
                                    max.endpoints = NULL,
                                    seed = 1L,
                                    verbose = FALSE) {
-  require_gflow()
-  f_endpoints <- .get_gflow_function("geodesic.core.endpoints")
+  require_dgraphs()
+  f_endpoints <- dgraphs::geodesic.core.endpoints
 
   if (!is.list(graph_obj)) {
     stop("graph_obj must be a list from gflow_build_graph().", call. = FALSE)

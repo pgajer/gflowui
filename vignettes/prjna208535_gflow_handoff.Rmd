@@ -43,7 +43,7 @@ X <- X_raw[, keep, drop = FALSE]
 ## 2) Build graph family
 
 ```{r, eval = FALSE}
-gobj <- gflow::build.iknn.graphs.and.selectk(
+gobj <- dgraphs::build.iknn.graphs.and.selectk(
   X = X,
   kmin = 3L,
   kmax = 20L,

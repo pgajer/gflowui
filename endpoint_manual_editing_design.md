@@ -5,7 +5,7 @@
 gflow identifies graph endpoints via two algorithmic methods:
 
 1. **Evenness method** — computes `evenness.hat` via `gflow::fit.rdgraph.regression()` over a specific graph, then identifies local minima and basin characteristics via `gflow::compute.gfc()`. Used in both AGP and symptoms projects.
-2. **Geodesic core method** — uses `gflow::geodesic.core.endpoints()` to identify endpoints based on eccentricity and distance-to-core metrics. Used in the AGP project.
+2. **Geodesic core method** — uses `dgraphs::geodesic.core.endpoints()` to identify endpoints based on eccentricity and distance-to-core metrics. Used in the AGP project.
 
 Both methods produce pre-computed endpoint datasets that gflowui loads from CSV/RDS files and displays in the **Endpoints** accordion panel. The current UI presents a METHOD/K table with checkboxes controlling which datasets are overlaid on the 3D graph view.
 

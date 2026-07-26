@@ -9,10 +9,10 @@ gflowui::run_gflowui()
 
 ## MVP
 
-- Replace graph adapter stub with `gflow::build.iknn.graphs.and.selectk()`.
+- Replace graph adapter stub with `dgraphs::build.iknn.graphs.and.selectk()`.
 - Add full outcome + feature conditional expectation workflow.
 - Integrate 3D HTML rendering from `gflow::plot3D.cont.html()` and friends.
-- Add endpoint overlay flow using `gflow::geodesic.core.endpoints()`.
+- Add endpoint overlay flow using `dgraphs::geodesic.core.endpoints()`.
 
 ## V1
 

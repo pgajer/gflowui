@@ -27,7 +27,7 @@ sets through a small number of project-specific dropdowns.
 Each graph set should provide at minimum:
 
 - `id`, `label`
-- `graph_file`: `.rds` from `gflow::build.iknn.graphs.and.selectk()`
+- `graph_file`: `.rds` from `dgraphs::build.iknn.graphs.and.selectk()`
 - `k_values`
 - `n_samples`, `n_features`
 

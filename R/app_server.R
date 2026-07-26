@@ -7610,7 +7610,7 @@ app_server <- function(input, output, session) {
 
     component_ids <- rep.int(1L, n_vertices)
     comp_res <- tryCatch(
-      gflow::graph.connected.components(adj_list),
+      dgraphs::graph.connected.components(adj_list),
       error = function(e) NULL
     )
     comp_int <- suppressWarnings(as.integer(comp_res))

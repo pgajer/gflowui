@@ -8,7 +8,7 @@
 
 In AGP, [`17_evenness_endpoints_k7.R`](/Users/pgajer/current_projects/AGP/R/17_evenness_endpoints_k7.R#L1399) does exactly what you described, but with one extra mode. It first fits `evenness.hat` with `gflow::fit.rdgraph.regression()` on the current graph [`17_evenness_endpoints_k7.R`](/Users/pgajer/current_projects/AGP/R/17_evenness_endpoints_k7.R#L1381), then selects auto endpoints by `endpoint.mode`:
 1. `evenness_minima` via `gflow::compute.gfc()` [`17_evenness_endpoints_k7.R`](/Users/pgajer/current_projects/AGP/R/17_evenness_endpoints_k7.R#L716)
-2. `core_eccentricity` via `gflow::geodesic.core.endpoints()` [`17_evenness_endpoints_k7.R`](/Users/pgajer/current_projects/AGP/R/17_evenness_endpoints_k7.R#L765)
+2. `core_eccentricity` via `dgraphs::geodesic.core.endpoints()` [`17_evenness_endpoints_k7.R`](/Users/pgajer/current_projects/AGP/R/17_evenness_endpoints_k7.R#L765)
 3. `major_arms`, which is also present in that script [`17_evenness_endpoints_k7.R`](/Users/pgajer/current_projects/AGP/R/17_evenness_endpoints_k7.R#L861)
 
 AGP already has a manual curation layer, but it is not a third detector. It seeds a CSV from the auto endpoint set [`17_evenness_endpoints_k7.R`](/Users/pgajer/current_projects/AGP/R/17_evenness_endpoints_k7.R#L440), reads back rows with `include=TRUE` [`17_evenness_endpoints_k7.R`](/Users/pgajer/current_projects/AGP/R/17_evenness_endpoints_k7.R#L556), and if `manual.endpoints.use=TRUE` it replaces the auto set with that curated selection [`17_evenness_endpoints_k7.R`](/Users/pgajer/current_projects/AGP/R/17_evenness_endpoints_k7.R#L1520). Labels are then regenerated with `create.endpoint.labels.local()` and manual label edits override them [`17_evenness_endpoints_k7.R`](/Users/pgajer/current_projects/AGP/R/17_evenness_endpoints_k7.R#L327), [`17_evenness_endpoints_k7.R`](/Users/pgajer/current_projects/AGP/R/17_evenness_endpoints_k7.R#L1534).
@@ -69,4 +69,3 @@ If you want, the next concrete step should be to redesign the manifest/app model
 
 
 # [Claude]
-
