@@ -36,6 +36,67 @@ gflowui_normalize_density <- function(x) {
   out / total
 }
 
+gflowui_numeric_color_encoding <- function(
+    values,
+    transform = "identity",
+    title = "Value",
+    density_log_decades = 6) {
+  raw <- suppressWarnings(as.numeric(values))
+  mapped <- raw
+  colorbar <- list(title = as.character(title))
+  floor_value <- NA_real_
+
+  if (!identical(as.character(transform), "density_log10")) {
+    return(list(
+      raw_values = raw,
+      mapped_values = mapped,
+      colorbar = colorbar,
+      floor_value = floor_value
+    ))
+  }
+
+  positive <- raw[is.finite(raw) & raw > 0]
+  if (length(positive) < 1L) {
+    return(list(
+      raw_values = raw,
+      mapped_values = mapped,
+      colorbar = colorbar,
+      floor_value = floor_value
+    ))
+  }
+
+  density_log_decades <- suppressWarnings(as.numeric(density_log_decades))
+  if (!is.finite(density_log_decades) || density_log_decades <= 0) {
+    density_log_decades <- 6
+  }
+  peak <- max(positive)
+  floor_value <- max(peak * 10^(-density_log_decades), .Machine$double.xmin)
+  finite <- is.finite(raw)
+  mapped[finite] <- log10(pmax(raw[finite], floor_value))
+
+  limits <- c(log10(floor_value), log10(peak))
+  ticks <- pretty(limits, n = 5)
+  ticks <- ticks[is.finite(ticks) & ticks > limits[[1]] & ticks < limits[[2]]]
+  ticks <- sort(unique(c(limits[[1]], ticks, limits[[2]])))
+  tick_labels <- formatC(10^ticks, format = "e", digits = 1)
+  if (length(tick_labels) > 0L) {
+    tick_labels[[1L]] <- paste0("<=", formatC(floor_value, format = "e", digits = 1))
+  }
+
+  colorbar <- list(
+    title = paste0(as.character(title), "<br>(log10 color)"),
+    tickvals = ticks,
+    ticktext = tick_labels
+  )
+  list(
+    raw_values = raw,
+    mapped_values = mapped,
+    colorbar = colorbar,
+    floor_value = floor_value,
+    color_limits = limits
+  )
+}
+
 gflowui_occupation_density_method <- function(set, method_id) {
   methods <- set$methods %||% list()
   method_ids <- vapply(methods, function(x) as.character(x$id %||% ""), character(1))
