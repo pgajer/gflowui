@@ -7384,16 +7384,32 @@ app_server <- function(input, output, session) {
     if (!(method_selected %in% method_ids)) {
       method_selected <- method_ids[[1L]]
     }
+    method <- methods[[match(method_selected, method_ids)]]
+    is_precomputed_path <- identical(
+      as.character(method$source %||% ""),
+      "precomputed_path"
+    )
+    mode_default <- if (isTRUE(is_precomputed_path)) "parameters" else "selected"
+    mode <- as.character(
+      input$occupation_density_mode %||%
+        manifest$defaults$occupation_density_mode %||%
+        mode_default
+    )
+    if (isTRUE(is_precomputed_path)) {
+      mode <- "parameters"
+    }
     list(
       has_assets = TRUE,
       set = set,
+      method = method,
       set_id = set_id,
       set_choices = stats::setNames(set_ids, set_labels),
       subject_choices = stats::setNames(subjects, paste("Subject", subjects)),
       subject_selected = subject_selected,
       method_choices = stats::setNames(method_ids, method_labels),
       method_selected = method_selected,
-      mode = as.character(input$occupation_density_mode %||% "selected"),
+      is_precomputed_path = is_precomputed_path,
+      mode = mode,
       selector = as.character(input$occupation_density_selector %||% "minimum_brier")
     )
   })
@@ -7406,38 +7422,166 @@ app_server <- function(input, output, session) {
     }
     method_id <- as.character(input$occupation_density_method %||% st$method_selected)
     if (identical(method_id, "graph_heat_kernel")) {
-      k_values <- as.integer(st$set$graph_k_values %||% 3L:25L)
-      k_selected <- suppressWarnings(as.integer(
-        input$occupation_density_graph_k %||% st$set$default_graph_k %||% k_values[[1L]]
-      ))
-      if (!(k_selected %in% k_values)) {
-        k_selected <- k_values[[1L]]
-      }
-      method <- st$set$methods[[match(
-        method_id,
-        vapply(st$set$methods, function(x) as.character(x$id %||% ""), character(1))
-      )]]
-      basis_path <- sprintf(as.character(method$basis_file_template), k_selected)
-      basis_path <- tryCatch(
-        gflowui_occupation_density_path(basis_path, active_manifest()$project_root),
-        error = function(e) ""
-      )
-      eta_grid <- if (nzchar(basis_path)) readRDS(basis_path)$eta.grid else numeric(0)
-      eta_choices <- stats::setNames(
-        seq_along(eta_grid),
-        sprintf("%02d: eta=%s", seq_along(eta_grid), formatC(eta_grid, digits = 5, format = "fg"))
-      )
-      shiny::tagList(
-        shiny::selectInput(
-          "occupation_density_graph_k", "Graph k",
-          choices = k_values, selected = k_selected
-        ),
-        shiny::selectInput(
-          "occupation_density_eta_index", "Heat-time candidate",
-          choices = eta_choices,
-          selected = as.character(input$occupation_density_eta_index %||% "1")
+      method <- gflowui_occupation_density_method(st$set, method_id)
+      if (identical(as.character(method$source %||% ""), "precomputed_path")) {
+        asset <- tryCatch(
+          gflowui_precomputed_density_path(
+            st$set,
+            active_manifest()$project_root,
+            method_id
+          ),
+          error = function(e) e
         )
-      )
+        if (inherits(asset, "error")) {
+          return(shiny::p(
+            class = "gf-hint",
+            sprintf("Precomputed path unavailable: %s", conditionMessage(asset))
+          ))
+        }
+        path_summary <- asset$path_summary
+        selected_index <- gflowui_precomputed_selected_eta_index(path_summary)
+        eta_index <- suppressWarnings(as.integer(
+          input$occupation_density_eta_index %||% selected_index
+        ))
+        if (!(eta_index %in% suppressWarnings(as.integer(path_summary$eta.index)))) {
+          eta_index <- selected_index
+        }
+        current_row <- path_summary[
+          suppressWarnings(as.integer(path_summary$eta.index)) == eta_index,
+          ,
+          drop = FALSE
+        ]
+        selected_row <- path_summary[
+          suppressWarnings(as.integer(path_summary$eta.index)) == selected_index,
+          ,
+          drop = FALSE
+        ]
+        log_eta <- function(row) {
+          log10(suppressWarnings(as.numeric(row$eta[[1L]])))
+        }
+        top_k <- suppressWarnings(as.integer(
+          input$occupation_density_top_k %||%
+            active_manifest()$defaults$occupation_density_top_k %||%
+            6L
+        ))
+        if (!is.finite(top_k) || top_k < 1L) {
+          top_k <- 6L
+        }
+        shiny::tagList(
+          shiny::sliderInput(
+            "occupation_density_eta_index",
+            "Diffusion time",
+            min = min(path_summary$eta.index),
+            max = max(path_summary$eta.index),
+            value = eta_index,
+            step = 1L,
+            ticks = FALSE
+          ),
+          shiny::div(
+            class = "gf-status-block",
+            shiny::p(sprintf(
+              "Current: index %d of %d; t=%s; log10(t)=%s.",
+              eta_index,
+              nrow(path_summary),
+              formatC(
+                suppressWarnings(as.numeric(current_row$eta[[1L]])),
+                digits = 7,
+                format = "fg"
+              ),
+              formatC(log_eta(current_row), digits = 5, format = "fg")
+            )),
+            shiny::p(sprintf(
+              "Brier-selected: index %d; t=%s; log10(t)=%s; mean Brier=%s.",
+              selected_index,
+              formatC(
+                suppressWarnings(as.numeric(selected_row$eta[[1L]])),
+                digits = 7,
+                format = "fg"
+              ),
+              formatC(log_eta(selected_row), digits = 5, format = "fg"),
+              formatC(
+                suppressWarnings(as.numeric(selected_row$mean.brier[[1L]])),
+                digits = 6,
+                format = "fg"
+              )
+            ))
+          ),
+          shiny::radioButtons(
+            "occupation_density_display",
+            "Display",
+            choices = c(
+              "Density" = "density",
+              "Top-K basins" = "top_k_basins"
+            ),
+            selected = as.character(
+              input$occupation_density_display %||%
+                active_manifest()$defaults$occupation_density_display %||%
+                "density"
+            ),
+            inline = TRUE
+          ),
+          shiny::conditionalPanel(
+            condition = "input.occupation_density_display == 'top_k_basins'",
+            shiny::numericInput(
+              "occupation_density_top_k",
+              "Number of highest-mass basins (K)",
+              value = top_k,
+              min = 1L,
+              step = 1L
+            )
+          )
+        )
+      } else {
+        k_values <- as.integer(st$set$graph_k_values %||% 3L:25L)
+        k_selected <- suppressWarnings(as.integer(
+          input$occupation_density_graph_k %||%
+            st$set$default_graph_k %||%
+            k_values[[1L]]
+        ))
+        if (!(k_selected %in% k_values)) {
+          k_selected <- k_values[[1L]]
+        }
+        method <- st$set$methods[[match(
+          method_id,
+          vapply(
+            st$set$methods,
+            function(x) as.character(x$id %||% ""),
+            character(1)
+          )
+        )]]
+        basis_path <- sprintf(as.character(method$basis_file_template), k_selected)
+        basis_path <- tryCatch(
+          gflowui_occupation_density_path(
+            basis_path,
+            active_manifest()$project_root
+          ),
+          error = function(e) ""
+        )
+        eta_grid <- if (nzchar(basis_path)) {
+          readRDS(basis_path)$eta.grid
+        } else {
+          numeric(0)
+        }
+        eta_choices <- stats::setNames(
+          seq_along(eta_grid),
+          sprintf(
+            "%02d: eta=%s",
+            seq_along(eta_grid),
+            formatC(eta_grid, digits = 5, format = "fg")
+          )
+        )
+        shiny::tagList(
+          shiny::selectInput(
+            "occupation_density_graph_k", "Graph k",
+            choices = k_values, selected = k_selected
+          ),
+          shiny::selectInput(
+            "occupation_density_eta_index", "Heat-time candidate",
+            choices = eta_choices,
+            selected = as.character(input$occupation_density_eta_index %||% "1")
+          )
+        )
+      }
     } else if (identical(method_id, "chart_kernel")) {
       grid <- st$set$chart_parameter_grid
       shiny::tagList(
@@ -7466,10 +7610,29 @@ app_server <- function(input, output, session) {
     occupation_density_status()
   })
 
-  shiny::observeEvent(input$occupation_density_show, {
+  output$occupation_density_basin_table <- shiny::renderTable({
+    result <- occupation_density_result()
+    if (!is.list(result) ||
+        !identical(as.character(result$display_mode %||% ""), "top_k_basins") ||
+        !is.data.frame(result$basin_table) ||
+        nrow(result$basin_table) < 1L) {
+      return(NULL)
+    }
+    out <- result$basin_table
+    out$mass <- formatC(out$mass, digits = 4, format = "f")
+    out$cumulative.mass <- formatC(
+      out$cumulative.mass, digits = 4, format = "f"
+    )
+    names(out) <- c(
+      "Rank", "Basin", "Mass", "Cumulative mass", "Support", "Peak vertex"
+    )
+    out
+  }, striped = TRUE, bordered = FALSE, spacing = "xs", rownames = FALSE)
+
+  show_occupation_density_selection <- function(notify_errors = TRUE) {
     st <- occupation_density_panel_state()
     if (!isTRUE(st$has_assets)) {
-      return()
+      return(invisible(NULL))
     }
     mode <- as.character(input$occupation_density_mode %||% "selected")
     method_id <- as.character(input$occupation_density_method %||% st$method_selected)
@@ -7477,7 +7640,9 @@ app_server <- function(input, output, session) {
     params <- if (identical(method_id, "graph_heat_kernel")) {
       list(
         graph_k = suppressWarnings(as.integer(input$occupation_density_graph_k)),
-        eta_index = suppressWarnings(as.integer(input$occupation_density_eta_index))
+        eta_index = suppressWarnings(as.integer(input$occupation_density_eta_index)),
+        display_mode = as.character(input$occupation_density_display %||% "density"),
+        top_k = suppressWarnings(as.integer(input$occupation_density_top_k %||% 6L))
       )
     } else {
       list(
@@ -7500,8 +7665,10 @@ app_server <- function(input, output, session) {
     )
     if (inherits(result, "error")) {
       occupation_density_status(sprintf("Density evaluation failed: %s", conditionMessage(result)))
-      shiny::showNotification(conditionMessage(result), type = "error")
-      return()
+      if (isTRUE(notify_errors)) {
+        shiny::showNotification(conditionMessage(result), type = "error")
+      }
+      return(invisible(NULL))
     }
     selected <- result$selected
     graph_k <- if (is.data.frame(selected) && "graph.k" %in% names(selected)) {
@@ -7516,6 +7683,19 @@ app_server <- function(input, output, session) {
       } else {
         "Brier-selected"
       }
+    } else if (identical(
+      as.character(result$method$source %||% ""),
+      "precomputed_path"
+    )) {
+      sprintf(
+        "time index %d%s",
+        suppressWarnings(as.integer(result$selected$eta.index[[1L]])),
+        if (identical(result$display_mode, "top_k_basins")) {
+          sprintf(", top %d basins", suppressWarnings(as.integer(result$top_k)))
+        } else {
+          ""
+        }
+      )
     } else {
       "parameter-selected"
     }
@@ -7537,7 +7717,11 @@ app_server <- function(input, output, session) {
       session, "graph_layout_color_by",
       selected = "occupation_density_active"
     )
-    graph_note <- if (is.finite(graph_k)) {
+    graph_note <- if (is.finite(graph_k) &&
+                      identical(as.character(result$method$source %||% ""),
+                                "precomputed_path")) {
+      sprintf(" The field is shown on frozen G_%d.", graph_k)
+    } else if (is.finite(graph_k)) {
       sprintf(" The estimate selected G_%d; use the button below to display that graph.", graph_k)
     } else {
       " Chart kernel does not select graph k; the density is shown on the currently displayed graph."
@@ -7546,7 +7730,28 @@ app_server <- function(input, output, session) {
       "Showing subject %s, %s, %s.%s",
       subject_id, method_label, selector_label, graph_note
     ))
+    invisible(result)
+  }
+
+  shiny::observeEvent(input$occupation_density_show, {
+    show_occupation_density_selection(notify_errors = TRUE)
   }, ignoreInit = TRUE)
+
+  shiny::observeEvent(
+    list(
+      input$occupation_density_eta_index,
+      input$occupation_density_display,
+      input$occupation_density_top_k
+    ),
+    {
+      st <- occupation_density_panel_state()
+      already_showing <- is.list(shiny::isolate(occupation_density_result()))
+      if (isTRUE(st$is_precomputed_path) && isTRUE(already_showing)) {
+        show_occupation_density_selection(notify_errors = FALSE)
+      }
+    },
+    ignoreInit = TRUE
+  )
 
   shiny::observeEvent(input$occupation_density_use_graph_k, {
     result <- occupation_density_result()
@@ -7750,6 +7955,14 @@ app_server <- function(input, output, session) {
     occupation_density <- occupation_density_result()
     if (is.list(occupation_density) &&
         length(occupation_density$values %||% numeric(0)) == n_vertices) {
+      occupation_type <- if (identical(
+        as.character(occupation_density$color_type %||% "numeric"),
+        "categorical"
+      )) {
+        "categorical"
+      } else {
+        "numeric"
+      }
       add_source(
         key = "occupation_density_active",
         label = sprintf(
@@ -7759,8 +7972,10 @@ app_server <- function(input, output, session) {
           as.character(occupation_density$selector_label %||% "estimate")
         ),
         values = occupation_density$values,
-        type = "numeric",
-        colorbar_title = "EOD mass"
+        type = occupation_type,
+        colorbar_title = as.character(
+          occupation_density$colorbar_title %||% "EOD mass"
+        )
       )
     }
 
@@ -8100,6 +8315,26 @@ app_server <- function(input, output, session) {
     match_idx <- match(lev_low, names(cst_colors))
     n_match <- sum(!is.na(match_idx))
     src_txt <- tolower(sprintf("%s %s", as.character(source_key %||% ""), as.character(source_label %||% "")))
+    basin_levels <- grepl("^Basin [0-9]+", lev)
+    if (any(basin_levels) &&
+        grepl("occupation_density|basin", src_txt, perl = TRUE)) {
+      basin_rank <- suppressWarnings(as.integer(
+        sub("^Basin ([0-9]+).*$", "\\1", lev[basin_levels])
+      ))
+      basin_order <- order(basin_rank, lev[basin_levels], method = "radix")
+      ordered_basin_levels <- lev[basin_levels][basin_order]
+      other_levels <- lev[!basin_levels]
+      lev <- c(ordered_basin_levels, other_levels)
+      basin_colors <- grDevices::hcl.colors(
+        max(1L, length(ordered_basin_levels)),
+        "Dark 3"
+      )[seq_along(ordered_basin_levels)]
+      cols <- c(
+        stats::setNames(basin_colors, ordered_basin_levels),
+        stats::setNames(rep("#D1D5DB", length(other_levels)), other_levels)
+      )
+      return(list(values = vv, levels = lev, colors = cols))
+    }
     use_cst <- grepl("(^|[^a-z])cst([^a-z]|$)|subcst|linf", src_txt, perl = TRUE) ||
       (length(lev) > 0L && n_match >= max(2L, floor(length(lev) / 2L)))
     if (isTRUE(use_cst) && n_match > 0L) {
@@ -11686,10 +11921,14 @@ app_server <- function(input, output, session) {
                 shiny::selectInput(
                   "occupation_density_mode",
                   "Estimate",
-                  choices = c(
-                    "CV-selected parameters" = "selected",
-                    "Choose parameters" = "parameters"
-                  ),
+                  choices = if (isTRUE(occupation_panel$is_precomputed_path)) {
+                    c("Explore diffusion-time path" = "parameters")
+                  } else {
+                    c(
+                      "CV-selected parameters" = "selected",
+                      "Choose parameters" = "parameters"
+                    )
+                  },
                   selected = occupation_panel$mode
                 ),
                 shiny::conditionalPanel(
@@ -11707,17 +11946,26 @@ app_server <- function(input, output, session) {
                 shiny::uiOutput("occupation_density_parameters"),
                 shiny::actionButton(
                   "occupation_density_show",
-                  "Show Density",
+                  "Show Selection",
                   class = "btn-primary gf-btn-wide"
                 ),
-                shiny::actionButton(
-                  "occupation_density_use_graph_k",
-                  "Use Estimate's Graph k",
-                  class = "btn-light gf-btn-wide"
-                ),
+                if (!isTRUE(occupation_panel$is_precomputed_path)) {
+                  shiny::actionButton(
+                    "occupation_density_use_graph_k",
+                    "Use Estimate's Graph k",
+                    class = "btn-light gf-btn-wide"
+                  )
+                } else {
+                  NULL
+                },
                 shiny::div(
                   class = "gf-status-block",
                   shiny::verbatimTextOutput("occupation_density_status")
+                ),
+                shiny::conditionalPanel(
+                  condition = "input.occupation_density_display == 'top_k_basins'",
+                  shiny::h5("Highest-mass basins"),
+                  shiny::tableOutput("occupation_density_basin_table")
                 )
               )
             )
