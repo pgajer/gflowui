@@ -66,6 +66,42 @@ test_that("selected occupation-density estimates load and normalize", {
   expect_equal(result$selected$graph.k, 7L)
 })
 
+test_that("density colors use a bounded log scale without changing raw mass", {
+  mass <- c(0, 1e-12, 1e-8, 1e-6, 1e-4, 1e-2, NA_real_)
+  encoded <- gflowui:::gflowui_numeric_color_encoding(
+    mass,
+    transform = "density_log10",
+    title = "Probability mass"
+  )
+
+  expect_equal(encoded$raw_values, mass)
+  expect_equal(encoded$floor_value, 1e-8)
+  expect_equal(encoded$mapped_values[1:3], rep(-8, 3))
+  expect_true(all(diff(encoded$mapped_values[3:6]) > 0))
+  expect_equal(encoded$color_limits, c(-8, -2))
+  expect_match(encoded$colorbar$title, "log10 color", fixed = TRUE)
+  expect_match(encoded$colorbar$ticktext[[1L]], "<=", fixed = TRUE)
+
+  uniform <- gflowui:::gflowui_numeric_color_encoding(
+    rep(0.25, 4),
+    transform = "density_log10",
+    title = "Probability mass"
+  )
+  expect_equal(uniform$mapped_values, rep(log10(0.25), 4))
+  expect_equal(
+    uniform$color_limits,
+    c(log10(0.25) - 6, log10(0.25))
+  )
+
+  identity <- gflowui:::gflowui_numeric_color_encoding(
+    mass,
+    transform = "identity",
+    title = "Value"
+  )
+  expect_equal(identity$mapped_values, mass)
+  expect_identical(identity$colorbar$title, "Value")
+})
+
 test_that("precomputed heat paths expose every time and current top-K basins", {
   root <- tempfile("gflowui-precomputed-path-")
   dir.create(file.path(root, "paths"), recursive = TRUE)

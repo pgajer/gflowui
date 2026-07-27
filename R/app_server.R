@@ -7896,7 +7896,8 @@ app_server <- function(input, output, session) {
         label,
         values,
         type = c("numeric", "categorical"),
-        colorbar_title = NULL) {
+        colorbar_title = NULL,
+        color_transform = "identity") {
       type <- match.arg(type)
       vv <- values
       if (length(vv) != n_vertices) {
@@ -7914,7 +7915,8 @@ app_server <- function(input, output, session) {
         label = label,
         type = type,
         values = vv,
-        colorbar_title = as.character(colorbar_title %||% label)
+        colorbar_title = as.character(colorbar_title %||% label),
+        color_transform = as.character(color_transform %||% "identity")
       )
       invisible(NULL)
     }
@@ -7975,7 +7977,12 @@ app_server <- function(input, output, session) {
         type = occupation_type,
         colorbar_title = as.character(
           occupation_density$colorbar_title %||% "EOD mass"
-        )
+        ),
+        color_transform = if (identical(occupation_type, "numeric")) {
+          "density_log10"
+        } else {
+          "identity"
+        }
       )
     }
 
@@ -8396,14 +8403,21 @@ app_server <- function(input, output, session) {
     )
   }
 
-  numeric_arm_colors <- function(values, palette = "Viridis", alpha = 1) {
+  numeric_arm_colors <- function(
+      values,
+      palette = "Viridis",
+      alpha = 1,
+      color_limits = NULL) {
     vv <- suppressWarnings(as.numeric(values %||% numeric(0)))
     out <- rep("#9ca3af", length(vv))
     ok <- is.finite(vv)
     if (!any(ok)) {
       return(out)
     }
-    rng <- range(vv[ok], na.rm = TRUE)
+    rng <- suppressWarnings(as.numeric(color_limits %||% numeric(0)))
+    if (length(rng) != 2L || any(!is.finite(rng)) || rng[[1]] > rng[[2]]) {
+      rng <- range(vv[ok], na.rm = TRUE)
+    }
     if (!all(is.finite(rng))) {
       return(out)
     }
@@ -8696,6 +8710,24 @@ app_server <- function(input, output, session) {
         }
       } else {
         vv <- suppressWarnings(as.numeric(plot_data$value))
+        color_encoding <- gflowui_numeric_color_encoding(
+          values = vv,
+          transform = src$color_transform %||% "identity",
+          title = src$colorbar_title %||% src$label
+        )
+        color_limits <- suppressWarnings(as.numeric(
+          color_encoding$color_limits %||% numeric(0)
+        ))
+        color_min <- if (length(color_limits) == 2L && all(is.finite(color_limits))) {
+          color_limits[[1L]]
+        } else {
+          NULL
+        }
+        color_max <- if (length(color_limits) == 2L && all(is.finite(color_limits))) {
+          color_limits[[2L]]
+        } else {
+          NULL
+        }
         p <- p %>%
           plotly::add_trace(
             type = "scatter3d",
@@ -8705,14 +8737,21 @@ app_server <- function(input, output, session) {
             z = plot_data$z,
             key = plot_data$vertex,
             customdata = plot_data$vertex,
-            text = sprintf("vertex=%d<br>%s=%s", plot_data$vertex, src$label, signif(vv, 4)),
+            text = sprintf(
+              "vertex=%d<br>%s=%s",
+              plot_data$vertex,
+              src$label,
+              formatC(color_encoding$raw_values, format = "g", digits = 4)
+            ),
             hoverinfo = "text",
             marker = list(
               size = point_size,
-              color = vv,
+              color = color_encoding$mapped_values,
               colorscale = "Viridis",
+              cmin = color_min,
+              cmax = color_max,
               opacity = base_marker_opacity,
-              colorbar = list(title = as.character(src$colorbar_title %||% src$label))
+              colorbar = color_encoding$colorbar
             ),
             showlegend = FALSE
           )
@@ -9759,15 +9798,29 @@ app_server <- function(input, output, session) {
         if (all(!is.finite(vv))) {
           make_plain_widget()
         } else {
-          cont_palette <- if (isTRUE(dim_background_active)) {
-            function(x) grDevices::adjustcolor(grDevices::hcl.colors(length(x), "Viridis"), alpha.f = background_alpha_use)
+          color_encoding <- gflowui_numeric_color_encoding(
+            values = vv,
+            transform = src$color_transform %||% "identity",
+            title = src$colorbar_title %||% src$label
+          )
+          if (identical(as.character(src$color_transform %||% "identity"), "density_log10")) {
+            density_colors <- numeric_arm_colors(
+              color_encoding$mapped_values,
+              palette = "Viridis",
+              alpha = if (isTRUE(dim_background_active)) background_alpha_use else 1,
+              color_limits = color_encoding$color_limits
+            )
+            make_plain_widget(density_colors)
           } else {
-            NULL
-          }
-          tryCatch(
+            cont_palette <- if (isTRUE(dim_background_active)) {
+              function(x) grDevices::adjustcolor(grDevices::hcl.colors(length(x), "Viridis"), alpha.f = background_alpha_use)
+            } else {
+              NULL
+            }
+            tryCatch(
               resolve_gflow_plot3d_fn("plot3D.cont")(
                 X = coords_view,
-                y = vv,
+                y = color_encoding$mapped_values,
                 subset = rep(TRUE, nn_view),
                 non.highlight.type = if (identical(vertex_mode, "sphere")) "sphere" else "point",
                 highlight.type = if (identical(vertex_mode, "sphere")) "sphere" else "point",
@@ -9782,8 +9835,9 @@ app_server <- function(input, output, session) {
                 background.color = "white",
                 post.layers = post_layers
               ),
-            error = function(e) make_plain_widget()
-          )
+              error = function(e) make_plain_widget()
+            )
+          }
         }
       }
     })
