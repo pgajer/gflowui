@@ -618,6 +618,14 @@ test_that("basin panel discovers conditional-expectation estimates", {
       names(panel$choices),
       fixed = TRUE
     )))
+
+    controls <- htmltools::renderTags(output$workflow_controls)$html
+    expect_match(controls, "Largest maximum basins", fixed = TRUE)
+    expect_match(controls, "Largest minimum basins", fixed = TRUE)
+    expect_match(controls, "Ranking measure", fixed = TRUE)
+    expect_match(controls, "Compute Basin Complex", fixed = TRUE)
+    expect_match(controls, "Open Basin Inspector", fixed = TRUE)
+    expect_false(grepl("Flow direction", controls, fixed = TRUE))
   })
 })
 

@@ -1,0 +1,4 @@
+^dev$
+^\.git$
+^gflowui\.Rcheck$
+^gflowui_[^/]*\.tar\.gz$
