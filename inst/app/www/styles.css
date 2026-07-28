@@ -507,6 +507,79 @@ body {
   white-space: normal;
 }
 
+.gf-density-color-scheme {
+  margin: 0.45rem 0 0.2rem;
+  padding: 0.65rem 0.7rem 0.35rem;
+  border: 1px solid rgba(15, 139, 119, 0.26);
+  border-radius: 0.5rem;
+}
+
+.gf-density-color-scheme legend {
+  float: none;
+  width: auto;
+  margin: 0;
+  padding: 0 0.3rem;
+  color: #18383d;
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.gf-density-color-endpoints {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin-bottom: 0.45rem;
+  font-size: 0.82rem;
+}
+
+.gf-density-color-endpoint,
+.gf-density-mid-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.gf-density-color-ramp {
+  color: rgba(24, 56, 61, 0.7);
+}
+
+.gf-density-color-swatch {
+  display: inline-block;
+  width: 0.85rem;
+  height: 0.85rem;
+  flex: 0 0 0.85rem;
+  border: 1px solid rgba(24, 56, 61, 0.48);
+  border-radius: 0.15rem;
+}
+
+.gf-density-color-none {
+  background:
+    linear-gradient(
+      135deg,
+      transparent 43%,
+      #b91c1c 44%,
+      #b91c1c 56%,
+      transparent 57%
+    ),
+    #f8fafc;
+}
+
+.gf-density-color-scheme .form-group {
+  margin-bottom: 0;
+}
+
+.gf-density-color-scheme .shiny-options-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.65rem;
+}
+
+.gf-density-color-scheme .radio-inline {
+  margin-left: 0;
+  padding-left: 1.2rem;
+  font-size: 0.8rem;
+}
+
 .gf-workspace-panel table {
   font-size: 0.86rem;
 }
