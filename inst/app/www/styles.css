@@ -569,6 +569,24 @@ body {
   font-size: 0.8rem;
 }
 
+.gf-density-color-control {
+  padding: 0.2rem 0 0.55rem;
+}
+
+.gf-density-color-control + .gf-density-color-control {
+  border-top: 1px solid rgba(15, 139, 119, 0.14);
+  padding-top: 0.55rem;
+}
+
+.gf-density-color-control > .form-group:last-child {
+  margin-top: 0.15rem;
+}
+
+.gf-density-color-control .irs {
+  margin-top: -0.2rem;
+  margin-bottom: -0.2rem;
+}
+
 .gf-density-extrema {
   margin-top: 0.55rem;
   padding-bottom: 0.45rem;

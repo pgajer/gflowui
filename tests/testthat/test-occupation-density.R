@@ -127,6 +127,15 @@ test_that("density palettes expose selectable endpoints and midpoint", {
     ),
     c("#FDE725", "#C51B1D")
   )
+  expect_equal(
+    gflowui:::gflowui_density_palette(
+      midpoint = "blue",
+      low_alpha = 0.25,
+      midpoint_alpha = 0.5,
+      high_alpha = 0
+    ),
+    c("#FDE72540", "#2563EB80", "#C51B1D00")
+  )
 
   scale <- gflowui:::gflowui_plotly_colorscale(
     gflowui:::gflowui_density_palette(midpoint = "blue")
@@ -134,8 +143,66 @@ test_that("density palettes expose selectable endpoints and midpoint", {
   expect_equal(vapply(scale, `[[`, character(1), 1L), c("0", "0.5", "1"))
   expect_equal(
     vapply(scale, `[[`, character(1), 2L),
-    c("#FDE725", "#2563EB", "#C51B1D")
+    c(
+      "rgba(253,231,37,1.0000)",
+      "rgba(37,99,235,1.0000)",
+      "rgba(197,27,29,1.0000)"
+    )
   )
+})
+
+test_that("generic estimate basins support mass and support-size ranking", {
+  adj_list <- list(
+    c(2L, 4L),
+    c(1L, 3L, 5L),
+    c(2L, 6L),
+    c(1L, 5L, 7L),
+    c(2L, 4L, 6L, 8L),
+    c(3L, 5L, 9L),
+    c(4L, 8L),
+    c(5L, 7L, 9L),
+    c(6L, 8L)
+  )
+  edge_length_list <- lapply(
+    adj_list,
+    function(neighbors) rep(1, length(neighbors))
+  )
+  field <- c(0, 1, 0, 1, 3, 1, 0, 1, 2)
+
+  support_ranked <- gflowui:::gflowui_estimate_basin_overlay(
+    adj_list,
+    edge_length_list,
+    field,
+    direction = "max",
+    top_k = 1L
+  )
+  expect_identical(support_ranked$ranking, "primary support size")
+  expect_identical(support_ranked$top_k, 1L)
+  expect_identical(support_ranked$basin_count, 2L)
+  expect_equal(support_ranked$table$support, 8L)
+  expect_true(any(support_ranked$values == "Other basins"))
+
+  mass_ranked <- gflowui:::gflowui_estimate_basin_overlay(
+    adj_list,
+    edge_length_list,
+    field,
+    direction = "max",
+    top_k = 2L,
+    vertex_mass = field + 1
+  )
+  expect_identical(mass_ranked$ranking, "primary mass")
+  expect_identical(mass_ranked$top_k, 2L)
+  expect_true(all(is.finite(mass_ranked$table$mass)))
+
+  partial <- gflowui:::gflowui_estimate_basin_overlay(
+    adj_list,
+    edge_length_list,
+    replace(field, 1L, NA_real_),
+    direction = "min",
+    top_k = 2L
+  )
+  expect_identical(partial$values[[1L]], "Unavailable")
+  expect_identical(partial$direction, "min")
 })
 
 test_that("strict graph-local density extrema are ranked deterministically", {

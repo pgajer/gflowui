@@ -546,6 +546,48 @@ test_that("replayed load button counts do not overwrite the working set on start
   })
 })
 
+test_that("basin panel discovers conditional-expectation estimates", {
+  local_projects_data_sandbox()
+
+  reg <- gflowui::list_projects()
+  if (!("agp" %in% reg$id)) {
+    skip("AGP project is not registered in this environment")
+  }
+
+  shiny::testServer(gflowui:::app_server, {
+    open_project("agp")
+    session$flushReact()
+
+    panel <- basin_panel_state()
+    expect_true(isTRUE(panel$has_sources))
+    expect_true(any(grepl(
+      "CondExp",
+      names(panel$choices),
+      fixed = TRUE
+    )))
+  })
+})
+
+test_that("arm builder endpoint choices begin with explicit NONE", {
+  local_projects_data_sandbox()
+
+  reg <- gflowui::list_projects()
+  project_id <- "hmp_subject15_k03_heat_basin_path"
+  if (!(project_id %in% reg$id)) {
+    skip("The Subject 15 reference project is not registered")
+  }
+
+  shiny::testServer(gflowui:::app_server, {
+    open_project(project_id)
+    session$flushReact()
+
+    choices <- arm_builder_endpoint_choices()
+    expect_identical(names(choices)[[1L]], "NONE")
+    expect_identical(unname(choices[[1L]]), "none")
+    expect_null(resolve_arm_endpoint_choice("none"))
+  })
+})
+
 test_that("working endpoint row selection updates the inspector vertex", {
   local_projects_data_sandbox()
   reg <- gflowui::list_projects()

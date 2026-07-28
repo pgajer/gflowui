@@ -56,10 +56,19 @@ app_server <- function(input, output, session) {
   occupation_density_status <- shiny::reactiveVal(
     "Choose an estimate, then show it on the graph."
   )
+  basin_result <- shiny::reactiveVal(NULL)
+  basin_status <- shiny::reactiveVal(
+    "Apply an occupation density or choose a conditional-expectation estimate."
+  )
   density_display_settings <- shiny::reactiveValues(
     low = "yellow",
     midpoint = "none",
     high = "red",
+    low_alpha = 1,
+    midpoint_alpha = 1,
+    high_alpha = 1
+  )
+  basin_display_settings <- shiny::reactiveValues(
     show_maxima = FALSE,
     label_maxima = FALSE,
     show_minima = FALSE,
@@ -114,10 +123,23 @@ app_server <- function(input, output, session) {
         density_display_settings$midpoint %||% "none"
       ),
       high = as.character(density_display_settings$high %||% "red"),
-      show_maxima = isTRUE(density_display_settings$show_maxima),
-      label_maxima = isTRUE(density_display_settings$label_maxima),
-      show_minima = isTRUE(density_display_settings$show_minima),
-      label_minima = isTRUE(density_display_settings$label_minima)
+      low_alpha = suppressWarnings(as.numeric(
+        density_display_settings$low_alpha %||% 1
+      )),
+      midpoint_alpha = suppressWarnings(as.numeric(
+        density_display_settings$midpoint_alpha %||% 1
+      )),
+      high_alpha = suppressWarnings(as.numeric(
+        density_display_settings$high_alpha %||% 1
+      ))
+    )
+  }
+  basin_display_snapshot <- function() {
+    list(
+      show_maxima = isTRUE(basin_display_settings$show_maxima),
+      label_maxima = isTRUE(basin_display_settings$label_maxima),
+      show_minima = isTRUE(basin_display_settings$show_minima),
+      label_minima = isTRUE(basin_display_settings$label_minima)
     )
   }
   normalize_palette_choice <- function(x, choices, default = NULL) {
@@ -260,6 +282,10 @@ app_server <- function(input, output, session) {
     occupation_density_status(
       "Choose an estimate, then show it on the graph."
     )
+    basin_result(NULL)
+    basin_status(
+      "Apply an occupation density or choose a conditional-expectation estimate."
+    )
     quadform_layout_revision(0L)
   }, ignoreInit = FALSE)
 
@@ -282,24 +308,48 @@ app_server <- function(input, output, session) {
       default = "red"
     )
   }, ignoreInit = FALSE, ignoreNULL = TRUE)
-  shiny::observeEvent(input$occupation_density_show_maxima, {
-    density_display_settings$show_maxima <- isTRUE(
-      input$occupation_density_show_maxima
+  shiny::observeEvent(input$occupation_density_low_alpha, {
+    density_display_settings$low_alpha <- max(
+      0,
+      min(1, suppressWarnings(as.numeric(
+        input$occupation_density_low_alpha %||% 1
+      )))
     )
   }, ignoreInit = FALSE, ignoreNULL = TRUE)
-  shiny::observeEvent(input$occupation_density_label_maxima, {
-    density_display_settings$label_maxima <- isTRUE(
-      input$occupation_density_label_maxima
+  shiny::observeEvent(input$occupation_density_mid_alpha, {
+    density_display_settings$midpoint_alpha <- max(
+      0,
+      min(1, suppressWarnings(as.numeric(
+        input$occupation_density_mid_alpha %||% 1
+      )))
     )
   }, ignoreInit = FALSE, ignoreNULL = TRUE)
-  shiny::observeEvent(input$occupation_density_show_minima, {
-    density_display_settings$show_minima <- isTRUE(
-      input$occupation_density_show_minima
+  shiny::observeEvent(input$occupation_density_high_alpha, {
+    density_display_settings$high_alpha <- max(
+      0,
+      min(1, suppressWarnings(as.numeric(
+        input$occupation_density_high_alpha %||% 1
+      )))
     )
   }, ignoreInit = FALSE, ignoreNULL = TRUE)
-  shiny::observeEvent(input$occupation_density_label_minima, {
-    density_display_settings$label_minima <- isTRUE(
-      input$occupation_density_label_minima
+  shiny::observeEvent(input$basin_show_maxima, {
+    basin_display_settings$show_maxima <- isTRUE(
+      input$basin_show_maxima
+    )
+  }, ignoreInit = FALSE, ignoreNULL = TRUE)
+  shiny::observeEvent(input$basin_label_maxima, {
+    basin_display_settings$label_maxima <- isTRUE(
+      input$basin_label_maxima
+    )
+  }, ignoreInit = FALSE, ignoreNULL = TRUE)
+  shiny::observeEvent(input$basin_show_minima, {
+    basin_display_settings$show_minima <- isTRUE(
+      input$basin_show_minima
+    )
+  }, ignoreInit = FALSE, ignoreNULL = TRUE)
+  shiny::observeEvent(input$basin_label_minima, {
+    basin_display_settings$label_minima <- isTRUE(
+      input$basin_label_minima
     )
   }, ignoreInit = FALSE, ignoreNULL = TRUE)
 
@@ -6220,7 +6270,7 @@ app_server <- function(input, output, session) {
 
   arm_builder_endpoint_choices <- shiny::reactive({
     ep_rows <- working_endpoint_choice_rows()
-    out <- c()
+    out <- c("NONE" = "none")
     virt <- arm_virtual_endpoints()
     if (is.data.frame(virt) && nrow(virt) > 0L) {
       out <- c(out, stats::setNames(as.character(virt$key), as.character(virt$label)))
@@ -7555,14 +7605,6 @@ app_server <- function(input, output, session) {
         log_eta <- function(row) {
           log10(suppressWarnings(as.numeric(row$eta[[1L]])))
         }
-        top_k <- suppressWarnings(as.integer(
-          input$occupation_density_top_k %||%
-            active_manifest()$defaults$occupation_density_top_k %||%
-            6L
-        ))
-        if (!is.finite(top_k) || top_k < 1L) {
-          top_k <- 6L
-        }
         shiny::tagList(
           shiny::sliderInput(
             "occupation_density_eta_index",
@@ -7602,25 +7644,11 @@ app_server <- function(input, output, session) {
               )
             ))
           ),
-          shiny::radioButtons(
-            "occupation_density_display",
-            "Display",
-            choices = c(
-              "Density" = "density",
-              "Top-K basins" = "top_k_basins"
-            ),
-            selected = as.character(
-              input$occupation_density_display %||%
-                active_manifest()$defaults$occupation_density_display %||%
-                "density"
-            ),
-            inline = TRUE
-          ),
-          shiny::conditionalPanel(
-            condition = "input.occupation_density_display == 'density'",
-            shiny::tags$fieldset(
-              class = "gf-density-color-scheme",
-              shiny::tags$legend("Density color scheme"),
+          shiny::tags$fieldset(
+            class = "gf-density-color-scheme",
+            shiny::tags$legend("Density color scheme"),
+            shiny::div(
+              class = "gf-density-color-control",
               shiny::radioButtons(
                 "occupation_density_low_color",
                 "Low-density color",
@@ -7631,6 +7659,19 @@ app_server <- function(input, output, session) {
                 ),
                 inline = TRUE
               ),
+              shiny::sliderInput(
+                "occupation_density_low_alpha",
+                "Low-density opacity",
+                min = 0,
+                max = 1,
+                value = suppressWarnings(as.numeric(
+                  display_settings$low_alpha %||% 1
+                )),
+                step = 0.05
+              )
+            ),
+            shiny::div(
+              class = "gf-density-color-control",
               shiny::radioButtons(
                 "occupation_density_mid_color",
                 "Mid-range color",
@@ -7643,6 +7684,19 @@ app_server <- function(input, output, session) {
                 ),
                 inline = TRUE
               ),
+              shiny::sliderInput(
+                "occupation_density_mid_alpha",
+                "Mid-range opacity",
+                min = 0,
+                max = 1,
+                value = suppressWarnings(as.numeric(
+                  display_settings$midpoint_alpha %||% 1
+                )),
+                step = 0.05
+              )
+            ),
+            shiny::div(
+              class = "gf-density-color-control",
               shiny::radioButtons(
                 "occupation_density_high_color",
                 "High-density color",
@@ -7652,61 +7706,17 @@ app_server <- function(input, output, session) {
                   display_settings$high %||% "red"
                 ),
                 inline = TRUE
-              )
-            ),
-            shiny::tags$fieldset(
-              class = "gf-density-extrema",
-              shiny::tags$legend("Density extrema"),
-              shiny::div(
-                class = "gf-density-extrema-row",
-                shiny::checkboxInput(
-                  "occupation_density_show_maxima",
-                  "Show local maxima",
-                  value = isTRUE(
-                    display_settings$show_maxima
-                  )
-                ),
-                shiny::conditionalPanel(
-                  condition = "input.occupation_density_show_maxima",
-                  shiny::checkboxInput(
-                    "occupation_density_label_maxima",
-                    "Label maxima",
-                    value = isTRUE(
-                      display_settings$label_maxima
-                    )
-                  )
-                )
               ),
-              shiny::div(
-                class = "gf-density-extrema-row",
-                shiny::checkboxInput(
-                  "occupation_density_show_minima",
-                  "Show local minima",
-                  value = isTRUE(
-                    display_settings$show_minima
-                  )
-                ),
-                shiny::conditionalPanel(
-                  condition = "input.occupation_density_show_minima",
-                  shiny::checkboxInput(
-                    "occupation_density_label_minima",
-                    "Label minima",
-                    value = isTRUE(
-                      display_settings$label_minima
-                    )
-                  )
-                )
+              shiny::sliderInput(
+                "occupation_density_high_alpha",
+                "High-density opacity",
+                min = 0,
+                max = 1,
+                value = suppressWarnings(as.numeric(
+                  display_settings$high_alpha %||% 1
+                )),
+                step = 0.05
               )
-            )
-          ),
-          shiny::conditionalPanel(
-            condition = "input.occupation_density_display == 'top_k_basins'",
-            shiny::numericInput(
-              "occupation_density_top_k",
-              "Number of highest-mass basins (K)",
-              value = top_k,
-              min = 1L,
-              step = 1L
             )
           )
         )
@@ -7789,25 +7799,6 @@ app_server <- function(input, output, session) {
     occupation_density_status()
   })
 
-  output$occupation_density_basin_table <- shiny::renderTable({
-    result <- occupation_density_result()
-    if (!is.list(result) ||
-        !identical(as.character(result$display_mode %||% ""), "top_k_basins") ||
-        !is.data.frame(result$basin_table) ||
-        nrow(result$basin_table) < 1L) {
-      return(NULL)
-    }
-    out <- result$basin_table
-    out$mass <- formatC(out$mass, digits = 4, format = "f")
-    out$cumulative.mass <- formatC(
-      out$cumulative.mass, digits = 4, format = "f"
-    )
-    names(out) <- c(
-      "Rank", "Basin", "Mass", "Cumulative mass", "Support", "Peak vertex"
-    )
-    out
-  }, striped = TRUE, bordered = FALSE, spacing = "xs", rownames = FALSE)
-
   show_occupation_density_selection <- function(notify_errors = TRUE) {
     st <- occupation_density_panel_state()
     if (!isTRUE(st$has_assets)) {
@@ -7820,8 +7811,7 @@ app_server <- function(input, output, session) {
       list(
         graph_k = suppressWarnings(as.integer(input$occupation_density_graph_k)),
         eta_index = suppressWarnings(as.integer(input$occupation_density_eta_index)),
-        display_mode = as.character(input$occupation_density_display %||% "density"),
-        top_k = suppressWarnings(as.integer(input$occupation_density_top_k %||% 6L))
+        display_mode = "density"
       )
     } else {
       list(
@@ -7867,13 +7857,8 @@ app_server <- function(input, output, session) {
       "precomputed_path"
     )) {
       sprintf(
-        "time index %d%s",
-        suppressWarnings(as.integer(result$selected$eta.index[[1L]])),
-        if (identical(result$display_mode, "top_k_basins")) {
-          sprintf(", top %d basins", suppressWarnings(as.integer(result$top_k)))
-        } else {
-          ""
-        }
+        "time index %d",
+        suppressWarnings(as.integer(result$selected$eta.index[[1L]]))
       )
     } else {
       "parameter-selected"
@@ -7917,11 +7902,7 @@ app_server <- function(input, output, session) {
   }, ignoreInit = TRUE)
 
   shiny::observeEvent(
-    list(
-      input$occupation_density_eta_index,
-      input$occupation_density_display,
-      input$occupation_density_top_k
-    ),
+    input$occupation_density_eta_index,
     {
       st <- occupation_density_panel_state()
       already_showing <- is.list(shiny::isolate(occupation_density_result()))
@@ -8173,6 +8154,35 @@ app_server <- function(input, output, session) {
         density_high = "red"
       )
     }
+    basins <- basin_result()
+    if (is.list(basins) &&
+        identical(
+          as.character(basins$project_id %||% ""),
+          as.character(rv$project.id %||% "")
+        ) &&
+        identical(
+          as.character(basins$graph_set_id %||% ""),
+          as.character(spec$set_id %||% "")
+        ) &&
+        identical(
+          suppressWarnings(as.integer(basins$graph_k %||% NA_integer_)),
+          suppressWarnings(as.integer(picked$k_actual %||% NA_integer_))
+        ) &&
+        length(basins$values %||% character(0)) == n_vertices) {
+      add_source(
+        key = "basin_active",
+        label = sprintf(
+          "Basins: %s",
+          as.character(basins$source_label %||% "selected estimate")
+        ),
+        values = as.character(basins$values),
+        type = "categorical",
+        colorbar_title = sprintf(
+          "Top %d basins",
+          suppressWarnings(as.integer(basins$top_k %||% 0L))
+        )
+      )
+    }
 
     dat <- data_state()
     if (!is.null(dat$data) && nrow(dat$data) == n_vertices) {
@@ -8240,6 +8250,281 @@ app_server <- function(input, output, session) {
       default_key = default_key
     )
   })
+
+  basin_panel_state <- shiny::reactive({
+    st <- reference_view_state()
+    if (!is.list(st) || !is.null(st$error) || !is.list(st$sources)) {
+      return(list(
+        has_sources = FALSE,
+        choices = character(0),
+        selected = ""
+      ))
+    }
+    source_keys <- names(st$sources)
+    estimate_keys <- source_keys[vapply(source_keys, function(key) {
+      src <- st$sources[[key]]
+      label <- as.character(src$label %||% "")
+      is_numeric <- identical(as.character(src$type %||% ""), "numeric")
+      is_estimate <- identical(key, "occupation_density_active") ||
+        grepl("condexp", label, ignore.case = TRUE) ||
+        grepl("rel\\.y\\.hat", label, ignore.case = TRUE)
+      isTRUE(is_numeric && is_estimate)
+    }, logical(1))]
+    if (length(estimate_keys) < 1L) {
+      return(list(
+        has_sources = FALSE,
+        choices = character(0),
+        selected = ""
+      ))
+    }
+    labels <- vapply(
+      estimate_keys,
+      function(key) as.character(st$sources[[key]]$label %||% key),
+      character(1)
+    )
+    selected <- as.character(input$basin_source %||% "")
+    if (!(selected %in% estimate_keys)) {
+      selected <- if ("occupation_density_active" %in% estimate_keys) {
+        "occupation_density_active"
+      } else {
+        estimate_keys[[1L]]
+      }
+    }
+    list(
+      has_sources = TRUE,
+      choices = stats::setNames(estimate_keys, labels),
+      selected = selected
+    )
+  })
+
+  basin_source_state <- shiny::reactive({
+    panel <- basin_panel_state()
+    st <- reference_view_state()
+    if (!isTRUE(panel$has_sources) ||
+        !is.list(st) ||
+        !is.list(st$sources)) {
+      return(NULL)
+    }
+    key <- as.character(input$basin_source %||% panel$selected %||% "")
+    if (!(key %in% names(st$sources))) {
+      return(NULL)
+    }
+    src <- st$sources[[key]]
+    list(
+      key = key,
+      label = as.character(src$label %||% key),
+      values = suppressWarnings(as.numeric(src$values)),
+      graph = st
+    )
+  })
+
+  output$basin_status <- shiny::renderText({
+    basin_status()
+  })
+
+  output$basin_table <- shiny::renderTable({
+    result <- basin_result()
+    if (!is.list(result) ||
+        !is.data.frame(result$table) ||
+        nrow(result$table) < 1L) {
+      return(NULL)
+    }
+    out <- result$table
+    numeric_columns <- intersect(
+      c("mass", "cumulative.mass", "extremum.value"),
+      names(out)
+    )
+    for (column in numeric_columns) {
+      values <- suppressWarnings(as.numeric(out[[column]]))
+      out[[column]] <- ifelse(
+        is.finite(values),
+        formatC(values, digits = 4, format = "fg"),
+        "\u2014"
+      )
+    }
+    names(out) <- gsub(".", " ", names(out), fixed = TRUE)
+    names(out) <- paste0(
+      toupper(substr(names(out), 1L, 1L)),
+      substr(names(out), 2L, nchar(names(out)))
+    )
+    out
+  }, striped = TRUE, bordered = FALSE, spacing = "xs", rownames = FALSE)
+
+  output$basin_table_ui <- shiny::renderUI({
+    result <- basin_result()
+    if (!is.list(result) ||
+        !is.data.frame(result$table) ||
+        nrow(result$table) < 1L) {
+      return(NULL)
+    }
+    shiny::tagList(
+      shiny::h5("Top-K basin summary"),
+      shiny::tableOutput("basin_table")
+    )
+  })
+
+  shiny::observeEvent(input$basin_source, {
+    result <- shiny::isolate(basin_result())
+    selected <- as.character(input$basin_source %||% "")
+    if (is.list(result) &&
+        !identical(as.character(result$source_key %||% ""), selected)) {
+      basin_result(NULL)
+      basin_status("Estimate source changed. Show Top-K Basins to apply it.")
+    }
+  }, ignoreInit = TRUE)
+
+  shiny::observe({
+    source <- basin_source_state()
+    if (is.list(source) && !is.list(basin_result())) {
+      current <- as.character(basin_status() %||% "")
+      if (grepl(
+        "^Apply an occupation density|^Estimate source changed",
+        current
+      )) {
+        basin_status(sprintf(
+          "Ready to inspect extrema or reconstruct Top-K basins for %s.",
+          source$label
+        ))
+      }
+    }
+  })
+
+  shiny::observeEvent(
+    list(input$basin_direction, input$basin_top_k),
+    {
+      if (is.list(shiny::isolate(basin_result()))) {
+        basin_result(NULL)
+        basin_status(
+          "Basin settings changed. Show Top-K Basins to apply them."
+        )
+      }
+    },
+    ignoreInit = TRUE
+  )
+
+  shiny::observeEvent(input$basin_show, {
+    source <- basin_source_state()
+    if (!is.list(source) || !is.list(source$graph)) {
+      shiny::showNotification(
+        "Apply an occupation density or choose a conditional-expectation estimate first.",
+        type = "warning"
+      )
+      return()
+    }
+    direction <- as.character(input$basin_direction %||% "max")
+    if (!(direction %in% c("max", "min"))) {
+      direction <- "max"
+    }
+    top_k <- suppressWarnings(as.integer(
+      input$basin_top_k %||%
+        active_manifest()$defaults$occupation_density_top_k %||%
+        6L
+    ))
+    if (!is.finite(top_k) || top_k < 1L) {
+      top_k <- 6L
+    }
+
+    occupation <- occupation_density_result()
+    use_precomputed <- identical(
+      as.character(source$key),
+      "occupation_density_active"
+    ) &&
+      identical(direction, "max") &&
+      is.list(occupation) &&
+      identical(
+        as.character(occupation$method$source %||% ""),
+        "precomputed_path"
+      )
+
+    result <- if (isTRUE(use_precomputed)) {
+      panel <- occupation_density_panel_state()
+      evaluated <- tryCatch(
+        gflowui_evaluate_occupation_density(
+          manifest = active_manifest(),
+          set_id = panel$set_id,
+          subject_id = as.character(occupation$subject_id %||% ""),
+          method_id = as.character(occupation$method_id %||% ""),
+          mode = as.character(occupation$mode %||% "parameters"),
+          selector = as.character(
+            input$occupation_density_selector %||% "minimum_brier"
+          ),
+          parameters = list(
+            eta_index = suppressWarnings(as.integer(
+              occupation$selected$eta.index[[1L]]
+            )),
+            display_mode = "top_k_basins",
+            top_k = top_k
+          )
+        ),
+        error = function(e) e
+      )
+      if (inherits(evaluated, "error")) {
+        evaluated
+      } else {
+        list(
+          values = evaluated$values,
+          table = evaluated$basin_table,
+          top_k = evaluated$top_k,
+          basin_count = evaluated$basin_count,
+          direction = "max",
+          ranking = "primary mass",
+          reconstruction = "precomputed trajectory_flow/CLOSEST"
+        )
+      }
+    } else {
+      tryCatch(
+        gflowui_estimate_basin_overlay(
+          adj_list = source$graph$adj_list,
+          edge_length_list = source$graph$weight_list,
+          field = source$values,
+          direction = direction,
+          top_k = top_k,
+          vertex_mass = if (identical(
+            as.character(source$key),
+            "occupation_density_active"
+          )) {
+            source$values
+          } else {
+            NULL
+          }
+        ),
+        error = function(e) e
+      )
+    }
+    if (inherits(result, "error")) {
+      basin_result(NULL)
+      basin_status(sprintf(
+        "Basin reconstruction failed: %s",
+        conditionMessage(result)
+      ))
+      shiny::showNotification(conditionMessage(result), type = "error")
+      return()
+    }
+
+    result$source_key <- as.character(source$key)
+    result$source_label <- as.character(source$label)
+    result$field_values <- source$values
+    result$project_id <- as.character(source$graph$project_id %||% "")
+    result$graph_set_id <- as.character(source$graph$set_id %||% "")
+    result$graph_k <- suppressWarnings(as.integer(
+      source$graph$k_actual %||% NA_integer_
+    ))
+    basin_result(result)
+    graph_layout_state$color_by <- "basin_active"
+    shiny::updateSelectInput(
+      session,
+      "graph_layout_color_by",
+      selected = "basin_active"
+    )
+    basin_status(sprintf(
+      "Showing %s-flow Top-%d basins for %s; ranked by %s (%d total basins).",
+      if (identical(direction, "max")) "maximum" else "minimum",
+      suppressWarnings(as.integer(result$top_k)),
+      source$label,
+      as.character(result$ranking %||% "basin size"),
+      suppressWarnings(as.integer(result$basin_count))
+    ))
+  }, ignoreInit = TRUE)
 
   reference_renderer_state <- shiny::reactive({
     if (isTRUE(quadform_project_active())) {
@@ -8619,7 +8904,13 @@ app_server <- function(input, output, session) {
     palette_colors <- as.character(palette_colors %||% character(0))
     palette_colors <- palette_colors[nzchar(palette_colors)]
     pal <- if (length(palette_colors) >= 2L) {
-      grDevices::colorRampPalette(palette_colors)(256)
+      palette_has_alpha <- any(
+        grDevices::col2rgb(palette_colors, alpha = TRUE)[4L, ] < 255
+      )
+      grDevices::colorRampPalette(
+        palette_colors,
+        alpha = palette_has_alpha
+      )(256)
     } else {
       grDevices::hcl.colors(256, palette)
     }
@@ -8930,7 +9221,10 @@ app_server <- function(input, output, session) {
           gflowui_density_palette(
             low = density_display_settings$low %||% "yellow",
             midpoint = density_display_settings$midpoint %||% "none",
-            high = density_display_settings$high %||% "red"
+            high = density_display_settings$high %||% "red",
+            low_alpha = density_display_settings$low_alpha %||% 1,
+            midpoint_alpha = density_display_settings$midpoint_alpha %||% 1,
+            high_alpha = density_display_settings$high_alpha %||% 1
           )
         } else {
           NULL
@@ -8968,16 +9262,14 @@ app_server <- function(input, output, session) {
           )
       }
 
-      density_source_active <- identical(
-        as.character(src$color_transform %||% "identity"),
-        "density_log10"
-      )
-      show_density_maxima <- isTRUE(density_display_settings$show_maxima)
-      show_density_minima <- isTRUE(density_display_settings$show_minima)
-      if (isTRUE(density_source_active) &&
+      basin_source <- basin_source_state()
+      show_density_maxima <- isTRUE(basin_display_settings$show_maxima)
+      show_density_minima <- isTRUE(basin_display_settings$show_minima)
+      if (is.list(basin_source) &&
+          length(basin_source$values %||% numeric(0)) == length(st$adj_list) &&
           (show_density_maxima || show_density_minima)) {
         density_extrema <- gflowui_density_local_extrema(
-          values = vals,
+          values = basin_source$values,
           adj_list = st$adj_list
         )
         density_extrema <- density_extrema[
@@ -8988,7 +9280,7 @@ app_server <- function(input, output, session) {
         extrema_specs <- list(
           maximum = list(
             show = show_density_maxima,
-            labels = isTRUE(density_display_settings$label_maxima),
+            labels = isTRUE(basin_display_settings$label_maxima),
             name = "Local maxima",
             color = "#111827",
             outline = "#FFFFFF",
@@ -8997,7 +9289,7 @@ app_server <- function(input, output, session) {
           ),
           minimum = list(
             show = show_density_minima,
-            labels = isTRUE(density_display_settings$label_minima),
+            labels = isTRUE(basin_display_settings$label_minima),
             name = "Local minima",
             color = "#06B6D4",
             outline = "#111827",
@@ -9029,9 +9321,10 @@ app_server <- function(input, output, session) {
               text = if (label_active) rows$label else NULL,
               textposition = if (label_active) spec$textposition else NULL,
               hovertext = sprintf(
-                "%s<br>vertex=%d<br>density=%s",
+                "%s<br>vertex=%d<br>%s=%s",
                 rows$label,
                 rows$vertex,
+                as.character(basin_source$label %||% "estimate"),
                 formatC(rows$value, format = "g", digits = 5)
               ),
               hoverinfo = "text",
@@ -9760,16 +10053,14 @@ app_server <- function(input, output, session) {
       }
 
       extrema_layers <- list()
-      density_source_active <- identical(
-        as.character(src$color_transform %||% "identity"),
-        "density_log10"
-      )
-      show_density_maxima <- isTRUE(density_display_settings$show_maxima)
-      show_density_minima <- isTRUE(density_display_settings$show_minima)
-      if (isTRUE(density_source_active) &&
+      basin_source <- basin_source_state()
+      show_density_maxima <- isTRUE(basin_display_settings$show_maxima)
+      show_density_minima <- isTRUE(basin_display_settings$show_minima)
+      if (is.list(basin_source) &&
+          length(basin_source$values %||% numeric(0)) == length(st$adj_list) &&
           (show_density_maxima || show_density_minima)) {
         density_extrema <- gflowui_density_local_extrema(
-          values = src$values,
+          values = basin_source$values,
           adj_list = st$adj_list
         )
         density_extrema <- density_extrema[
@@ -9780,12 +10071,12 @@ app_server <- function(input, output, session) {
         extrema_specs <- list(
           maximum = list(
             show = show_density_maxima,
-            labels = isTRUE(density_display_settings$label_maxima),
+            labels = isTRUE(basin_display_settings$label_maxima),
             color = "#111827"
           ),
           minimum = list(
             show = show_density_minima,
-            labels = isTRUE(density_display_settings$label_minima),
+            labels = isTRUE(basin_display_settings$label_minima),
             color = "#06B6D4"
           )
         )
@@ -10227,7 +10518,10 @@ app_server <- function(input, output, session) {
               palette_colors = gflowui_density_palette(
                 low = density_display_settings$low %||% "yellow",
                 midpoint = density_display_settings$midpoint %||% "none",
-                high = density_display_settings$high %||% "red"
+                high = density_display_settings$high %||% "red",
+                low_alpha = density_display_settings$low_alpha %||% 1,
+                midpoint_alpha = density_display_settings$midpoint_alpha %||% 1,
+                high_alpha = density_display_settings$high_alpha %||% 1
               )
             )
             make_plain_widget(density_colors)
@@ -11046,6 +11340,8 @@ app_server <- function(input, output, session) {
     endpoint_working <- if (is.list(endpoint_panel) && is.list(endpoint_panel$working)) endpoint_panel$working else empty_working_endpoint_state()
     subject_panel <- subject_panel_state()
     occupation_panel <- occupation_density_panel_state()
+    basin_panel <- basin_panel_state()
+    basin_settings <- shiny::isolate(basin_display_snapshot())
     arm_panel <- arm_panel_state()
     arm_rows <- if (is.list(arm_panel) && is.data.frame(arm_panel$rows)) arm_panel$rows else empty_arm_candidate_rows()
     arm_working <- if (is.list(arm_panel) && is.list(arm_panel$working)) arm_panel$working else empty_working_arm_state()
@@ -11861,16 +12157,17 @@ app_server <- function(input, output, session) {
     build_arm_builder_ui <- function() {
       choices <- arm_builder_endpoint_choices()
       choice_vals <- unname(choices)
-      if (length(choice_vals) < 2L) {
+      selectable_vals <- setdiff(choice_vals[nzchar(choice_vals)], "none")
+      if (length(selectable_vals) < 2L) {
         return(shiny::p(class = "gf-hint", "Create or load at least two endpoints first. Working Endpoints supply the endpoint choices for arm construction."))
       }
-      sel_a <- as.character(isolate(input$arm_endpoint_a %||% choice_vals[[1]]))
+      sel_a <- as.character(isolate(input$arm_endpoint_a %||% "none"))
       if (!(sel_a %in% choice_vals)) {
-        sel_a <- choice_vals[[1]]
+        sel_a <- "none"
       }
-      sel_b <- as.character(isolate(input$arm_endpoint_b %||% if (length(choice_vals) > 1L) choice_vals[[2]] else choice_vals[[1]]))
+      sel_b <- as.character(isolate(input$arm_endpoint_b %||% "none"))
       if (!(sel_b %in% choice_vals)) {
-        sel_b <- if (length(choice_vals) > 1L) choice_vals[[2]] else choice_vals[[1]]
+        sel_b <- "none"
       }
       thick_choices <- c(
         "Path only" = "path_only",
@@ -12435,17 +12732,113 @@ app_server <- function(input, output, session) {
                 shiny::div(
                   class = "gf-density-status",
                   shiny::textOutput("occupation_density_status")
-                ),
-                shiny::conditionalPanel(
-                  condition = "input.occupation_density_display == 'top_k_basins'",
-                  shiny::h5("Highest-mass basins"),
-                  shiny::tableOutput("occupation_density_basin_table")
                 )
               )
             )
           } else {
             NULL
           },
+          bslib::accordion_panel(
+            "Conditional Expectations",
+            value = "workflow_condexp_structure",
+            shiny::tagList(
+              build_html_table(condexp_tbl, empty_text = "No conditional expectation assets found."),
+              shiny::actionButton(
+                "condexp_update_placeholder",
+                "Update / Refit CondExp...",
+                class = "btn-light gf-btn-wide"
+              )
+            )
+          ),
+          bslib::accordion_panel(
+            "Basins",
+            value = "workflow_basin_structure",
+            shiny::tagList(
+              if (isTRUE(basin_panel$has_sources)) {
+                shiny::tagList(
+                  shiny::selectInput(
+                    "basin_source",
+                    "Estimate source",
+                    choices = basin_panel$choices,
+                    selected = basin_panel$selected
+                  ),
+                  shiny::selectInput(
+                    "basin_direction",
+                    "Flow direction",
+                    choices = c(
+                      "Toward maxima" = "max",
+                      "Toward minima" = "min"
+                    ),
+                    selected = as.character(
+                      input$basin_direction %||% "max"
+                    )
+                  )
+                )
+              } else {
+                shiny::p(
+                  class = "gf-hint",
+                  "Apply an occupation density or load a conditional-expectation estimate first."
+                )
+              },
+              shiny::tags$fieldset(
+                class = "gf-density-extrema",
+                shiny::tags$legend("Field extrema"),
+                shiny::div(
+                  class = "gf-density-extrema-row",
+                  shiny::checkboxInput(
+                    "basin_show_maxima",
+                    "Show local maxima",
+                    value = isTRUE(basin_settings$show_maxima)
+                  ),
+                  shiny::conditionalPanel(
+                    condition = "input.basin_show_maxima",
+                    shiny::checkboxInput(
+                      "basin_label_maxima",
+                      "Label maxima",
+                      value = isTRUE(basin_settings$label_maxima)
+                    )
+                  )
+                ),
+                shiny::div(
+                  class = "gf-density-extrema-row",
+                  shiny::checkboxInput(
+                    "basin_show_minima",
+                    "Show local minima",
+                    value = isTRUE(basin_settings$show_minima)
+                  ),
+                  shiny::conditionalPanel(
+                    condition = "input.basin_show_minima",
+                    shiny::checkboxInput(
+                      "basin_label_minima",
+                      "Label minima",
+                      value = isTRUE(basin_settings$label_minima)
+                    )
+                  )
+                )
+              ),
+              shiny::numericInput(
+                "basin_top_k",
+                "Number of basins (K)",
+                value = suppressWarnings(as.integer(
+                  input$basin_top_k %||%
+                    defaults$occupation_density_top_k %||%
+                    6L
+                )),
+                min = 1L,
+                step = 1L
+              ),
+              shiny::actionButton(
+                "basin_show",
+                "Show Top-K Basins",
+                class = "btn-primary gf-btn-wide"
+              ),
+              shiny::div(
+                class = "gf-density-status",
+                shiny::textOutput("basin_status")
+              ),
+              shiny::uiOutput("basin_table_ui")
+            )
+          ),
           bslib::accordion_panel(
             "Endpoints",
             value = "workflow_endpoint_structure",
@@ -12703,18 +13096,6 @@ app_server <- function(input, output, session) {
               )
             )
           ),
-          bslib::accordion_panel(
-            "Conditional Expectations",
-            value = "workflow_condexp_structure",
-            shiny::tagList(
-              build_html_table(condexp_tbl, empty_text = "No conditional expectation assets found."),
-              shiny::actionButton(
-                "condexp_update_placeholder",
-                "Update / Refit CondExp...",
-                class = "btn-light gf-btn-wide"
-              )
-            )
-          ),
           bslib::accordion_panel("Analysis", value = "workflow_analysis", shiny::div(
             class = "gf-analysis-placeholder",
             shiny::p("Analysis tools section placeholder."),
@@ -12756,9 +13137,10 @@ app_server <- function(input, output, session) {
           "workflow_graph_structure",
           "workflow_subject_structure",
           if (isTRUE(occupation_panel$has_assets)) "workflow_occupation_density" else character(0),
+          "workflow_condexp_structure",
+          "workflow_basin_structure",
           "workflow_endpoint_structure",
           "workflow_arm_structure",
-          "workflow_condexp_structure",
           "workflow_analysis"
         )
       } else {

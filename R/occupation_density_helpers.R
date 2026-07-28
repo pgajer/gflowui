@@ -134,7 +134,27 @@ gflowui_density_color <- function(choice, default, include_none = FALSE) {
 gflowui_density_palette <- function(
     low = "yellow",
     midpoint = "none",
-    high = "red") {
+    high = "red",
+    low_alpha = 1,
+    midpoint_alpha = 1,
+    high_alpha = 1) {
+  normalize_alpha <- function(value) {
+    value <- suppressWarnings(as.numeric(value))
+    if (!is.finite(value)) {
+      return(1)
+    }
+    max(0, min(1, value))
+  }
+  with_alpha <- function(color, alpha) {
+    if (!nzchar(color)) {
+      return("")
+    }
+    alpha <- normalize_alpha(alpha)
+    if (alpha >= 1) {
+      return(color)
+    }
+    grDevices::adjustcolor(color, alpha.f = alpha)
+  }
   low_color <- gflowui_density_color(low, default = "yellow")
   middle <- gflowui_density_color(
     midpoint,
@@ -143,9 +163,13 @@ gflowui_density_palette <- function(
   )
   high_color <- gflowui_density_color(high, default = "red")
   c(
-    low_color,
-    if (nzchar(middle)) middle else character(0),
-    high_color
+    with_alpha(low_color, low_alpha),
+    if (nzchar(middle)) {
+      with_alpha(middle, midpoint_alpha)
+    } else {
+      character(0)
+    },
+    with_alpha(high_color, high_alpha)
   )
 }
 
@@ -155,6 +179,16 @@ gflowui_plotly_colorscale <- function(colors) {
   if (length(colors) < 2L) {
     colors <- c("#FDE725", "#C51B1D")
   }
+  colors <- vapply(colors, function(color) {
+    rgba <- grDevices::col2rgb(color, alpha = TRUE)
+    sprintf(
+      "rgba(%d,%d,%d,%.4f)",
+      rgba[[1L]],
+      rgba[[2L]],
+      rgba[[3L]],
+      rgba[[4L]] / 255
+    )
+  }, character(1))
   positions <- seq(0, 1, length.out = length(colors))
   lapply(seq_along(colors), function(ii) {
     c(positions[[ii]], colors[[ii]])
