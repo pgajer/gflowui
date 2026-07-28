@@ -54,7 +54,7 @@ app_server <- function(input, output, session) {
   )
   occupation_density_result <- shiny::reactiveVal(NULL)
   occupation_density_status <- shiny::reactiveVal(
-    "Choose a subject, method, and estimate, then show the density."
+    "Choose an estimate, then show it on the graph."
   )
   graph_vertex_color_choices <- function() {
     c(
@@ -206,7 +206,7 @@ app_server <- function(input, output, session) {
     graph_layout_state$component <- NA_character_
     occupation_density_result(NULL)
     occupation_density_status(
-      "Choose a subject, method, and estimate, then show the density."
+      "Choose an estimate, then show it on the graph."
     )
     quadform_layout_revision(0L)
   }, ignoreInit = FALSE)
@@ -7416,8 +7416,10 @@ app_server <- function(input, output, session) {
 
   output$occupation_density_parameters <- shiny::renderUI({
     st <- occupation_density_panel_state()
-    if (!isTRUE(st$has_assets) ||
-        !identical(as.character(input$occupation_density_mode %||% "selected"), "parameters")) {
+    mode <- as.character(
+      input$occupation_density_mode %||% st$mode %||% "selected"
+    )
+    if (!isTRUE(st$has_assets) || !identical(mode, "parameters")) {
       return(NULL)
     }
     method_id <- as.character(input$occupation_density_method %||% st$method_selected)
@@ -12000,7 +12002,7 @@ app_server <- function(input, output, session) {
                 shiny::uiOutput("occupation_density_parameters"),
                 shiny::actionButton(
                   "occupation_density_show",
-                  "Show Selection",
+                  "Show Density on Graph",
                   class = "btn-primary gf-btn-wide"
                 ),
                 if (!isTRUE(occupation_panel$is_precomputed_path)) {
@@ -12013,8 +12015,8 @@ app_server <- function(input, output, session) {
                   NULL
                 },
                 shiny::div(
-                  class = "gf-status-block",
-                  shiny::verbatimTextOutput("occupation_density_status")
+                  class = "gf-density-status",
+                  shiny::textOutput("occupation_density_status")
                 ),
                 shiny::conditionalPanel(
                   condition = "input.occupation_density_display == 'top_k_basins'",
