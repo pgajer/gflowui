@@ -56,6 +56,15 @@ app_server <- function(input, output, session) {
   occupation_density_status <- shiny::reactiveVal(
     "Choose an estimate, then show it on the graph."
   )
+  density_display_settings <- shiny::reactiveValues(
+    low = "yellow",
+    midpoint = "none",
+    high = "red",
+    show_maxima = FALSE,
+    label_maxima = FALSE,
+    show_minima = FALSE,
+    label_minima = FALSE
+  )
   graph_vertex_color_choices <- function() {
     c(
       "Black" = "#111827",
@@ -68,13 +77,13 @@ app_server <- function(input, output, session) {
       "Gold" = "#ca8a04"
     )
   }
-  density_midpoint_choice_names <- function() {
-    colors <- gflowui_density_midpoint_colors()
+  density_color_choice_names <- function(include_none = FALSE) {
+    colors <- gflowui_density_colors(include_none = include_none)
     lapply(names(colors), function(key) {
       color <- unname(colors[[key]])
       label <- paste0(toupper(substr(key, 1L, 1L)), substr(key, 2L, nchar(key)))
       shiny::span(
-        class = "gf-density-mid-option",
+        class = "gf-density-color-option",
         shiny::span(
           class = paste(
             "gf-density-color-swatch",
@@ -85,6 +94,31 @@ app_server <- function(input, output, session) {
         label
       )
     })
+  }
+  normalize_density_color_key <- function(
+      value,
+      default,
+      include_none = FALSE) {
+    choices <- names(gflowui_density_colors(include_none = include_none))
+    key <- tolower(trimws(as.character(value %||% default)))
+    if (length(key) < 1L || !(key[[1L]] %in% choices)) {
+      default
+    } else {
+      key[[1L]]
+    }
+  }
+  density_display_snapshot <- function() {
+    list(
+      low = as.character(density_display_settings$low %||% "yellow"),
+      midpoint = as.character(
+        density_display_settings$midpoint %||% "none"
+      ),
+      high = as.character(density_display_settings$high %||% "red"),
+      show_maxima = isTRUE(density_display_settings$show_maxima),
+      label_maxima = isTRUE(density_display_settings$label_maxima),
+      show_minima = isTRUE(density_display_settings$show_minima),
+      label_minima = isTRUE(density_display_settings$label_minima)
+    )
   }
   normalize_palette_choice <- function(x, choices, default = NULL) {
     vals <- tolower(unname(as.character(choices %||% character(0))))
@@ -228,6 +262,46 @@ app_server <- function(input, output, session) {
     )
     quadform_layout_revision(0L)
   }, ignoreInit = FALSE)
+
+  shiny::observeEvent(input$occupation_density_low_color, {
+    density_display_settings$low <- normalize_density_color_key(
+      input$occupation_density_low_color,
+      default = "yellow"
+    )
+  }, ignoreInit = FALSE, ignoreNULL = TRUE)
+  shiny::observeEvent(input$occupation_density_mid_color, {
+    density_display_settings$midpoint <- normalize_density_color_key(
+      input$occupation_density_mid_color,
+      default = "none",
+      include_none = TRUE
+    )
+  }, ignoreInit = FALSE, ignoreNULL = TRUE)
+  shiny::observeEvent(input$occupation_density_high_color, {
+    density_display_settings$high <- normalize_density_color_key(
+      input$occupation_density_high_color,
+      default = "red"
+    )
+  }, ignoreInit = FALSE, ignoreNULL = TRUE)
+  shiny::observeEvent(input$occupation_density_show_maxima, {
+    density_display_settings$show_maxima <- isTRUE(
+      input$occupation_density_show_maxima
+    )
+  }, ignoreInit = FALSE, ignoreNULL = TRUE)
+  shiny::observeEvent(input$occupation_density_label_maxima, {
+    density_display_settings$label_maxima <- isTRUE(
+      input$occupation_density_label_maxima
+    )
+  }, ignoreInit = FALSE, ignoreNULL = TRUE)
+  shiny::observeEvent(input$occupation_density_show_minima, {
+    density_display_settings$show_minima <- isTRUE(
+      input$occupation_density_show_minima
+    )
+  }, ignoreInit = FALSE, ignoreNULL = TRUE)
+  shiny::observeEvent(input$occupation_density_label_minima, {
+    density_display_settings$label_minima <- isTRUE(
+      input$occupation_density_label_minima
+    )
+  }, ignoreInit = FALSE, ignoreNULL = TRUE)
 
   shiny::observe({
     renderer_val <- normalize_live_renderer_choice(input$graph_layout_renderer, default = "")
@@ -7434,6 +7508,8 @@ app_server <- function(input, output, session) {
 
   output$occupation_density_parameters <- shiny::renderUI({
     st <- occupation_density_panel_state()
+    occupation_density_result()
+    display_settings <- shiny::isolate(density_display_snapshot())
     mode <- as.character(
       input$occupation_density_mode %||% st$mode %||% "selected"
     )
@@ -7545,39 +7621,81 @@ app_server <- function(input, output, session) {
             shiny::tags$fieldset(
               class = "gf-density-color-scheme",
               shiny::tags$legend("Density color scheme"),
-              shiny::div(
-                class = "gf-density-color-endpoints",
-                shiny::span(
-                  class = "gf-density-color-endpoint",
-                  shiny::span(
-                    class = "gf-density-color-swatch",
-                    style = "background:#FDE725;"
-                  ),
-                  "Low"
+              shiny::radioButtons(
+                "occupation_density_low_color",
+                "Low-density color",
+                choiceNames = density_color_choice_names(),
+                choiceValues = as.list(names(gflowui_density_colors())),
+                selected = as.character(
+                  display_settings$low %||% "yellow"
                 ),
-                shiny::span(class = "gf-density-color-ramp", shiny::HTML("&rarr;")),
-                shiny::span(
-                  class = "gf-density-color-endpoint",
-                  shiny::span(
-                    class = "gf-density-color-swatch",
-                    style = "background:#C51B1D;"
-                  ),
-                  "High"
-                )
+                inline = TRUE
               ),
               shiny::radioButtons(
                 "occupation_density_mid_color",
                 "Mid-range color",
-                choiceNames = density_midpoint_choice_names(),
+                choiceNames = density_color_choice_names(include_none = TRUE),
                 choiceValues = as.list(
-                  names(gflowui_density_midpoint_colors())
+                  names(gflowui_density_colors(include_none = TRUE))
                 ),
                 selected = as.character(
-                  input$occupation_density_mid_color %||%
-                    active_manifest()$defaults$occupation_density_mid_color %||%
-                    "none"
+                  display_settings$midpoint %||% "none"
                 ),
                 inline = TRUE
+              ),
+              shiny::radioButtons(
+                "occupation_density_high_color",
+                "High-density color",
+                choiceNames = density_color_choice_names(),
+                choiceValues = as.list(names(gflowui_density_colors())),
+                selected = as.character(
+                  display_settings$high %||% "red"
+                ),
+                inline = TRUE
+              )
+            ),
+            shiny::tags$fieldset(
+              class = "gf-density-extrema",
+              shiny::tags$legend("Density extrema"),
+              shiny::div(
+                class = "gf-density-extrema-row",
+                shiny::checkboxInput(
+                  "occupation_density_show_maxima",
+                  "Show local maxima",
+                  value = isTRUE(
+                    display_settings$show_maxima
+                  )
+                ),
+                shiny::conditionalPanel(
+                  condition = "input.occupation_density_show_maxima",
+                  shiny::checkboxInput(
+                    "occupation_density_label_maxima",
+                    "Label maxima",
+                    value = isTRUE(
+                      display_settings$label_maxima
+                    )
+                  )
+                )
+              ),
+              shiny::div(
+                class = "gf-density-extrema-row",
+                shiny::checkboxInput(
+                  "occupation_density_show_minima",
+                  "Show local minima",
+                  value = isTRUE(
+                    display_settings$show_minima
+                  )
+                ),
+                shiny::conditionalPanel(
+                  condition = "input.occupation_density_show_minima",
+                  shiny::checkboxInput(
+                    "occupation_density_label_minima",
+                    "Label minima",
+                    value = isTRUE(
+                      display_settings$label_minima
+                    )
+                  )
+                )
               )
             )
           ),
@@ -7959,7 +8077,9 @@ app_server <- function(input, output, session) {
         type = c("numeric", "categorical"),
         colorbar_title = NULL,
         color_transform = "identity",
-        density_midpoint = "none") {
+        density_low = "yellow",
+        density_midpoint = "none",
+        density_high = "red") {
       type <- match.arg(type)
       vv <- values
       if (length(vv) != n_vertices) {
@@ -7979,7 +8099,9 @@ app_server <- function(input, output, session) {
         values = vv,
         colorbar_title = as.character(colorbar_title %||% label),
         color_transform = as.character(color_transform %||% "identity"),
-        density_midpoint = as.character(density_midpoint %||% "none")
+        density_low = as.character(density_low %||% "yellow"),
+        density_midpoint = as.character(density_midpoint %||% "none"),
+        density_high = as.character(density_high %||% "red")
       )
       invisible(NULL)
     }
@@ -8046,9 +8168,9 @@ app_server <- function(input, output, session) {
         } else {
           "identity"
         },
-        density_midpoint = as.character(
-          input$occupation_density_mid_color %||% "none"
-        )
+        density_low = "yellow",
+        density_midpoint = "none",
+        density_high = "red"
       )
     }
 
@@ -8805,7 +8927,11 @@ app_server <- function(input, output, session) {
           as.character(src$color_transform %||% "identity"),
           "density_log10"
         )) {
-          gflowui_density_palette(src$density_midpoint %||% "none")
+          gflowui_density_palette(
+            low = density_display_settings$low %||% "yellow",
+            midpoint = density_display_settings$midpoint %||% "none",
+            high = density_display_settings$high %||% "red"
+          )
         } else {
           NULL
         }
@@ -8840,6 +8966,92 @@ app_server <- function(input, output, session) {
             ),
             showlegend = FALSE
           )
+      }
+
+      density_source_active <- identical(
+        as.character(src$color_transform %||% "identity"),
+        "density_log10"
+      )
+      show_density_maxima <- isTRUE(density_display_settings$show_maxima)
+      show_density_minima <- isTRUE(density_display_settings$show_minima)
+      if (isTRUE(density_source_active) &&
+          (show_density_maxima || show_density_minima)) {
+        density_extrema <- gflowui_density_local_extrema(
+          values = vals,
+          adj_list = st$adj_list
+        )
+        density_extrema <- density_extrema[
+          density_extrema$vertex %in% idx,
+          ,
+          drop = FALSE
+        ]
+        extrema_specs <- list(
+          maximum = list(
+            show = show_density_maxima,
+            labels = isTRUE(density_display_settings$label_maxima),
+            name = "Local maxima",
+            color = "#111827",
+            outline = "#FFFFFF",
+            symbol = "diamond",
+            textposition = "top center"
+          ),
+          minimum = list(
+            show = show_density_minima,
+            labels = isTRUE(density_display_settings$label_minima),
+            name = "Local minima",
+            color = "#06B6D4",
+            outline = "#111827",
+            symbol = "x",
+            textposition = "bottom center"
+          )
+        )
+        for (extrema_type in names(extrema_specs)) {
+          spec <- extrema_specs[[extrema_type]]
+          rows <- density_extrema[
+            density_extrema$type == extrema_type,
+            ,
+            drop = FALSE
+          ]
+          if (!isTRUE(spec$show) || nrow(rows) < 1L) {
+            next
+          }
+          label_active <- isTRUE(spec$labels)
+          p <- p %>%
+            plotly::add_trace(
+              type = "scatter3d",
+              mode = if (label_active) "markers+text" else "markers",
+              x = coords[rows$vertex, 1],
+              y = coords[rows$vertex, 2],
+              z = coords[rows$vertex, 3],
+              key = rows$vertex,
+              customdata = rows$vertex,
+              name = spec$name,
+              text = if (label_active) rows$label else NULL,
+              textposition = if (label_active) spec$textposition else NULL,
+              hovertext = sprintf(
+                "%s<br>vertex=%d<br>density=%s",
+                rows$label,
+                rows$vertex,
+                formatC(rows$value, format = "g", digits = 5)
+              ),
+              hoverinfo = "text",
+              marker = list(
+                size = max(6, point_size * 1.55),
+                color = spec$color,
+                symbol = spec$symbol,
+                line = list(color = spec$outline, width = 1.4)
+              ),
+              textfont = if (label_active) {
+                list(
+                  size = max(9, point_size * 2.2),
+                  color = spec$color
+                )
+              } else {
+                NULL
+              },
+              showlegend = TRUE
+            )
+        }
       }
 
       ep_overlay <- endpoint_overlay_active()
@@ -9547,6 +9759,119 @@ app_server <- function(input, output, session) {
         NULL
       }
 
+      extrema_layers <- list()
+      density_source_active <- identical(
+        as.character(src$color_transform %||% "identity"),
+        "density_log10"
+      )
+      show_density_maxima <- isTRUE(density_display_settings$show_maxima)
+      show_density_minima <- isTRUE(density_display_settings$show_minima)
+      if (isTRUE(density_source_active) &&
+          (show_density_maxima || show_density_minima)) {
+        density_extrema <- gflowui_density_local_extrema(
+          values = src$values,
+          adj_list = st$adj_list
+        )
+        density_extrema <- density_extrema[
+          density_extrema$vertex %in% keep_idx,
+          ,
+          drop = FALSE
+        ]
+        extrema_specs <- list(
+          maximum = list(
+            show = show_density_maxima,
+            labels = isTRUE(density_display_settings$label_maxima),
+            color = "#111827"
+          ),
+          minimum = list(
+            show = show_density_minima,
+            labels = isTRUE(density_display_settings$label_minima),
+            color = "#06B6D4"
+          )
+        )
+        for (extrema_type in names(extrema_specs)) {
+          spec <- extrema_specs[[extrema_type]]
+          rows <- density_extrema[
+            density_extrema$type == extrema_type,
+            ,
+            drop = FALSE
+          ]
+          if (!isTRUE(spec$show) || nrow(rows) < 1L) {
+            next
+          }
+          view_idx <- match(rows$vertex, keep_idx)
+          keep_view <- is.finite(view_idx) &
+            view_idx >= 1L &
+            view_idx <= nn_view
+          view_idx <- view_idx[keep_view]
+          labels <- rows$label[keep_view]
+          if (length(view_idx) < 1L) {
+            next
+          }
+          extrema_layers[[length(extrema_layers) + 1L]] <- list(
+            fun = function(
+                ctx,
+                extrema_idx,
+                extrema_labels,
+                extrema_color,
+                draw_mode,
+                marker_radius,
+                marker_size,
+                show_labels) {
+              idx <- suppressWarnings(as.integer(extrema_idx))
+              idx <- idx[
+                is.finite(idx) &
+                  idx >= 1L &
+                  idx <= nrow(ctx$X)
+              ]
+              if (length(idx) < 1L) {
+                return(invisible(NULL))
+              }
+              if (identical(draw_mode, "sphere")) {
+                rgl::spheres3d(
+                  ctx$X[idx, , drop = FALSE],
+                  col = extrema_color,
+                  radius = max(1e-8, marker_radius * 1.55)
+                )
+              } else {
+                rgl::points3d(
+                  ctx$X[idx, , drop = FALSE],
+                  col = extrema_color,
+                  size = max(6, marker_size * 1.8)
+                )
+              }
+              if (isTRUE(show_labels)) {
+                labs <- as.character(extrema_labels %||% character(0))
+                if (length(labs) == length(idx)) {
+                  rgl::texts3d(
+                    x = ctx$X[idx, 1],
+                    y = ctx$X[idx, 2],
+                    z = ctx$X[idx, 3],
+                    texts = labs,
+                    cex = 1.15,
+                    col = extrema_color,
+                    useFreeType = TRUE,
+                    fixedSize = TRUE,
+                    lit = FALSE
+                  )
+                }
+              }
+              invisible(NULL)
+            },
+            args = list(
+              extrema_idx = view_idx,
+              extrema_labels = labels,
+              extrema_color = spec$color,
+              draw_mode = vertex_mode,
+              marker_radius = sphere_radius,
+              marker_size = point_size,
+              show_labels = isTRUE(spec$labels)
+            ),
+            with_ctx = TRUE
+          )
+        }
+      }
+
       arm_overlay <- arm_overlay_active()
       arm_list <- if (is.list(arm_overlay$arms)) arm_overlay$arms else list()
       virtual_markers <- if (is.list(arm_overlay$virtual_markers)) arm_overlay$virtual_markers else list()
@@ -9828,7 +10153,12 @@ app_server <- function(input, output, session) {
           }
         }
       }
-      post_layers <- c(endpoint_layers, arm_layers, subject_layers)
+      post_layers <- c(
+        extrema_layers,
+        endpoint_layers,
+        arm_layers,
+        subject_layers
+      )
 
       make_plain_widget <- function(base_color = "gray70") {
         base_color_use <- if (isTRUE(dim_background_active)) {
@@ -9895,7 +10225,9 @@ app_server <- function(input, output, session) {
               alpha = if (isTRUE(dim_background_active)) background_alpha_use else 1,
               color_limits = color_encoding$color_limits,
               palette_colors = gflowui_density_palette(
-                src$density_midpoint %||% "none"
+                low = density_display_settings$low %||% "yellow",
+                midpoint = density_display_settings$midpoint %||% "none",
+                high = density_display_settings$high %||% "red"
               )
             )
             make_plain_widget(density_colors)

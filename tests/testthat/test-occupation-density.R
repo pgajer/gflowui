@@ -102,28 +102,74 @@ test_that("density colors use a bounded log scale without changing raw mass", {
   expect_identical(identity$colorbar$title, "Value")
 })
 
-test_that("density palettes use yellow and red with an optional midpoint", {
+test_that("density palettes expose selectable endpoints and midpoint", {
   expect_equal(
-    gflowui:::gflowui_density_palette("none"),
+    gflowui:::gflowui_density_palette(),
     c("#FDE725", "#C51B1D")
   )
   expect_equal(
-    gflowui:::gflowui_density_palette("blue"),
+    gflowui:::gflowui_density_palette(midpoint = "blue"),
     c("#FDE725", "#2563EB", "#C51B1D")
   )
   expect_equal(
-    gflowui:::gflowui_density_palette("unknown"),
+    gflowui:::gflowui_density_palette(
+      low = "blue",
+      midpoint = "white",
+      high = "orange"
+    ),
+    c("#2563EB", "#F8FAFC", "#F97316")
+  )
+  expect_equal(
+    gflowui:::gflowui_density_palette(
+      low = "unknown",
+      midpoint = "unknown",
+      high = "unknown"
+    ),
     c("#FDE725", "#C51B1D")
   )
 
   scale <- gflowui:::gflowui_plotly_colorscale(
-    gflowui:::gflowui_density_palette("blue")
+    gflowui:::gflowui_density_palette(midpoint = "blue")
   )
   expect_equal(vapply(scale, `[[`, character(1), 1L), c("0", "0.5", "1"))
   expect_equal(
     vapply(scale, `[[`, character(1), 2L),
     c("#FDE725", "#2563EB", "#C51B1D")
   )
+})
+
+test_that("strict graph-local density extrema are ranked deterministically", {
+  adj_list <- list(
+    c(2L, 3L),
+    c(1L, 3L),
+    c(1L, 2L, 4L),
+    c(3L, 5L),
+    4L,
+    integer(0)
+  )
+  extrema <- gflowui:::gflowui_density_local_extrema(
+    c(5, 1, 3, 0, 4, 9),
+    adj_list
+  )
+
+  expect_equal(
+    extrema,
+    data.frame(
+      vertex = c(1L, 5L, 4L, 2L),
+      value = c(5, 4, 0, 1),
+      type = c("maximum", "maximum", "minimum", "minimum"),
+      rank = c(1L, 2L, 1L, 2L),
+      label = c("M_1", "M_2", "m_1", "m_2"),
+      stringsAsFactors = FALSE
+    )
+  )
+
+  plateau <- gflowui:::gflowui_density_local_extrema(
+    c(0, 0, 1),
+    list(2L, c(1L, 3L), 2L)
+  )
+  expect_equal(plateau$vertex, 3L)
+  expect_equal(plateau$label, "M_1")
 })
 
 test_that("precomputed heat paths expose every time and current top-K basins", {

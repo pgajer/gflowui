@@ -97,30 +97,55 @@ gflowui_numeric_color_encoding <- function(
   )
 }
 
-gflowui_density_midpoint_colors <- function() {
-  c(
-    none = "",
+gflowui_density_colors <- function(include_none = FALSE) {
+  colors <- c(
+    yellow = "#FDE725",
     orange = "#F97316",
     white = "#F8FAFC",
     purple = "#7E22CE",
     blue = "#2563EB",
-    green = "#16A34A"
+    green = "#16A34A",
+    red = "#C51B1D"
+  )
+  if (isTRUE(include_none)) {
+    colors <- c(none = "", colors)
+  }
+  colors
+}
+
+gflowui_density_midpoint_colors <- function() {
+  c(
+    none = "",
+    gflowui_density_colors()
   )
 }
 
-gflowui_density_palette <- function(midpoint = "none") {
-  choices <- gflowui_density_midpoint_colors()
-  key <- tolower(trimws(as.character(midpoint %||% "none")))
+gflowui_density_color <- function(choice, default, include_none = FALSE) {
+  choices <- gflowui_density_colors(include_none = include_none)
+  key <- tolower(trimws(as.character(choice %||% default)))
   if (length(key) < 1L || !(key[[1L]] %in% names(choices))) {
-    key <- "none"
+    key <- default
   } else {
     key <- key[[1L]]
   }
-  middle <- unname(choices[[key]])
+  unname(choices[[key]])
+}
+
+gflowui_density_palette <- function(
+    low = "yellow",
+    midpoint = "none",
+    high = "red") {
+  low_color <- gflowui_density_color(low, default = "yellow")
+  middle <- gflowui_density_color(
+    midpoint,
+    default = "none",
+    include_none = TRUE
+  )
+  high_color <- gflowui_density_color(high, default = "red")
   c(
-    "#FDE725",
+    low_color,
     if (nzchar(middle)) middle else character(0),
-    "#C51B1D"
+    high_color
   )
 }
 
@@ -134,6 +159,72 @@ gflowui_plotly_colorscale <- function(colors) {
   lapply(seq_along(colors), function(ii) {
     c(positions[[ii]], colors[[ii]])
   })
+}
+
+gflowui_density_local_extrema <- function(values, adj_list) {
+  values <- suppressWarnings(as.numeric(values))
+  if (!is.list(adj_list) || length(values) != length(adj_list)) {
+    stop(
+      "Density values and graph adjacency must have the same length.",
+      call. = FALSE
+    )
+  }
+
+  n_vertices <- length(values)
+  maxima <- logical(n_vertices)
+  minima <- logical(n_vertices)
+  for (vertex in seq_len(n_vertices)) {
+    if (!is.finite(values[[vertex]])) {
+      next
+    }
+    neighbors <- suppressWarnings(as.integer(adj_list[[vertex]]))
+    neighbors <- unique(neighbors[
+      is.finite(neighbors) &
+        neighbors >= 1L &
+        neighbors <= n_vertices &
+        neighbors != vertex
+    ])
+    neighbors <- neighbors[is.finite(values[neighbors])]
+    if (length(neighbors) < 1L) {
+      next
+    }
+    maxima[[vertex]] <- all(values[[vertex]] > values[neighbors])
+    minima[[vertex]] <- all(values[[vertex]] < values[neighbors])
+  }
+
+  ranked <- function(vertices, type) {
+    if (length(vertices) < 1L) {
+      return(data.frame(
+        vertex = integer(0),
+        value = numeric(0),
+        type = character(0),
+        rank = integer(0),
+        label = character(0),
+        stringsAsFactors = FALSE
+      ))
+    }
+    decreasing <- identical(type, "maximum")
+    ord <- if (decreasing) {
+      order(-values[vertices], vertices)
+    } else {
+      order(values[vertices], vertices)
+    }
+    vertices <- vertices[ord]
+    prefix <- if (decreasing) "M" else "m"
+    data.frame(
+      vertex = vertices,
+      value = values[vertices],
+      type = type,
+      rank = seq_along(vertices),
+      label = sprintf("%s_%d", prefix, seq_along(vertices)),
+      stringsAsFactors = FALSE
+    )
+  }
+
+  rbind(
+    ranked(which(maxima), "maximum"),
+    ranked(which(minima), "minimum")
+  )
 }
 
 gflowui_occupation_density_method <- function(set, method_id) {
