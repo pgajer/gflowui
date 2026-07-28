@@ -1,5 +1,9 @@
 app_ui <- function() {
   css.path <- system.file("app/www/styles.css", package = "gflowui")
+  density.state.js.path <- system.file(
+    "app/www/density-display-state.js",
+    package = "gflowui"
+  )
   theme <- bslib::bs_theme(
     version = 5,
     base_font = bslib::font_google("Space Grotesk"),
@@ -43,7 +47,12 @@ app_ui <- function() {
       shiny::uiOutput("workspace_actions"),
       shiny::uiOutput("run_monitor_panel")
     ),
-    if (nzchar(css.path)) shiny::tags$head(shiny::includeCSS(css.path)),
+    shiny::tags$head(
+      if (nzchar(css.path)) shiny::includeCSS(css.path),
+      if (nzchar(density.state.js.path)) {
+        shiny::includeScript(density.state.js.path)
+      }
+    ),
     shiny::div(
       class = "gf-viewer-stage",
       shiny::uiOutput("workspace_view")
