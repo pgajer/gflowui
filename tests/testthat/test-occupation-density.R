@@ -102,6 +102,30 @@ test_that("density colors use a bounded log scale without changing raw mass", {
   expect_identical(identity$colorbar$title, "Value")
 })
 
+test_that("density palettes use yellow and red with an optional midpoint", {
+  expect_equal(
+    gflowui:::gflowui_density_palette("none"),
+    c("#FDE725", "#C51B1D")
+  )
+  expect_equal(
+    gflowui:::gflowui_density_palette("blue"),
+    c("#FDE725", "#2563EB", "#C51B1D")
+  )
+  expect_equal(
+    gflowui:::gflowui_density_palette("unknown"),
+    c("#FDE725", "#C51B1D")
+  )
+
+  scale <- gflowui:::gflowui_plotly_colorscale(
+    gflowui:::gflowui_density_palette("blue")
+  )
+  expect_equal(vapply(scale, `[[`, character(1), 1L), c("0", "0.5", "1"))
+  expect_equal(
+    vapply(scale, `[[`, character(1), 2L),
+    c("#FDE725", "#2563EB", "#C51B1D")
+  )
+})
+
 test_that("precomputed heat paths expose every time and current top-K basins", {
   root <- tempfile("gflowui-precomputed-path-")
   dir.create(file.path(root, "paths"), recursive = TRUE)

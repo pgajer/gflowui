@@ -97,6 +97,45 @@ gflowui_numeric_color_encoding <- function(
   )
 }
 
+gflowui_density_midpoint_colors <- function() {
+  c(
+    none = "",
+    orange = "#F97316",
+    white = "#F8FAFC",
+    purple = "#7E22CE",
+    blue = "#2563EB",
+    green = "#16A34A"
+  )
+}
+
+gflowui_density_palette <- function(midpoint = "none") {
+  choices <- gflowui_density_midpoint_colors()
+  key <- tolower(trimws(as.character(midpoint %||% "none")))
+  if (length(key) < 1L || !(key[[1L]] %in% names(choices))) {
+    key <- "none"
+  } else {
+    key <- key[[1L]]
+  }
+  middle <- unname(choices[[key]])
+  c(
+    "#FDE725",
+    if (nzchar(middle)) middle else character(0),
+    "#C51B1D"
+  )
+}
+
+gflowui_plotly_colorscale <- function(colors) {
+  colors <- as.character(colors)
+  colors <- colors[nzchar(colors)]
+  if (length(colors) < 2L) {
+    colors <- c("#FDE725", "#C51B1D")
+  }
+  positions <- seq(0, 1, length.out = length(colors))
+  lapply(seq_along(colors), function(ii) {
+    c(positions[[ii]], colors[[ii]])
+  })
+}
+
 gflowui_occupation_density_method <- function(set, method_id) {
   methods <- set$methods %||% list()
   method_ids <- vapply(methods, function(x) as.character(x$id %||% ""), character(1))

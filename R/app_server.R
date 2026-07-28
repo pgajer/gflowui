@@ -68,6 +68,24 @@ app_server <- function(input, output, session) {
       "Gold" = "#ca8a04"
     )
   }
+  density_midpoint_choice_names <- function() {
+    colors <- gflowui_density_midpoint_colors()
+    lapply(names(colors), function(key) {
+      color <- unname(colors[[key]])
+      label <- paste0(toupper(substr(key, 1L, 1L)), substr(key, 2L, nchar(key)))
+      shiny::span(
+        class = "gf-density-mid-option",
+        shiny::span(
+          class = paste(
+            "gf-density-color-swatch",
+            if (identical(key, "none")) "gf-density-color-none" else ""
+          ),
+          style = if (nzchar(color)) sprintf("background:%s;", color) else NULL
+        ),
+        label
+      )
+    })
+  }
   normalize_palette_choice <- function(x, choices, default = NULL) {
     vals <- tolower(unname(as.character(choices %||% character(0))))
     default_use <- as.character(default %||% "")
@@ -7523,6 +7541,47 @@ app_server <- function(input, output, session) {
             inline = TRUE
           ),
           shiny::conditionalPanel(
+            condition = "input.occupation_density_display == 'density'",
+            shiny::tags$fieldset(
+              class = "gf-density-color-scheme",
+              shiny::tags$legend("Density color scheme"),
+              shiny::div(
+                class = "gf-density-color-endpoints",
+                shiny::span(
+                  class = "gf-density-color-endpoint",
+                  shiny::span(
+                    class = "gf-density-color-swatch",
+                    style = "background:#FDE725;"
+                  ),
+                  "Low"
+                ),
+                shiny::span(class = "gf-density-color-ramp", shiny::HTML("&rarr;")),
+                shiny::span(
+                  class = "gf-density-color-endpoint",
+                  shiny::span(
+                    class = "gf-density-color-swatch",
+                    style = "background:#C51B1D;"
+                  ),
+                  "High"
+                )
+              ),
+              shiny::radioButtons(
+                "occupation_density_mid_color",
+                "Mid-range color",
+                choiceNames = density_midpoint_choice_names(),
+                choiceValues = as.list(
+                  names(gflowui_density_midpoint_colors())
+                ),
+                selected = as.character(
+                  input$occupation_density_mid_color %||%
+                    active_manifest()$defaults$occupation_density_mid_color %||%
+                    "none"
+                ),
+                inline = TRUE
+              )
+            )
+          ),
+          shiny::conditionalPanel(
             condition = "input.occupation_density_display == 'top_k_basins'",
             shiny::numericInput(
               "occupation_density_top_k",
@@ -7899,7 +7958,8 @@ app_server <- function(input, output, session) {
         values,
         type = c("numeric", "categorical"),
         colorbar_title = NULL,
-        color_transform = "identity") {
+        color_transform = "identity",
+        density_midpoint = "none") {
       type <- match.arg(type)
       vv <- values
       if (length(vv) != n_vertices) {
@@ -7918,7 +7978,8 @@ app_server <- function(input, output, session) {
         type = type,
         values = vv,
         colorbar_title = as.character(colorbar_title %||% label),
-        color_transform = as.character(color_transform %||% "identity")
+        color_transform = as.character(color_transform %||% "identity"),
+        density_midpoint = as.character(density_midpoint %||% "none")
       )
       invisible(NULL)
     }
@@ -7984,7 +8045,10 @@ app_server <- function(input, output, session) {
           "density_log10"
         } else {
           "identity"
-        }
+        },
+        density_midpoint = as.character(
+          input$occupation_density_mid_color %||% "none"
+        )
       )
     }
 
@@ -8409,7 +8473,8 @@ app_server <- function(input, output, session) {
       values,
       palette = "Viridis",
       alpha = 1,
-      color_limits = NULL) {
+      color_limits = NULL,
+      palette_colors = NULL) {
     vv <- suppressWarnings(as.numeric(values %||% numeric(0)))
     out <- rep("#9ca3af", length(vv))
     ok <- is.finite(vv)
@@ -8429,7 +8494,13 @@ app_server <- function(input, output, session) {
       scaled <- (vv[ok] - rng[[1]]) / diff(rng)
       idx <- pmin(256L, pmax(1L, floor(scaled * 255) + 1L))
     }
-    pal <- grDevices::hcl.colors(256, palette)
+    palette_colors <- as.character(palette_colors %||% character(0))
+    palette_colors <- palette_colors[nzchar(palette_colors)]
+    pal <- if (length(palette_colors) >= 2L) {
+      grDevices::colorRampPalette(palette_colors)(256)
+    } else {
+      grDevices::hcl.colors(256, palette)
+    }
     cols <- pal[idx]
     if (is.finite(alpha) && alpha > 0 && alpha < 1) {
       cols <- grDevices::adjustcolor(cols, alpha.f = alpha)
@@ -8730,6 +8801,14 @@ app_server <- function(input, output, session) {
         } else {
           NULL
         }
+        density_palette <- if (identical(
+          as.character(src$color_transform %||% "identity"),
+          "density_log10"
+        )) {
+          gflowui_density_palette(src$density_midpoint %||% "none")
+        } else {
+          NULL
+        }
         p <- p %>%
           plotly::add_trace(
             type = "scatter3d",
@@ -8749,7 +8828,11 @@ app_server <- function(input, output, session) {
             marker = list(
               size = point_size,
               color = color_encoding$mapped_values,
-              colorscale = "Viridis",
+              colorscale = if (is.null(density_palette)) {
+                "Viridis"
+              } else {
+                gflowui_plotly_colorscale(density_palette)
+              },
               cmin = color_min,
               cmax = color_max,
               opacity = base_marker_opacity,
@@ -9810,7 +9893,10 @@ app_server <- function(input, output, session) {
               color_encoding$mapped_values,
               palette = "Viridis",
               alpha = if (isTRUE(dim_background_active)) background_alpha_use else 1,
-              color_limits = color_encoding$color_limits
+              color_limits = color_encoding$color_limits,
+              palette_colors = gflowui_density_palette(
+                src$density_midpoint %||% "none"
+              )
             )
             make_plain_widget(density_colors)
           } else {
