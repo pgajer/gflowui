@@ -194,15 +194,211 @@ test_that("generic estimate basins support mass and support-size ranking", {
   expect_identical(mass_ranked$top_k, 2L)
   expect_true(all(is.finite(mass_ranked$table$mass)))
 
-  partial <- gflowui:::gflowui_estimate_basin_overlay(
+  expect_error(
+    gflowui:::gflowui_estimate_basin_overlay(
+      adj_list,
+      edge_length_list,
+      replace(field, 1L, NA_real_),
+      direction = "min",
+      top_k = 2L
+    ),
+    "one finite value for every graph vertex"
+  )
+  cache.before <- ls(
+    envir = gflowui:::.gflowui_basin_cache,
+    all.names = TRUE
+  )
+  expect_error(
+    gflowui:::gflowui_estimate_basin_overlay(
+      adj_list,
+      edge_length_list,
+      replace(field, 2L, Inf),
+      source_key = "must-not-cache"
+    ),
+    "one finite value for every graph vertex"
+  )
+  expect_identical(
+    ls(envir = gflowui:::.gflowui_basin_cache, all.names = TRUE),
+    cache.before
+  )
+})
+
+test_that("canonical basin overlay computes both directions and reuses cache", {
+  adj_list <- list(
+    c(2L, 4L),
+    c(1L, 3L, 5L),
+    c(2L, 6L),
+    c(1L, 5L, 7L),
+    c(2L, 4L, 6L, 8L),
+    c(3L, 5L, 9L),
+    c(4L, 8L),
+    c(5L, 7L, 9L),
+    c(6L, 8L)
+  )
+  edge_length_list <- lapply(
+    adj_list,
+    function(neighbors) rep(1, length(neighbors))
+  )
+  field <- c(0, 1, 0, 1, 3, 1, 0, 1, 2)
+  vertex_id <- paste0("sample-", seq_along(field))
+  provenance <- gflowui:::gflowui_basin_mass_provenance(
+    mass_kind = "occupation_probability",
+    source_id = "fixture",
+    source_fingerprint = "fixture-source",
+    authority = "fixture manifest",
+    evidence_fingerprint = "fixture-evidence"
+  )
+
+  first <- gflowui:::gflowui_estimate_basin_overlay(
     adj_list,
     edge_length_list,
-    replace(field, 1L, NA_real_),
-    direction = "min",
-    top_k = 2L
+    field,
+    direction = "both",
+    top_k_max = 0L,
+    top_k_min = 2L,
+    vertex_mass = field + 1,
+    vertex_id = vertex_id,
+    vertex_mass_provenance = provenance,
+    source_key = "fixture",
+    source_fingerprint = "fixture-source"
   )
-  expect_identical(partial$values[[1L]], "Unavailable")
-  expect_identical(partial$direction, "min")
+  second <- gflowui:::gflowui_estimate_basin_overlay(
+    adj_list,
+    edge_length_list,
+    field,
+    direction = "both",
+    top_k_max = 2L,
+    top_k_min = 0L,
+    vertex_mass = field + 1,
+    vertex_id = vertex_id,
+    vertex_mass_provenance = provenance,
+    source_key = "fixture",
+    source_fingerprint = "fixture-source"
+  )
+
+  expect_identical(first$direction, "both")
+  expect_equal(nrow(first$summary$maxima), 0L)
+  expect_equal(nrow(first$summary$minima), 2L)
+  expect_true(isTRUE(second$cache_hit))
+  expect_identical(first$cache_key, second$cache_key)
+  expect_equal(nrow(second$summary$minima), 0L)
+  expect_true(all(c("max", "min") %in% first$basin$assignment$direction))
+  expect_identical(
+    first$basin$graph.input$vertex.id,
+    vertex_id
+  )
+  expect_identical(
+    first$summary$mass.provenance$upstream.attestations[[1L]]$authority,
+    "fixture manifest"
+  )
+
+  empty <- gflowui:::gflowui_estimate_basin_overlay(
+    adj_list,
+    edge_length_list,
+    field,
+    direction = "both",
+    top_k_max = 0L,
+    top_k_min = 0L,
+    vertex_mass = field + 1,
+    vertex_id = vertex_id,
+    vertex_mass_provenance = provenance,
+    source_key = "fixture",
+    source_fingerprint = "fixture-source"
+  )
+  restored <- gflowui:::gflowui_estimate_basin_overlay(
+    adj_list,
+    edge_length_list,
+    field,
+    direction = "both",
+    top_k_max = 2L,
+    top_k_min = 2L,
+    vertex_mass = field + 1,
+    vertex_id = vertex_id,
+    vertex_mass_provenance = provenance,
+    source_key = "fixture",
+    source_fingerprint = "fixture-source"
+  )
+  expect_equal(nrow(empty$table), 0L)
+  expect_true(all(empty$values_max == "Other basins"))
+  expect_true(all(empty$values_min == "Other basins"))
+  expect_equal(nrow(restored$table), 4L)
+  expect_true(isTRUE(empty$cache_hit))
+  expect_true(isTRUE(restored$cache_hit))
+})
+
+test_that("basin inspector row updates preserve explicit selection and colors", {
+  keys <- c("max|basin_a", "min|basin_b")
+  colors <- stats::setNames(c("#DC2626", "#2563EB"), keys)
+
+  unchecked <- gflowui:::gflowui_update_basin_row_state(
+    selected_keys = keys,
+    color_map = colors,
+    valid_keys = keys,
+    key = keys[[1L]],
+    role = "selection",
+    checked = FALSE
+  )
+  expect_true(unchecked$changed)
+  expect_equal(unchecked$selected_keys, keys[[2L]])
+  expect_equal(unchecked$color_map, colors)
+
+  recolored <- gflowui:::gflowui_update_basin_row_state(
+    selected_keys = unchecked$selected_keys,
+    color_map = unchecked$color_map,
+    valid_keys = keys,
+    key = keys[[2L]],
+    role = "color",
+    value = "#16A34A"
+  )
+  expect_true(recolored$changed)
+  expect_equal(recolored$selected_keys, keys[[2L]])
+  expect_equal(unname(recolored$color_map[keys[[2L]]]), "#16A34A")
+
+  ignored <- gflowui:::gflowui_update_basin_row_state(
+    selected_keys = recolored$selected_keys,
+    color_map = recolored$color_map,
+    valid_keys = keys,
+    key = "max|unknown",
+    role = "selection",
+    checked = TRUE
+  )
+  expect_false(ignored$changed)
+  expect_equal(ignored$selected_keys, recolored$selected_keys)
+})
+
+test_that("basin cache identity distinguishes build and runtime changes", {
+  adjacency <- list(2L, 1L)
+  weights <- list(1, 1)
+  arguments <- list(
+    adj_list = adjacency,
+    edge_length_list = weights,
+    field = c(0, 1),
+    vertex_mass = NULL,
+    vertex_id = c("a", "b"),
+    source_key = "fixture",
+    source_fingerprint = "source-1"
+  )
+  identity <- list(
+    build.id = "build-a",
+    runtime = list(id = "runtime-a")
+  )
+  first <- do.call(
+    gflowui:::gflowui_basin_cache_key,
+    c(arguments, list(build_identity = identity))
+  )
+  identity$build.id <- "build-b"
+  second <- do.call(
+    gflowui:::gflowui_basin_cache_key,
+    c(arguments, list(build_identity = identity))
+  )
+  identity$build.id <- "build-a"
+  identity$runtime$id <- "runtime-b"
+  third <- do.call(
+    gflowui:::gflowui_basin_cache_key,
+    c(arguments, list(build_identity = identity))
+  )
+  expect_false(identical(first, second))
+  expect_false(identical(first, third))
 })
 
 test_that("strict graph-local density extrema are ranked deterministically", {

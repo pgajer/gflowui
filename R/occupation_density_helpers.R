@@ -445,6 +445,8 @@ gflowui_precomputed_graph_heat_density <- function(
     values = gflowui_normalize_density(asset$probability_mass[, row]),
     selected = selected,
     method = asset$method,
+    source_file = asset$path_file,
+    source_fingerprint = unname(tools::md5sum(asset$path_file)),
     color_type = "numeric",
     colorbar_title = "Probability mass",
     display_mode = "density",
@@ -567,8 +569,8 @@ gflowui_parameterized_chart_density <- function(
   )]]
   pca_path <- sprintf(as.character(method$pca_file_template), as.integer(support_size))
   pca <- readRDS(gflowui_occupation_density_path(pca_path, project_root))
-  builder <- getFromNamespace(".state.density.chart.kernel.fixed.candidate", "geosmooth")
-  fitter <- getFromNamespace(".state.density.chart.kernel.fixed.fitted.matrix", "geosmooth")
+  builder <- utils::getFromNamespace(".state.density.chart.kernel.fixed.candidate", "geosmooth")
+  fitter <- utils::getFromNamespace(".state.density.chart.kernel.fixed.fitted.matrix", "geosmooth")
   fixed <- builder(list(
     support.size = as.integer(support_size),
     kernel = "tricube",

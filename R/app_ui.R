@@ -4,6 +4,10 @@ app_ui <- function() {
     "app/www/density-display-state.js",
     package = "gflowui"
   )
+  basin.inspector.js.path <- system.file(
+    "app/www/basin-inspector-state.js",
+    package = "gflowui"
+  )
   theme <- bslib::bs_theme(
     version = 5,
     base_font = bslib::font_google("Space Grotesk"),
@@ -51,6 +55,9 @@ app_ui <- function() {
       if (nzchar(css.path)) shiny::includeCSS(css.path),
       if (nzchar(density.state.js.path)) {
         shiny::includeScript(density.state.js.path)
+      },
+      if (nzchar(basin.inspector.js.path)) {
+        shiny::includeScript(basin.inspector.js.path)
       }
     ),
     shiny::div(

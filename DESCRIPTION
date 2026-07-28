@@ -20,13 +20,21 @@ Imports:
     shiny,
     bslib,
     dgraphs,
-    gflow
+    gflow,
+    jsonlite
 Suggests:
     geosmooth,
+    grip,
+    htmltools,
+    htmlwidgets,
+    igraph,
     knitr,
+    lifecycle,
+    pkgload,
     plotly,
     rmarkdown,
     rgl,
-    testthat (>= 3.0.0)
+    testthat (>= 3.0.0),
+    withr
 VignetteBuilder: knitr
 Config/testthat/edition: 3
