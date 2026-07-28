@@ -317,6 +317,59 @@ test_that("default sidebar control values do not keep re-invalidating the app", 
   })
 })
 
+test_that("subject overlay changes preserve density display settings", {
+  local_projects_data_sandbox()
+
+  reg <- gflowui::list_projects()
+  if (!("agp" %in% reg$id)) {
+    skip("AGP project is not registered in this environment")
+  }
+
+  shiny::testServer(gflowui:::app_server, {
+    open_project("agp")
+    session$flushReact()
+
+    session$setInputs(
+      occupation_density_low_color = "blue",
+      occupation_density_mid_color = "white",
+      occupation_density_high_color = "orange",
+      occupation_density_low_alpha = "0.2",
+      occupation_density_mid_alpha = "0.45",
+      occupation_density_high_alpha = "0.8",
+      subject_show_overlay = TRUE
+    )
+    session$setInputs(density_display_client_snapshot = list(
+      low = "blue",
+      midpoint = "white",
+      high = "orange",
+      low_alpha = 0.2,
+      midpoint_alpha = 0.45,
+      high_alpha = 0.8,
+      nonce = 1
+    ))
+    session$flushReact()
+    before <- density_display_snapshot()
+
+    session$setInputs(
+      workflow_accordion = c(
+        "workflow_graph_structure",
+        "workflow_subject_structure"
+      ),
+      subject_show_overlay = FALSE
+    )
+    session$flushReact()
+    after <- density_display_snapshot()
+
+    expect_identical(after, before)
+    expect_identical(after$low, "blue")
+    expect_identical(after$midpoint, "white")
+    expect_identical(after$high, "orange")
+    expect_equal(after$low_alpha, 0.2)
+    expect_equal(after$midpoint_alpha, 0.45)
+    expect_equal(after$high_alpha, 0.8)
+  })
+})
+
 test_that("legacy html renderer state is normalized to plotly", {
   skip_if_not_installed("plotly")
   local_projects_data_sandbox()

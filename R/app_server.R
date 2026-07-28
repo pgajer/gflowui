@@ -134,6 +134,58 @@ app_server <- function(input, output, session) {
       ))
     )
   }
+  apply_density_display_settings <- function(values) {
+    if (!is.list(values)) {
+      return(invisible(NULL))
+    }
+    low <- values$low
+    if (!is.null(low)) {
+      density_display_settings$low <- normalize_density_color_key(
+        low,
+        default = "yellow"
+      )
+    }
+    midpoint <- values$midpoint
+    if (!is.null(midpoint)) {
+      density_display_settings$midpoint <- normalize_density_color_key(
+        midpoint,
+        default = "none",
+        include_none = TRUE
+      )
+    }
+    high <- values$high
+    if (!is.null(high)) {
+      density_display_settings$high <- normalize_density_color_key(
+        high,
+        default = "red"
+      )
+    }
+    sync_alpha <- function(value, field) {
+      if (is.null(value)) {
+        return(invisible(NULL))
+      }
+      alpha <- suppressWarnings(as.numeric(value))
+      if (length(alpha) > 0L && is.finite(alpha[[1L]])) {
+        density_display_settings[[field]] <- max(0, min(1, alpha[[1L]]))
+      }
+      invisible(NULL)
+    }
+    sync_alpha(values$low_alpha, "low_alpha")
+    sync_alpha(values$midpoint_alpha, "midpoint_alpha")
+    sync_alpha(values$high_alpha, "high_alpha")
+    invisible(NULL)
+  }
+  sync_density_display_settings_from_inputs <- function() {
+    apply_density_display_settings(list(
+      low = input$occupation_density_low_color,
+      midpoint = input$occupation_density_mid_color,
+      high = input$occupation_density_high_color,
+      low_alpha = input$occupation_density_low_alpha,
+      midpoint_alpha = input$occupation_density_mid_alpha,
+      high_alpha = input$occupation_density_high_alpha
+    ))
+    invisible(NULL)
+  }
   basin_display_snapshot <- function() {
     list(
       show_maxima = isTRUE(basin_display_settings$show_maxima),
@@ -289,49 +341,18 @@ app_server <- function(input, output, session) {
     quadform_layout_revision(0L)
   }, ignoreInit = FALSE)
 
-  shiny::observeEvent(input$occupation_density_low_color, {
-    density_display_settings$low <- normalize_density_color_key(
-      input$occupation_density_low_color,
-      default = "yellow"
-    )
-  }, ignoreInit = FALSE, ignoreNULL = TRUE)
-  shiny::observeEvent(input$occupation_density_mid_color, {
-    density_display_settings$midpoint <- normalize_density_color_key(
-      input$occupation_density_mid_color,
-      default = "none",
-      include_none = TRUE
-    )
-  }, ignoreInit = FALSE, ignoreNULL = TRUE)
-  shiny::observeEvent(input$occupation_density_high_color, {
-    density_display_settings$high <- normalize_density_color_key(
-      input$occupation_density_high_color,
-      default = "red"
-    )
-  }, ignoreInit = FALSE, ignoreNULL = TRUE)
-  shiny::observeEvent(input$occupation_density_low_alpha, {
-    density_display_settings$low_alpha <- max(
-      0,
-      min(1, suppressWarnings(as.numeric(
-        input$occupation_density_low_alpha %||% 1
-      )))
-    )
-  }, ignoreInit = FALSE, ignoreNULL = TRUE)
-  shiny::observeEvent(input$occupation_density_mid_alpha, {
-    density_display_settings$midpoint_alpha <- max(
-      0,
-      min(1, suppressWarnings(as.numeric(
-        input$occupation_density_mid_alpha %||% 1
-      )))
-    )
-  }, ignoreInit = FALSE, ignoreNULL = TRUE)
-  shiny::observeEvent(input$occupation_density_high_alpha, {
-    density_display_settings$high_alpha <- max(
-      0,
-      min(1, suppressWarnings(as.numeric(
-        input$occupation_density_high_alpha %||% 1
-      )))
-    )
-  }, ignoreInit = FALSE, ignoreNULL = TRUE)
+  shiny::observe({
+    sync_density_display_settings_from_inputs()
+  })
+  shiny::observeEvent(
+    input$density_display_client_snapshot,
+    {
+      apply_density_display_settings(input$density_display_client_snapshot)
+    },
+    ignoreInit = TRUE,
+    ignoreNULL = TRUE,
+    priority = 100
+  )
   shiny::observeEvent(input$basin_show_maxima, {
     basin_display_settings$show_maxima <- isTRUE(
       input$basin_show_maxima
@@ -7558,7 +7579,6 @@ app_server <- function(input, output, session) {
 
   output$occupation_density_parameters <- shiny::renderUI({
     st <- occupation_density_panel_state()
-    occupation_density_result()
     display_settings <- shiny::isolate(density_display_snapshot())
     mode <- as.character(
       input$occupation_density_mode %||% st$mode %||% "selected"
@@ -7800,6 +7820,10 @@ app_server <- function(input, output, session) {
   })
 
   show_occupation_density_selection <- function(notify_errors = TRUE) {
+    # Capture the live controls before changing the displayed estimate. The
+    # result update can rebuild/suspend this dynamic UI while another workflow
+    # panel is opened, so the renderer must not rely on a later input rebind.
+    sync_density_display_settings_from_inputs()
     st <- occupation_density_panel_state()
     if (!isTRUE(st$has_assets)) {
       return(invisible(NULL))
