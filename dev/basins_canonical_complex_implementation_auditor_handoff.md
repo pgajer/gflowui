@@ -22,7 +22,7 @@ Repository provenance:
   it without a recursive self-reference using
   `git log -1 --format=%H -- dev/basins_canonical_complex_implementation_auditor_handoff.md`
 - Canonical Subject15 registration commit:
-  `b6eb27d31e1ad88579a7df92eb0bb4345a6b18fb`
+  `b6eb27d95f6782d511acbcb662ff39b6a102dbc3`
 - Pre-implementation baselines: `gflow`
   `92a61c086f2fa1fa77223edfb02b74a1be3f1a28`; `gflowui`
   `a74da1f6eb38d74b23c374a677c42190dc86c91b`

@@ -11,7 +11,7 @@ Final repository provenance:
 
 - `gflow`: `af1fc4e53365e421440c0d0ac71a01ad0f91fb52`
 - `vaginal_community_trajectory_types` registration:
-  `b6eb27d31e1ad88579a7df92eb0bb4345a6b18fb`
+  `b6eb27d95f6782d511acbcb662ff39b6a102dbc3`
 - `gflowui`: the commit containing this response; resolve with
   `git log -1 --format=%H -- dev/audits/basins_canonical_complex_implementation_audit_response_2026-07-28.md`
 
