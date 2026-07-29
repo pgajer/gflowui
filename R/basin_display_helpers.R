@@ -1,4 +1,5 @@
 .gflowui_basin_cache <- new.env(parent = emptyenv())
+.gflowui_basin_prominence_cache <- new.env(parent = emptyenv())
 
 gflowui_basin_hash <- function(x) {
   path <- tempfile("gflowui-basin-hash-")
@@ -685,7 +686,7 @@ gflowui_basin_cache_key <- function(
   ))
 }
 
-gflowui_basin_table <- function(summary) {
+gflowui_basin_table <- function(summary, prominence_complex = NULL) {
   table <- summary$basin.table
   if (!is.data.frame(table) || nrow(table) < 1L) {
     table <- summary$maxima
@@ -696,7 +697,39 @@ gflowui_basin_table <- function(summary) {
     table$display.label <- character()
     table$selected <- logical()
     table$color <- character()
+    table$prominence <- numeric()
     return(table)
+  }
+  table$prominence <- NA_real_
+  if (inherits(prominence_complex, "basin_complex") &&
+      identical(as.character(prominence_complex$status %||% ""), "ok") &&
+      is.data.frame(prominence_complex$basin.table)) {
+    prominence.table <- prominence_complex$basin.table
+    table.key <- paste(table$type, table$extremum.vertex, sep = "|")
+    prominence.key <- paste(
+      prominence.table$type,
+      prominence.table$extremum.vertex,
+      sep = "|"
+    )
+    if (anyDuplicated(prominence.key)) {
+      stop(
+        "The canonical prominence complex returned duplicate extrema.",
+        call. = FALSE
+      )
+    }
+    matched <- match(table.key, prominence.key)
+    if (anyNA(matched)) {
+      stop(
+        paste(
+          "The trajectory-flow and canonical merge-tree extrema do not align;",
+          "prominence cannot be reported safely."
+        ),
+        call. = FALSE
+      )
+    }
+    table$prominence <- as.numeric(
+      prominence.table$persistence[matched]
+    )
   }
   table$key <- paste(table$type, table$basin.id, sep = "|")
   table$display.label <- paste0(
@@ -871,6 +904,65 @@ gflowui_estimate_basin_overlay <- function(
     assign(cache_key, basin, envir = .gflowui_basin_cache)
   }
 
+  prominence_cache_key <- paste0("merge-tree-prominence|", cache_key)
+  prominence_cache_hit <- exists(
+    prominence_cache_key,
+    envir = .gflowui_basin_prominence_cache,
+    inherits = FALSE
+  )
+  if (isTRUE(prominence_cache_hit)) {
+    cached <- get(
+      prominence_cache_key,
+      envir = .gflowui_basin_prominence_cache,
+      inherits = FALSE
+    )
+    prominence_cache_hit <- inherits(cached, "basin_complex") &&
+      identical(as.character(cached$status %||% ""), "ok")
+    if (!isTRUE(prominence_cache_hit)) {
+      rm(
+        list = prominence_cache_key,
+        envir = .gflowui_basin_prominence_cache
+      )
+    }
+  }
+  prominence_complex <- if (prominence_cache_hit) {
+    get(
+      prominence_cache_key,
+      envir = .gflowui_basin_prominence_cache,
+      inherits = FALSE
+    )
+  } else {
+    gflow::create.basin.complex(
+      adj.list = adj_list,
+      edge.length.list = edge_length_list,
+      field = field,
+      method = "superlevel_merge_tree",
+      direction = "both",
+      vertex.mass = vertex_mass,
+      method.params = list(),
+      simplify.params = list(),
+      verbose = FALSE,
+      vertex.id = vertex_id,
+      vertex.mass.provenance = vertex_mass_provenance
+    )
+  }
+  if (!inherits(prominence_complex, "basin_complex") ||
+      !identical(as.character(prominence_complex$status %||% ""), "ok")) {
+    detail <- as.character(
+      prominence_complex$diagnostics$message %||%
+        prominence_complex$diagnostics$error %||%
+        "The canonical merge tree did not return usable prominence values."
+    )
+    stop(detail, call. = FALSE)
+  }
+  if (!isTRUE(prominence_cache_hit)) {
+    assign(
+      prominence_cache_key,
+      prominence_complex,
+      envir = .gflowui_basin_prominence_cache
+    )
+  }
+
   summary <- summary(
     basin,
     rank.by = rank_by,
@@ -878,7 +970,7 @@ gflowui_estimate_basin_overlay <- function(
     top.k.min = top_k_min,
     include.vertex.lists = FALSE
   )
-  table <- gflowui_basin_table(summary)
+  table <- gflowui_basin_table(summary, prominence_complex)
   display_direction <- if (direction == "min") "min" else "max"
   values <- gflowui_basin_display_values(
     basin,
@@ -951,6 +1043,9 @@ gflowui_estimate_basin_overlay <- function(
     ranking = ranking,
     ranking_resolved = summary$rank.resolved,
     basin = basin,
+    prominence_complex = prominence_complex,
+    prominence_method = "superlevel_merge_tree",
+    prominence_cache_hit = prominence_cache_hit,
     cache_key = cache_key,
     cache_hit = cache_hit,
     build_identity = build_identity,

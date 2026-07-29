@@ -696,6 +696,16 @@ test_that("basin server invalidates changed fields and graph identities", {
     expect_match(inspector, "Extremum / basin", fixed = TRUE)
     expect_match(inspector, ">M1<", fixed = TRUE)
     expect_match(inspector, ">m1<", fixed = TRUE)
+    expect_match(inspector, ">Extremum value</th>", fixed = TRUE)
+    expect_match(inspector, ">Support</th>", fixed = TRUE)
+    expect_match(inspector, ">Mass</th>", fixed = TRUE)
+    expect_match(inspector, ">Prominence</th>", fixed = TRUE)
+    expect_match(inspector, "Ranking measure:", fixed = TRUE)
+    expect_false(grepl(">Extremum vertex</th>", inspector, fixed = TRUE))
+    expect_false(grepl(">Primary support</th>", inspector, fixed = TRUE))
+    expect_false(grepl(">Primary mass</th>", inspector, fixed = TRUE))
+    expect_false(grepl(">Allocated mass</th>", inspector, fixed = TRUE))
+    expect_false(grepl(">Ranking measure</th>", inspector, fixed = TRUE))
     expect_false(grepl("<th>Type</th>", inspector, fixed = TRUE))
     expect_false(grepl("<th>Rank</th>", inspector, fixed = TRUE))
     expect_false(grepl("<th>Basin</th>", inspector, fixed = TRUE))
@@ -705,6 +715,29 @@ test_that("basin server invalidates changed fields and graph identities", {
       fixed = TRUE
     )
     expect_false(grepl("basin_inspector_maximize", inspector, fixed = TRUE))
+
+    session$setInputs(basin_inspector_show_extremum_vertex = TRUE)
+    session$flushReact()
+    inspector.with.vertex <- htmltools::renderTags(
+      output$basin_inspector_ui
+    )$html
+    expect_match(
+      inspector.with.vertex,
+      ">Extremum vertex</th>",
+      fixed = TRUE
+    )
+    expect_match(
+      inspector.with.vertex,
+      sprintf(">%d</td>", as.integer(first$table$extremum.vertex[[1L]])),
+      fixed = TRUE
+    )
+    external.vertex <- as.character(first$table$extremum.vertex.id[[1L]])
+    if (!identical(
+        external.vertex,
+        as.character(first$table$extremum.vertex[[1L]])
+    )) {
+      expect_false(grepl(external.vertex, inspector.with.vertex, fixed = TRUE))
+    }
 
     selected.key <- as.character(first$table$key[[1L]])
     session$setInputs(basin_inspector_row_event = list(
