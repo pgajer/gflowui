@@ -1,15 +1,21 @@
 (function () {
   "use strict";
 
-  function clamp(value) {
-    return Math.max(230, Math.min(900, Math.round(value)));
+  function clamp(value, split) {
+    var available = split
+      ? Math.max(380, split.getBoundingClientRect().width - 420)
+      : 1200;
+    return Math.max(
+      380,
+      Math.min(1200, available, Math.round(value))
+    );
   }
 
-  function notify(height) {
+  function notify(width) {
     if (window.Shiny && typeof window.Shiny.setInputValue === "function") {
       window.Shiny.setInputValue(
-        "basin_inspector_height",
-        clamp(height),
+        "basin_inspector_width",
+        Math.round(width),
         { priority: "event" }
       );
     }
@@ -47,38 +53,140 @@
     );
   }
 
-  function bind() {
+  function bindSplitter() {
+    var split = document.getElementById("gf_reference_split");
+    var handle = document.getElementById("gf_general_inspector_resize");
     var panel = document.getElementById("gf_basin_inspector");
-    if (!panel || panel.dataset.gfInspectorBound === "1") {
+    var inspector = document.getElementById("gf_general_inspector");
+    if (!split || !handle || !inspector) {
       return;
     }
-    panel.dataset.gfInspectorBound = "1";
-    var key = panel.dataset.storageKey || "gflowui-basin-inspector-height";
-    try {
-      var stored = Number(window.localStorage.getItem(key));
-      if (Number.isFinite(stored)) {
-        panel.style.height = clamp(stored) + "px";
+
+    if (panel) {
+      split.classList.add("gf-general-inspector-open");
+      var key = panel.dataset.storageKey ||
+        "gflowui-general-inspector-width";
+      if (split.dataset.gfInspectorStorageKey !== key) {
+        split.dataset.gfInspectorStorageKey = key;
+        try {
+          var storedValue = window.localStorage.getItem(key);
+          var stored = storedValue === null ? NaN : Number(storedValue);
+          if (Number.isFinite(stored)) {
+            split.style.setProperty(
+              "--gf-general-inspector-width",
+              clamp(stored, split) + "px"
+            );
+          }
+        } catch (error) {
+          // Local storage can be unavailable in hardened browser contexts.
+        }
       }
-    } catch (error) {
-      // Local storage can be unavailable in hardened browser contexts.
+    } else {
+      split.classList.remove("gf-general-inspector-open");
+      return;
     }
+
+    var updateAccessibility = function (width) {
+      var maximum = clamp(1200, split);
+      handle.setAttribute("aria-valuemin", "380");
+      handle.setAttribute("aria-valuemax", String(maximum));
+      handle.setAttribute("aria-valuenow", String(Math.round(width)));
+    };
+
+    var setWidth = function (width) {
+      var adjusted = clamp(width, split);
+      split.style.setProperty(
+        "--gf-general-inspector-width",
+        adjusted + "px"
+      );
+      updateAccessibility(adjusted);
+      return adjusted;
+    };
+
     var save = function () {
-      if (panel.classList.contains("gf-basin-inspector-maximized")) {
+      var width = setWidth(inspector.getBoundingClientRect().width);
+      var storageKey = split.dataset.gfInspectorStorageKey ||
+        "gflowui-general-inspector-width";
+      try {
+        window.localStorage.setItem(storageKey, String(width));
+      } catch (error) {
+        // Persistence is best-effort; the Shiny session still retains width.
+      }
+      notify(width);
+    };
+
+    setWidth(inspector.getBoundingClientRect().width || 620);
+
+    if (split.dataset.gfSplitterBound === "1") {
+      return;
+    }
+    split.dataset.gfSplitterBound = "1";
+
+    var dragging = false;
+    var resizeFromPointer = function (event) {
+      var bounds = split.getBoundingClientRect();
+      setWidth(bounds.right - event.clientX);
+    };
+
+    handle.addEventListener("pointerdown", function (event) {
+      if (!split.classList.contains("gf-general-inspector-open")) {
         return;
       }
-      var height = clamp(panel.getBoundingClientRect().height);
-      try {
-        window.localStorage.setItem(key, String(height));
-      } catch (error) {
-        // Persistence is best-effort; the Shiny session still retains height.
+      dragging = true;
+      handle.setPointerCapture(event.pointerId);
+      document.body.classList.add("gf-general-inspector-resizing");
+      resizeFromPointer(event);
+      event.preventDefault();
+    });
+    handle.addEventListener("pointermove", function (event) {
+      if (dragging) {
+        resizeFromPointer(event);
       }
-      notify(height);
-    };
-    panel.addEventListener("mouseup", save);
-    panel.addEventListener("touchend", save);
+    });
+    handle.addEventListener("pointerup", function (event) {
+      if (!dragging) {
+        return;
+      }
+      dragging = false;
+      if (handle.hasPointerCapture(event.pointerId)) {
+        handle.releasePointerCapture(event.pointerId);
+      }
+      document.body.classList.remove("gf-general-inspector-resizing");
+      save();
+    });
+    handle.addEventListener("pointercancel", function () {
+      dragging = false;
+      document.body.classList.remove("gf-general-inspector-resizing");
+    });
+    handle.addEventListener("keydown", function (event) {
+      var width = inspector.getBoundingClientRect().width;
+      var step = event.shiftKey ? 64 : 24;
+      if (event.key === "ArrowLeft") {
+        setWidth(width + step);
+      } else if (event.key === "ArrowRight") {
+        setWidth(width - step);
+      } else if (event.key === "Home") {
+        setWidth(380);
+      } else if (event.key === "End") {
+        setWidth(1200);
+      } else {
+        return;
+      }
+      event.preventDefault();
+      save();
+    });
+    handle.addEventListener("dblclick", function () {
+      setWidth(620);
+      save();
+    });
+    window.addEventListener("resize", function () {
+      if (split.classList.contains("gf-general-inspector-open")) {
+        setWidth(inspector.getBoundingClientRect().width);
+      }
+    });
   }
 
-  document.addEventListener("DOMContentLoaded", bind);
+  document.addEventListener("DOMContentLoaded", bindSplitter);
   document.addEventListener("change", function (event) {
     var target = event.target;
     if (
@@ -89,7 +197,7 @@
       notifyRowChange(target);
     }
   });
-  new MutationObserver(bind).observe(document.documentElement, {
+  new MutationObserver(bindSplitter).observe(document.documentElement, {
     childList: true,
     subtree: true
   });

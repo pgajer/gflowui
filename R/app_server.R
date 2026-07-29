@@ -84,8 +84,7 @@ app_server <- function(input, output, session) {
     unselected_opacity = 0.28,
     inspector_filter = "all",
     inspector_columns = "compact",
-    inspector_height = 330,
-    inspector_maximized = FALSE
+    inspector_width = 620
   )
   graph_vertex_color_choices <- function() {
     c(
@@ -8534,7 +8533,10 @@ app_server <- function(input, output, session) {
 
   invalidate_basin_result_if_needed <- function(
       request,
-      message = "Estimate or graph inputs changed. Compute Basin Complex again.") {
+      message = paste(
+        "Estimate or graph inputs changed.",
+        "Compute and Open Basin Inspector again."
+      )) {
     result <- shiny::isolate(basin_result())
     if (!is.list(result)) {
       return(invisible(FALSE))
@@ -8884,41 +8886,21 @@ app_server <- function(input, output, session) {
         paste0(
           "gf-basin-columns-",
           basin_display_settings$inspector_columns %||% "compact"
-        ),
-        if (isTRUE(basin_display_settings$inspector_maximized)) {
-          "gf-basin-inspector-maximized"
-        } else {
-          ""
-        }
+        )
       ),
       `data-storage-key` = sprintf(
-        "gflowui-basin-inspector-height:%s:%s:%s",
+        "gflowui-general-inspector-width:%s:%s:%s",
         result$project_id %||% "project",
         result$graph_set_id %||% "set",
         result$graph_k %||% "k"
       ),
-      style = sprintf(
-        "height:%dpx",
-        as.integer(basin_display_settings$inspector_height %||% 330)
-      ),
       shiny::div(
         class = "gf-basin-inspector-header",
         shiny::h4("Basin Inspector"),
-        shiny::div(
-          shiny::actionButton(
-            "basin_inspector_maximize",
-            if (isTRUE(basin_display_settings$inspector_maximized)) {
-              "Restore"
-            } else {
-              "Maximize table"
-            },
-            class = "btn-light btn-sm"
-          ),
-          shiny::actionButton(
-            "basin_inspector_close",
-            "Close",
-            class = "btn-light btn-sm"
-          )
+        shiny::actionButton(
+          "basin_inspector_close",
+          "Close",
+          class = "btn-light btn-sm"
         )
       ),
       shiny::div(
@@ -9035,6 +9017,11 @@ app_server <- function(input, output, session) {
       )
     )
   })
+  shiny::outputOptions(
+    output,
+    "basin_inspector_ui",
+    suspendWhenHidden = FALSE
+  )
 
   shiny::observe({
     source <- basin_source_state()
@@ -9118,6 +9105,42 @@ app_server <- function(input, output, session) {
       shiny::showNotification(conditionMessage(request), type = "error")
       return()
     }
+    current <- shiny::isolate(basin_result())
+    current.identity <- as.character(
+      current$construction_identity$fingerprint %||% ""
+    )
+    request.identity <- as.character(
+      request$construction_identity$fingerprint %||% ""
+    )
+    if (is.list(current) &&
+        nzchar(current.identity) &&
+        identical(current.identity, request.identity)) {
+      current <- tryCatch(
+        resummarize_basin_result(current),
+        error = function(e) e
+      )
+      if (inherits(current, "error")) {
+        basin_status(sprintf(
+          "Basin summary failed: %s",
+          conditionMessage(current)
+        ))
+        shiny::showNotification(conditionMessage(current), type = "error")
+        return()
+      }
+      basin_result(current)
+      basin_inspector_open(TRUE)
+      graph_layout_state$color_by <- "basin_active"
+      shiny::updateSelectInput(
+        session,
+        "graph_layout_color_by",
+        selected = "basin_active"
+      )
+      basin_status(sprintf(
+        "Opened the current Basin Inspector for %s without reconstruction.",
+        current$source_label %||% request$source$label
+      ))
+      return()
+    }
     source <- request$source
     top.max <- suppressWarnings(as.integer(input$basin_top_k_max %||% 6L))
     top.min <- suppressWarnings(as.integer(input$basin_top_k_min %||% 6L))
@@ -9189,7 +9212,11 @@ app_server <- function(input, output, session) {
       selected = "basin_active"
     )
     basin_status(sprintf(
-      "Computed both directions for %s: %d maximum and %d minimum basins (cache %s; max rank %s; min rank %s).",
+      paste(
+        "Computed both directions and opened the Basin Inspector for %s:",
+        "%d maximum and %d minimum basins",
+        "(cache %s; max rank %s; min rank %s)."
+      ),
       source$label,
       result$basin_count_max,
       result$basin_count_min,
@@ -9199,20 +9226,8 @@ app_server <- function(input, output, session) {
     ))
   }, ignoreInit = TRUE)
 
-  shiny::observeEvent(input$basin_open_inspector, {
-    if (is.list(basin_result())) {
-      basin_inspector_open(TRUE)
-    }
-  }, ignoreInit = TRUE)
-
   shiny::observeEvent(input$basin_inspector_close, {
     basin_inspector_open(FALSE)
-  }, ignoreInit = TRUE)
-
-  shiny::observeEvent(input$basin_inspector_maximize, {
-    basin_display_settings$inspector_maximized <- !isTRUE(
-      basin_display_settings$inspector_maximized
-    )
   }, ignoreInit = TRUE)
 
   shiny::observeEvent(input$basin_inspector_filter, {
@@ -9229,11 +9244,11 @@ app_server <- function(input, output, session) {
     }
   }, ignoreInit = TRUE)
 
-  shiny::observeEvent(input$basin_inspector_height, {
-    value <- suppressWarnings(as.numeric(input$basin_inspector_height))
+  shiny::observeEvent(input$basin_inspector_width, {
+    value <- suppressWarnings(as.numeric(input$basin_inspector_width))
     if (is.finite(value)) {
-      basin_display_settings$inspector_height <- as.integer(
-        max(230, min(900, value))
+      basin_display_settings$inspector_width <- as.integer(
+        max(380, min(1200, value))
       )
     }
   }, ignoreInit = TRUE)
@@ -13764,13 +13779,8 @@ app_server <- function(input, output, session) {
               ),
               shiny::actionButton(
                 "basin_compute",
-                "Compute Basin Complex",
+                "Compute & Open Basin Inspector",
                 class = "btn-primary gf-btn-wide"
-              ),
-              shiny::actionButton(
-                "basin_open_inspector",
-                "Open Basin Inspector",
-                class = "btn-light gf-btn-wide"
               ),
               shiny::div(
                 class = "gf-density-status",
@@ -14856,17 +14866,56 @@ app_server <- function(input, output, session) {
       )
     }
 
+    notes <- unique(c(mode_note, component_note))
+    notes <- notes[nzchar(notes)]
+    note.body <- if (length(notes) > 0L) {
+      shiny::p(class = "gf-mode-note", paste(notes, collapse = " "))
+    } else {
+      NULL
+    }
+
     shiny::div(
       class = "gf-reference-view gf-reference-view-plain",
-      view_body,
-      {
-        notes <- unique(c(mode_note, component_note))
-        notes <- notes[nzchar(notes)]
-        if (length(notes) > 0L) {
-          shiny::p(class = "gf-mode-note", paste(notes, collapse = " "))
-        }
-      },
-      shiny::uiOutput("basin_inspector_ui")
+      shiny::div(
+        id = "gf_reference_split",
+        class = "gf-reference-split",
+        style = sprintf(
+          "--gf-general-inspector-width:%dpx;",
+          as.integer(basin_display_settings$inspector_width %||% 620)
+        ),
+        shiny::div(
+          class = "gf-reference-graph-pane",
+          view_body,
+          note.body
+        ),
+        shiny::div(
+          id = "gf_general_inspector_resize",
+          class = "gf-general-inspector-resize",
+          role = "separator",
+          tabindex = "0",
+          `aria-label` = "Resize General Inspector",
+          `aria-orientation` = "vertical",
+          title = paste(
+            "Drag to resize the General Inspector.",
+            "Use arrow keys for precise adjustment."
+          ),
+          shiny::span(class = "gf-general-inspector-resize-grip")
+        ),
+        shiny::tags$aside(
+          id = "gf_general_inspector",
+          class = "gf-general-inspector-pane",
+          `aria-label` = "General Inspector",
+          shiny::div(
+            class = "gf-general-inspector-header",
+            shiny::h3("General Inspector"),
+            shiny::p("Visualization and diagnostic panels")
+          ),
+          shiny::div(
+            class = "gf-general-inspector-stack",
+            shiny::uiOutput("basin_inspector_ui")
+          )
+        )
+      )
     )
     }
   })

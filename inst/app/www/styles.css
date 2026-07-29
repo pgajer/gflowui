@@ -912,18 +912,141 @@ body {
     width: 96px;
   }
 }
-.gf-basin-inspector {
-  min-height: 230px;
-  max-height: 62vh;
-  height: 330px;
-  resize: vertical;
+.gf-reference-split {
+  --gf-general-inspector-width: 620px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  height: calc(86vh - 1.7rem);
+  min-height: 620px;
+  min-width: 0;
+}
+
+.gf-reference-split.gf-general-inspector-open {
+  grid-template-columns:
+    minmax(420px, 1fr)
+    12px
+    var(--gf-general-inspector-width);
+}
+
+.gf-reference-graph-pane {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.gf-general-inspector-resize,
+.gf-general-inspector-pane {
+  display: none;
+}
+
+.gf-general-inspector-open .gf-general-inspector-resize {
+  display: flex;
+}
+
+.gf-general-inspector-resize {
+  position: relative;
+  align-items: center;
+  justify-content: center;
+  cursor: col-resize;
+  touch-action: none;
+  outline: none;
+}
+
+.gf-general-inspector-resize::before {
+  content: "";
+  position: absolute;
+  inset: 0 4px;
+  border-radius: 999px;
+  background: rgba(15, 139, 119, 0.13);
+  transition: background 120ms ease, box-shadow 120ms ease;
+}
+
+.gf-general-inspector-resize:hover::before,
+.gf-general-inspector-resize:focus-visible::before,
+.gf-general-inspector-resizing .gf-general-inspector-resize::before {
+  background: rgba(15, 139, 119, 0.38);
+  box-shadow: 0 0 0 3px rgba(15, 139, 119, 0.12);
+}
+
+.gf-general-inspector-resize-grip {
+  position: relative;
+  z-index: 1;
+  width: 3px;
+  height: 52px;
+  border-radius: 999px;
+  background: rgba(15, 93, 83, 0.7);
+}
+
+body.gf-general-inspector-resizing {
+  cursor: col-resize;
+  user-select: none;
+}
+
+.gf-general-inspector-open .gf-general-inspector-pane {
+  display: flex;
+}
+
+.gf-general-inspector-pane {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  flex-direction: column;
+  padding: 0.75rem;
+  border: 1px solid rgba(15, 139, 119, 0.28);
+  border-radius: 0.9rem;
+  background: rgba(248, 251, 250, 0.96);
+  box-shadow: -8px 0 24px rgba(26, 47, 51, 0.07);
+}
+
+.gf-general-inspector-header {
+  flex: 0 0 auto;
+  padding: 0.1rem 0.15rem 0.65rem;
+  border-bottom: 1px solid rgba(15, 139, 119, 0.18);
+}
+
+.gf-general-inspector-header h3 {
+  margin: 0;
+  font-size: 1.2rem;
+}
+
+.gf-general-inspector-header p {
+  margin: 0.12rem 0 0;
+  color: var(--gf-muted);
+  font-size: 0.8rem;
+}
+
+.gf-general-inspector-stack {
+  min-height: 0;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding-top: 0.7rem;
   overflow: auto;
-  margin-top: 0.75rem;
+}
+
+.gf-general-inspector-stack > .shiny-html-output {
+  min-height: 0;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.gf-basin-inspector {
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  margin: 0;
   padding: 0.8rem 0.9rem;
   border: 1px solid rgba(15, 139, 119, 0.28);
   border-radius: 0.9rem;
   background: rgba(255, 255, 255, 0.96);
-  box-shadow: 0 -6px 24px rgba(26, 47, 51, 0.08);
+  box-shadow: 0 6px 20px rgba(26, 47, 51, 0.06);
 }
 
 .gf-basin-inspector-header,
@@ -949,6 +1072,7 @@ body {
 
 .gf-basin-inspector-toolbar {
   margin: 0.35rem 0 0.65rem;
+  flex: 0 0 auto;
 }
 
 .gf-basin-inspector-toolbar .form-group {
@@ -956,7 +1080,9 @@ body {
 }
 
 .gf-basin-table-scroll {
-  max-height: 34vh;
+  min-height: 220px;
+  max-height: none;
+  flex: 1 1 auto;
   overflow: auto;
 }
 
@@ -971,20 +1097,6 @@ body {
 
 .gf-basin-columns-full .gf-basin-table {
   min-width: 1680px;
-}
-
-.gf-basin-inspector-maximized {
-  position: fixed;
-  inset: 4.5rem 1.5rem 1.5rem 31rem;
-  z-index: 1050;
-  width: auto;
-  height: auto !important;
-  max-height: none;
-  resize: none;
-}
-
-.gf-basin-inspector-maximized .gf-basin-table-scroll {
-  max-height: calc(100vh - 18rem);
 }
 
 .gf-basin-table th:nth-child(-n+5),
@@ -1010,9 +1122,21 @@ body {
   background: #f8fafc;
 }
 
-@media (max-width: 992px) {
-  .gf-basin-inspector-maximized {
-    inset: 4.5rem 0.75rem 0.75rem;
+@media (max-width: 1350px) {
+  .gf-reference-split.gf-general-inspector-open {
+    height: auto;
+    min-height: 0;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(560px, 76vh) minmax(480px, 64vh);
+    gap: 0.75rem;
+  }
+
+  .gf-general-inspector-open .gf-general-inspector-resize {
+    display: none;
+  }
+
+  .gf-general-inspector-pane {
+    grid-row: 2;
   }
 }
 
@@ -1034,6 +1158,9 @@ body {
 }
 
 .gf-basin-construction-details {
+  flex: 0 0 auto;
+  max-height: 24vh;
+  overflow: auto;
   margin-top: 0.6rem;
   font-size: 0.86rem;
 }

@@ -623,8 +623,16 @@ test_that("basin panel discovers conditional-expectation estimates", {
     expect_match(controls, "Largest maximum basins", fixed = TRUE)
     expect_match(controls, "Largest minimum basins", fixed = TRUE)
     expect_match(controls, "Ranking measure", fixed = TRUE)
-    expect_match(controls, "Compute Basin Complex", fixed = TRUE)
-    expect_match(controls, "Open Basin Inspector", fixed = TRUE)
+    expect_match(
+      controls,
+      "Compute &amp; Open Basin Inspector",
+      fixed = TRUE
+    )
+    expect_false(grepl(
+      ">Open Basin Inspector<",
+      controls,
+      fixed = TRUE
+    ))
     expect_false(grepl("Flow direction", controls, fixed = TRUE))
   })
 })
@@ -660,8 +668,43 @@ test_that("basin server invalidates changed fields and graph identities", {
 
     first <- basin_result()
     expect_true(is.list(first))
+    expect_true(isTRUE(basin_inspector_open()))
     first.identity <- first$construction_identity$fingerprint
     expect_true(nzchar(first.identity))
+
+    workspace <- htmltools::renderTags(output$workspace_view)$html
+    expect_match(workspace, "gf_reference_split", fixed = TRUE)
+    expect_match(workspace, "General Inspector", fixed = TRUE)
+    expect_match(workspace, "Resize General Inspector", fixed = TRUE)
+    inspector <- htmltools::renderTags(output$basin_inspector_ui)$html
+    expect_match(inspector, "Basin Inspector", fixed = TRUE)
+    expect_match(
+      inspector,
+      "gflowui-general-inspector-width",
+      fixed = TRUE
+    )
+    expect_false(grepl("basin_inspector_maximize", inspector, fixed = TRUE))
+    session$setInputs(basin_inspector_width = 760)
+    session$flushReact()
+    expect_equal(basin_display_settings$inspector_width, 760L)
+    resized.workspace <- htmltools::renderTags(output$workspace_view)$html
+    expect_match(
+      resized.workspace,
+      "--gf-general-inspector-width:760px",
+      fixed = TRUE
+    )
+
+    session$setInputs(basin_inspector_close = 1L)
+    session$flushReact()
+    expect_false(isTRUE(basin_inspector_open()))
+    session$setInputs(basin_compute = 2L)
+    session$flushReact()
+    expect_true(isTRUE(basin_inspector_open()))
+    expect_identical(
+      basin_result()$construction_identity$fingerprint,
+      first.identity
+    )
+    expect_match(basin_status(), "without reconstruction", fixed = TRUE)
 
     session$setInputs(occupation_density_eta_index = "5")
     session$flushReact()
@@ -669,7 +712,7 @@ test_that("basin server invalidates changed fields and graph identities", {
     expect_false(isTRUE(basin_inspector_open()))
     expect_match(basin_status(), "changed|stale", ignore.case = TRUE)
 
-    session$setInputs(basin_compute = 2L)
+    session$setInputs(basin_compute = 3L)
     session$flushReact()
     second <- basin_result()
     expect_true(is.list(second))
@@ -703,7 +746,7 @@ test_that("basin server invalidates changed fields and graph identities", {
     expect_null(basin_result())
     expect_match(basin_status(), "graph changed", ignore.case = TRUE)
 
-    session$setInputs(basin_compute = 3L)
+    session$setInputs(basin_compute = 4L)
     session$flushReact()
     expect_true(is.list(basin_result()))
     expect_true(isTRUE(basin_result()$cache_hit))
