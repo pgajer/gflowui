@@ -322,6 +322,17 @@ test_that("canonical basin overlay computes both directions and reuses cache", {
   expect_true(all(empty$values_max == "Other basins"))
   expect_true(all(empty$values_min == "Other basins"))
   expect_equal(nrow(restored$table), 4L)
+  expect_false(any(restored$table$selected))
+  expect_true(all(restored$values_max == "Other basins"))
+  expect_true(all(restored$values_min == "Other basins"))
+  expect_equal(
+    restored$table$display.label[restored$table$type == "max"],
+    paste0("M", seq_len(sum(restored$table$type == "max")))
+  )
+  expect_equal(
+    restored$table$display.label[restored$table$type == "min"],
+    paste0("m", seq_len(sum(restored$table$type == "min")))
+  )
   expect_true(isTRUE(empty$cache_hit))
   expect_true(isTRUE(restored$cache_hit))
 })
@@ -669,6 +680,19 @@ test_that("Plotly basin layers contain selected fills and minimum halos", {
     source_key = "plotly-layer-fixture"
   )
   result$table$selected <- TRUE
+  selected.keys <- result$table$key[result$table$selected]
+  result$values_max <- gflowui:::gflowui_basin_display_values(
+    result$basin,
+    result$table,
+    selected.keys,
+    "max"
+  )
+  result$values_min <- gflowui:::gflowui_basin_display_values(
+    result$basin,
+    result$table,
+    selected.keys,
+    "min"
+  )
   coords <- cbind(1:6, (1:6)^2, (1:6)^3)
   specs <- gflowui:::gflowui_basin_layer_specs(
     result,
@@ -689,8 +713,8 @@ test_that("Plotly basin layers contain selected fills and minimum halos", {
   )
   traces <- plotly::plotly_build(plot)$x$data
   trace.names <- vapply(traces, function(x) as.character(x$name), character(1))
-  expect_true(any(grepl("^Maximum Basin", trace.names)))
-  expect_true(any(grepl("^Minimum Basin.* halo$", trace.names)))
+  expect_true(any(grepl("^M[0-9]+$", trace.names)))
+  expect_true(any(grepl("^m[0-9]+ halo$", trace.names)))
   halos <- traces[grepl(" halo$", trace.names)]
   expect_true(all(vapply(
     halos,
@@ -710,7 +734,7 @@ test_that("actual RGL basin layers contain the selected minimum vertices", {
   specs <- list(list(
     kind = "minimum_halo",
     key = "min|fixture",
-    name = "Minimum Basin 01 halo",
+    name = "m1 halo",
     vertices = c(2L, 4L),
     color = "#2563EB",
     rgl.size = 8,
@@ -745,7 +769,7 @@ test_that("strict graph-local density extrema are ranked deterministically", {
       value = c(5, 4, 0, 1),
       type = c("maximum", "maximum", "minimum", "minimum"),
       rank = c(1L, 2L, 1L, 2L),
-      label = c("M_1", "M_2", "m_1", "m_2"),
+      label = c("M1", "M2", "m1", "m2"),
       stringsAsFactors = FALSE
     )
   )
@@ -755,7 +779,7 @@ test_that("strict graph-local density extrema are ranked deterministically", {
     list(2L, c(1L, 3L), 2L)
   )
   expect_equal(plateau$vertex, 3L)
-  expect_equal(plateau$label, "M_1")
+  expect_equal(plateau$label, "M1")
 })
 
 test_that("precomputed heat paths expose every time and current top-K basins", {

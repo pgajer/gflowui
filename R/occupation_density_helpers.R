@@ -250,7 +250,7 @@ gflowui_density_local_extrema <- function(values, adj_list) {
       value = values[vertices],
       type = type,
       rank = seq_along(vertices),
-      label = sprintf("%s_%d", prefix, seq_along(vertices)),
+      label = sprintf("%s%d", prefix, seq_along(vertices)),
       stringsAsFactors = FALSE
     )
   }

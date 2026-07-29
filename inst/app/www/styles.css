@@ -1087,7 +1087,7 @@ body.gf-general-inspector-resizing {
 }
 
 .gf-basin-table {
-  min-width: 1280px;
+  min-width: 1080px;
   font-size: 0.82rem;
 }
 
@@ -1096,11 +1096,11 @@ body.gf-general-inspector-resizing {
 }
 
 .gf-basin-columns-full .gf-basin-table {
-  min-width: 1680px;
+  min-width: 1480px;
 }
 
-.gf-basin-table th:nth-child(-n+5),
-.gf-basin-table td:nth-child(-n+5) {
+.gf-basin-table th:nth-child(-n+3),
+.gf-basin-table td:nth-child(-n+3) {
   position: sticky;
   z-index: 2;
   background: #fff;
@@ -1111,13 +1111,9 @@ body.gf-general-inspector-resizing {
 .gf-basin-table th:nth-child(2),
 .gf-basin-table td:nth-child(2) { left: 52px; min-width: 128px; }
 .gf-basin-table th:nth-child(3),
-.gf-basin-table td:nth-child(3) { left: 180px; min-width: 80px; }
-.gf-basin-table th:nth-child(4),
-.gf-basin-table td:nth-child(4) { left: 260px; min-width: 58px; }
-.gf-basin-table th:nth-child(5),
-.gf-basin-table td:nth-child(5) { left: 318px; min-width: 105px; }
+.gf-basin-table td:nth-child(3) { left: 180px; min-width: 118px; }
 
-.gf-basin-table thead th:nth-child(-n+5) {
+.gf-basin-table thead th:nth-child(-n+3) {
   z-index: 5;
   background: #f8fafc;
 }
