@@ -810,6 +810,17 @@ test_that("basin server invalidates changed fields and graph identities", {
       lengths(regmatches(
         plot.workspace.with.pairs,
         gregexpr(
+          'id="basin_plot_point_size_[0-9]+"[^>]*data-from="0.5"',
+          plot.workspace.with.pairs,
+          perl = TRUE
+        )
+      )),
+      3L
+    )
+    expect_equal(
+      lengths(regmatches(
+        plot.workspace.with.pairs,
+        gregexpr(
           '<option value="log10" selected>Log10 (positive values only)</option>',
           plot.workspace.with.pairs,
           fixed = TRUE
@@ -843,6 +854,17 @@ test_that("basin server invalidates changed fields and graph identities", {
       plot.workspace.with.matrix,
       '<option value="log10" selected>Log10 (positive values only)</option>',
       fixed = TRUE
+    )
+    expect_equal(
+      lengths(regmatches(
+        plot.workspace.with.matrix,
+        gregexpr(
+          'id="basin_plot_point_size_[0-9]+"[^>]*data-from="0.5"',
+          plot.workspace.with.matrix,
+          perl = TRUE
+        )
+      )),
+      1L
     )
     session$setInputs(basin_plot_add_matrix = 2L)
     session$flushReact()

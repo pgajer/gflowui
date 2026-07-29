@@ -9336,6 +9336,7 @@ app_server <- function(input, output, session) {
     } else {
       "raw"
     }
+    default.point.size <- 0.5
     current.fingerprint <- as.character(
       result$construction_identity$fingerprint %||% ""
     )
@@ -9359,6 +9360,7 @@ app_server <- function(input, output, session) {
       card.y.scale.id <- y.scale.id
       card.default.x.scale <- default.x.scale
       card.default.y.scale <- default.y.scale
+      card.default.point.size <- default.point.size
       output[[output.id]] <- shiny::renderPlot({
         active <- basin_result()
         active.fingerprint <- as.character(
@@ -9398,7 +9400,8 @@ app_server <- function(input, output, session) {
             input[[card.histogram.color.id]] %||% "#2563EB",
           point_color = input[[card.point.color.id]] %||% "type",
           point_glyph = input[[card.glyph.id]] %||% 19L,
-          point_size = input[[card.size.id]] %||% 1.1,
+          point_size =
+            input[[card.size.id]] %||% card.default.point.size,
           point_opacity = input[[card.opacity.id]] %||% 0.75,
           x_scale = input[[card.x.scale.id]] %||% card.default.x.scale,
           y_scale = input[[card.y.scale.id]] %||% card.default.y.scale
@@ -9602,7 +9605,7 @@ app_server <- function(input, output, session) {
               max = 3,
               step = 0.1,
               value = suppressWarnings(as.numeric(
-                basin_plot_input_value(size.id, 1.1)
+                basin_plot_input_value(size.id, default.point.size)
               ))
             )
           } else NULL,
