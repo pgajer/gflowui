@@ -317,6 +317,12 @@ test_that("default sidebar control values do not keep re-invalidating the app", 
   })
 })
 
+test_that("occupation-density display starts with low opacity 0.2", {
+  shiny::testServer(gflowui:::app_server, {
+    expect_equal(density_display_snapshot()$low_alpha, 0.2)
+  })
+})
+
 test_that("subject overlay changes preserve density display settings", {
   local_projects_data_sandbox()
 

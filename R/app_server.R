@@ -69,7 +69,7 @@ app_server <- function(input, output, session) {
     low = "yellow",
     midpoint = "none",
     high = "red",
-    low_alpha = 1,
+    low_alpha = 0.2,
     midpoint_alpha = 1,
     high_alpha = 1
   )
@@ -136,7 +136,7 @@ app_server <- function(input, output, session) {
       ),
       high = as.character(density_display_settings$high %||% "red"),
       low_alpha = suppressWarnings(as.numeric(
-        density_display_settings$low_alpha %||% 1
+        density_display_settings$low_alpha %||% 0.2
       )),
       midpoint_alpha = suppressWarnings(as.numeric(
         density_display_settings$midpoint_alpha %||% 1
@@ -7712,7 +7712,7 @@ app_server <- function(input, output, session) {
                 min = 0,
                 max = 1,
                 value = suppressWarnings(as.numeric(
-                  display_settings$low_alpha %||% 1
+                  display_settings$low_alpha %||% 0.2
                 )),
                 step = 0.05
               )
@@ -10107,7 +10107,7 @@ app_server <- function(input, output, session) {
             low = density_display_settings$low %||% "yellow",
             midpoint = density_display_settings$midpoint %||% "none",
             high = density_display_settings$high %||% "red",
-            low_alpha = density_display_settings$low_alpha %||% 1,
+            low_alpha = density_display_settings$low_alpha %||% 0.2,
             midpoint_alpha = density_display_settings$midpoint_alpha %||% 1,
             high_alpha = density_display_settings$high_alpha %||% 1
           )
@@ -11459,7 +11459,7 @@ app_server <- function(input, output, session) {
                 low = density_display_settings$low %||% "yellow",
                 midpoint = density_display_settings$midpoint %||% "none",
                 high = density_display_settings$high %||% "red",
-                low_alpha = density_display_settings$low_alpha %||% 1,
+                low_alpha = density_display_settings$low_alpha %||% 0.2,
                 midpoint_alpha = density_display_settings$midpoint_alpha %||% 1,
                 high_alpha = density_display_settings$high_alpha %||% 1
               )
