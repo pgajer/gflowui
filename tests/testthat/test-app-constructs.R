@@ -705,6 +705,8 @@ test_that("basin server invalidates changed fields and graph identities", {
     expect_match(inspector, "Listed top-K", fixed = TRUE)
     expect_match(inspector, "Basin characteristics", fixed = TRUE)
     expect_match(inspector, "Extremum / basin", fixed = TRUE)
+    expect_match(inspector, "gf-basin-show-column", fixed = TRUE)
+    expect_match(inspector, "gf-basin-label-column", fixed = TRUE)
     expect_match(inspector, ">M1<", fixed = TRUE)
     expect_match(inspector, ">m1<", fixed = TRUE)
     expect_match(inspector, ">Extremum value</th>", fixed = TRUE)

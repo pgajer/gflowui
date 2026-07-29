@@ -8839,9 +8839,10 @@ app_server <- function(input, output, session) {
       basin_display_settings$inspector_show_extremum_vertex
     )
     header <- shiny::tags$tr(
-      shiny::tags$th("Show"),
-      shiny::tags$th("Color"),
+      shiny::tags$th(class = "gf-basin-show-column", "Show"),
+      shiny::tags$th(class = "gf-basin-color-column", "Color"),
       shiny::tags$th(
+        class = "gf-basin-label-column",
         title = paste(
           "M denotes a maximum basin and m denotes a minimum basin.",
           "The number is its direction-specific rank under the selected",
@@ -8922,30 +8923,37 @@ app_server <- function(input, output, session) {
       suffix <- basin_input_suffix(key)
       color <- as.character(colors[[key]] %||% row$color %||% "#2563EB")
       shiny::tags$tr(
-        shiny::tags$td(shiny::tagAppendAttributes(
-          shiny::checkboxInput(
-            paste0("basin_select_", suffix),
-            label = NULL,
-            value = key %in% selected
-          ),
-          `aria-label` = sprintf("Show %s", row$display.label),
-          `data-gf-basin-key` = key,
-          `data-gf-basin-role` = "selection"
-        )),
-        shiny::tags$td(shiny::tagAppendAttributes(
-          shiny::selectInput(
-            paste0("basin_color_", suffix),
-            label = NULL,
-            choices = basin_color_choices(color),
-            selected = color,
-            width = "118px",
-            selectize = FALSE
-          ),
-          `aria-label` = sprintf("Color for %s", row$display.label),
-          `data-gf-basin-key` = key,
-          `data-gf-basin-role` = "color"
-        )),
         shiny::tags$td(
+          class = "gf-basin-show-column",
+          shiny::tagAppendAttributes(
+            shiny::checkboxInput(
+              paste0("basin_select_", suffix),
+              label = NULL,
+              value = key %in% selected
+            ),
+            `aria-label` = sprintf("Show %s", row$display.label),
+            `data-gf-basin-key` = key,
+            `data-gf-basin-role` = "selection"
+          )
+        ),
+        shiny::tags$td(
+          class = "gf-basin-color-column",
+          shiny::tagAppendAttributes(
+            shiny::selectInput(
+              paste0("basin_color_", suffix),
+              label = NULL,
+              choices = basin_color_choices(color),
+              selected = color,
+              width = "118px",
+              selectize = FALSE
+            ),
+            `aria-label` = sprintf("Color for %s", row$display.label),
+            `data-gf-basin-key` = key,
+            `data-gf-basin-role` = "color"
+          )
+        ),
+        shiny::tags$td(
+          class = "gf-basin-label-column",
           title = if (row$type == "max") {
             sprintf("Maximum basin, rank %d", as.integer(row$rank))
           } else {
