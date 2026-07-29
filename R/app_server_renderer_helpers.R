@@ -426,7 +426,13 @@ gflowui_make_server_renderer_helpers <- function(rv, current_reference_info) {
     spectral_best_score <- -Inf
     spectral_fallback <- NULL
 
-    add_source <- function(key, label, values, type = c("numeric", "categorical")) {
+    add_source <- function(
+        key,
+        label,
+        values,
+        type = c("numeric", "categorical"),
+        alignment_contract = NULL,
+        source_fingerprint = "") {
       type <- match.arg(type)
       vv <- values
       if (length(vv) != n_vertices) {
@@ -443,9 +449,23 @@ gflowui_make_server_renderer_helpers <- function(rv, current_reference_info) {
         key = k,
         label = as.character(label),
         type = type,
-        values = vv
+        values = vv,
+        alignment_contract = alignment_contract,
+        source_fingerprint = as.character(source_fingerprint %||% "")
       )
       invisible(NULL)
+    }
+
+    field_contract <- function(base, values, source_id, source_fingerprint) {
+      if (!is.list(base)) {
+        return(NULL)
+      }
+      out <- base
+      out$source.id <- as.character(source_id)
+      out$source.asset.fingerprint <- as.character(source_fingerprint)
+      out$source.field.fingerprint <- gflowui_basin_field_fingerprint(values)
+      out$field.fingerprint <- gflowui_basin_field_fingerprint(values)
+      out
     }
 
     condexp_sets <- if (is.list(manifest$condexp_sets)) manifest$condexp_sets else list()
@@ -512,7 +532,13 @@ gflowui_make_server_renderer_helpers <- function(rv, current_reference_info) {
       mu
     }
 
-    add_relative_condexp_source <- function(key_base, outcome_label, yhat, yobs) {
+    add_relative_condexp_source <- function(
+        key_base,
+        outcome_label,
+        yhat,
+        yobs,
+        alignment_contract = NULL,
+        source_fingerprint = "") {
       yhat_num <- as_numeric_vector(yhat)
       yobs_num <- as_numeric_vector(yobs)
       if (length(yhat_num) != n_vertices || length(yobs_num) != n_vertices) {
@@ -522,11 +548,17 @@ gflowui_make_server_renderer_helpers <- function(rv, current_reference_info) {
       if (!is.finite(mu) || mu <= 0) {
         return(invisible(NULL))
       }
+      key <- sprintf("%s_rel_yhat", key_base)
+      values <- yhat_num / mu
       add_source(
-        key = sprintf("%s_rel_yhat", key_base),
+        key = key,
         label = sprintf("%s rel.y.hat", as.character(outcome_label)),
-        values = yhat_num / mu,
-        type = "numeric"
+        values = values,
+        type = "numeric",
+        alignment_contract = field_contract(
+          alignment_contract, values, key, source_fingerprint
+        ),
+        source_fingerprint = source_fingerprint
       )
       invisible(NULL)
     }
@@ -574,6 +606,11 @@ gflowui_make_server_renderer_helpers <- function(rv, current_reference_info) {
           if (!is.list(fit)) {
             next
           }
+          fit.source.fingerprint <- gflowui_basin_file_sha256(path)
+          fit.alignment.contract <- fit$basin.source.contract %||%
+            fit$basin_source_contract %||%
+            fr$basin_source_contract %||%
+            cs$basin_source_contract
 
           yhat <- expand_lcc_to_full(
             values = fit$fitted.values %||% numeric(0),
@@ -587,26 +624,44 @@ gflowui_make_server_renderer_helpers <- function(rv, current_reference_info) {
           )
           src_base_key <- sprintf("condexp_%s_%s", cs_id, fam)
           if (length(yhat) == n_vertices) {
+            key <- sprintf("%s_yhat", src_base_key)
             add_source(
-              key = sprintf("%s_yhat", src_base_key),
+              key = key,
               label = sprintf("%s CondExp", cs_outcome_label),
               values = yhat,
-              type = "numeric"
+              type = "numeric",
+              alignment_contract = field_contract(
+                fit.alignment.contract,
+                yhat,
+                key,
+                fit.source.fingerprint
+              ),
+              source_fingerprint = fit.source.fingerprint
             )
           }
           if (length(yobs) == n_vertices) {
+            key <- sprintf("%s_yobs", src_base_key)
             add_source(
-              key = sprintf("%s_yobs", src_base_key),
+              key = key,
               label = sprintf("Observed %s", cs_outcome_label),
               values = yobs,
-              type = "numeric"
+              type = "numeric",
+              alignment_contract = field_contract(
+                fit.alignment.contract,
+                yobs,
+                key,
+                fit.source.fingerprint
+              ),
+              source_fingerprint = fit.source.fingerprint
             )
           }
           add_relative_condexp_source(
             key_base = src_base_key,
             outcome_label = cs_outcome_label,
             yhat = yhat,
-            yobs = yobs
+            yobs = yobs,
+            alignment_contract = fit.alignment.contract,
+            source_fingerprint = fit.source.fingerprint
           )
 
           if (is.list(fit$spectral) && is.matrix(fit$spectral$eigenvectors)) {
@@ -637,6 +692,12 @@ gflowui_make_server_renderer_helpers <- function(rv, current_reference_info) {
       long_file <- as.character(cs$long_table_file %||% "")
       if (nzchar(long_file) && file.exists(long_file)) {
         tbl <- tryCatch(readRDS(long_file), error = function(e) NULL)
+        long.source.fingerprint <- if (is.data.frame(tbl)) {
+          gflowui_basin_file_sha256(long_file)
+        } else {
+          ""
+        }
+        long.alignment.contract <- cs$basin_source_contract
         if (is.data.frame(tbl) && nrow(tbl) > 0L && all(c("outcome", "y_fitted") %in% names(tbl))) {
           if ("k" %in% names(tbl) && is.finite(suppressWarnings(as.integer(k_use)))) {
             tbl <- tbl[suppressWarnings(as.integer(tbl$k)) == as.integer(k_use), , drop = FALSE]
@@ -651,25 +712,43 @@ gflowui_make_server_renderer_helpers <- function(rv, current_reference_info) {
             src_base_key <- sprintf("long_%s_%s", cs_id, oo)
             yhat <- suppressWarnings(as.numeric(dd$y_fitted))
             yobs <- if ("y_observed" %in% names(dd)) suppressWarnings(as.numeric(dd$y_observed)) else numeric(0)
+            key <- sprintf("%s_yhat", src_base_key)
             add_source(
-              key = sprintf("%s_yhat", src_base_key),
+              key = key,
               label = sprintf("%s CondExp", oo_label),
               values = yhat,
-              type = "numeric"
+              type = "numeric",
+              alignment_contract = field_contract(
+                long.alignment.contract,
+                yhat,
+                key,
+                long.source.fingerprint
+              ),
+              source_fingerprint = long.source.fingerprint
             )
             if ("y_observed" %in% names(dd)) {
+              key <- sprintf("%s_yobs", src_base_key)
               add_source(
-                key = sprintf("%s_yobs", src_base_key),
+                key = key,
                 label = sprintf("Observed %s", oo_label),
                 values = yobs,
-                type = "numeric"
+                type = "numeric",
+                alignment_contract = field_contract(
+                  long.alignment.contract,
+                  yobs,
+                  key,
+                  long.source.fingerprint
+                ),
+                source_fingerprint = long.source.fingerprint
               )
             }
             add_relative_condexp_source(
               key_base = src_base_key,
               outcome_label = oo_label,
               yhat = yhat,
-              yobs = yobs
+              yobs = yobs,
+              alignment_contract = long.alignment.contract,
+              source_fingerprint = long.source.fingerprint
             )
           }
         }

@@ -305,12 +305,109 @@ gflowui_precomputed_density_path <- function(set, project_root, method_id) {
       any(abs(column_mass - 1) > 1e-8)) {
     stop("The precomputed probability-mass fields are invalid.", call. = FALSE)
   }
+  selected <- path$selected
+  required_identity <- c(
+    "graph.id", "graph.k", "graph.fingerprint", "vertex.fingerprint"
+  )
+  if (!is.list(path$settings) || !is.data.frame(selected) ||
+      nrow(selected) != 1L ||
+      !all(required_identity %in% names(selected))) {
+    stop(
+      paste(
+        "The precomputed path lacks the required graph and ordered-vertex",
+        "alignment contract."
+      ),
+      call. = FALSE
+    )
+  }
+  graph_id <- as.character(path$settings$graph.id %||% "")
+  graph_k <- suppressWarnings(as.integer(path$settings$graph.k %||% NA_integer_))
+  if (length(graph_id) != 1L || !nzchar(graph_id) ||
+      !is.finite(graph_k) || graph_k < 1L ||
+      !identical(graph_id, as.character(selected$graph.id[[1L]])) ||
+      !identical(graph_k, suppressWarnings(as.integer(selected$graph.k[[1L]])))) {
+    stop(
+      "The precomputed path has inconsistent graph ID or graph k metadata.",
+      call. = FALSE
+    )
+  }
+  contract <- set$basin_source_contract
+  source_vertex_id <- enc2utf8(as.character(
+    contract$source.vertex.id %||%
+      path$spectral.coordinates$point.id %||%
+      character()
+  ))
+  source_vertex_fingerprint <- if (
+    length(source_vertex_id) == nrow(probability_mass) &&
+      !anyNA(source_vertex_id) && all(nzchar(source_vertex_id)) &&
+      !anyDuplicated(source_vertex_id)
+  ) {
+    gflowui_basin_sha256(list(
+      schema = "hmp_graph_heat_vertices_v1",
+      vertex.id = source_vertex_id
+    ))
+  } else {
+    ""
+  }
+  if (!is.list(contract) ||
+      length(source_vertex_id) != nrow(probability_mass) ||
+      !identical(
+        source_vertex_fingerprint,
+        as.character(selected$vertex.fingerprint[[1L]])
+      ) ||
+      !identical(
+        as.character(contract$graph.id %||% ""),
+        graph_id
+      ) ||
+      !identical(
+        suppressWarnings(as.integer(contract$graph.k %||% NA_integer_)),
+        graph_k
+      ) ||
+      !identical(
+        as.character(contract$graph.fingerprint %||% ""),
+        as.character(selected$graph.fingerprint[[1L]])
+      ) ||
+      !identical(
+        as.character(contract$vertex.id.fingerprint %||% ""),
+        as.character(selected$vertex.fingerprint[[1L]])
+      ) ||
+      !nzchar(as.character(
+        contract$display.vertex.id.fingerprint %||% ""
+      ))) {
+    stop(
+      paste(
+        "The occupation-density manifest contract does not match the",
+        "precomputed path graph or ordered source vertices."
+      ),
+      call. = FALSE
+    )
+  }
+  asset_fingerprint <- gflowui_basin_file_sha256(path_file)
   list(
     method = method,
     path = path,
     path_file = path_file,
     probability_mass = probability_mass,
-    path_summary = path_summary
+    path_summary = path_summary,
+    source_asset_fingerprint = asset_fingerprint,
+    alignment_base = list(
+      contract.version = as.character(
+        path$contract.id %||% path$settings$contract.id %||% ""
+      ),
+      algorithm = paste(
+        "hmp_graph_heat_graph_v1 + hmp_graph_heat_vertices_v1 +",
+        "gflowui_basin_field_v1; SHA-256 serialized-R exact comparison"
+      ),
+      graph.id = graph_id,
+      graph.k = graph_k,
+      graph.fingerprint = as.character(selected$graph.fingerprint[[1L]]),
+      vertex.id.fingerprint = as.character(selected$vertex.fingerprint[[1L]]),
+      display.vertex.id.fingerprint = as.character(
+        contract$display.vertex.id.fingerprint
+      ),
+      source.vertex.id = source_vertex_id,
+      source.asset.fingerprint = asset_fingerprint
+    )
   )
 }
 
@@ -441,12 +538,31 @@ gflowui_precomputed_graph_heat_density <- function(
     brier.selected = eta_index == selected_eta_index,
     stringsAsFactors = FALSE
   )
+  source_values <- as.numeric(asset$probability_mass[, row])
+  values <- gflowui_normalize_density(source_values)
+  alignment_contract <- asset$alignment_base
+  alignment_contract$source.id <- sprintf(
+    "%s#eta-index-%d",
+    basename(asset$path_file),
+    eta_index
+  )
+  alignment_contract$source.field.fingerprint <-
+    gflowui_basin_field_fingerprint(source_values)
+  alignment_contract$field.fingerprint <-
+    gflowui_basin_field_fingerprint(values)
   result <- list(
-    values = gflowui_normalize_density(asset$probability_mass[, row]),
+    values = values,
+    source_values = source_values,
     selected = selected,
     method = asset$method,
     source_file = asset$path_file,
-    source_fingerprint = unname(tools::md5sum(asset$path_file)),
+    source_fingerprint = asset$source_asset_fingerprint,
+    alignment_contract = alignment_contract,
+    normalization = list(
+      method = "clamp-negative-then-unit-mass",
+      exact.identity = identical(source_values, values),
+      maximum.absolute.difference = max(abs(source_values - values))
+    ),
     color_type = "numeric",
     colorbar_title = "Probability mass",
     display_mode = "density",

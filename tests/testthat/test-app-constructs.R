@@ -629,6 +629,87 @@ test_that("basin panel discovers conditional-expectation estimates", {
   })
 })
 
+test_that("basin server invalidates changed fields and graph identities", {
+  local_projects_data_sandbox()
+
+  project_id <- "hmp_subject15_k03_heat_basin_path"
+  reg <- gflowui::list_projects()
+  if (!(project_id %in% reg$id)) {
+    skip("The Subject 15 reference project is not registered")
+  }
+
+  shiny::testServer(gflowui:::app_server, {
+    open_project(project_id)
+    session$flushReact()
+    session$setInputs(
+      occupation_density_mode = "parameters",
+      occupation_density_subject = "15",
+      occupation_density_method = "graph_heat_kernel",
+      occupation_density_eta_index = "4"
+    )
+    show_occupation_density_selection(notify_errors = FALSE)
+    session$flushReact()
+    session$setInputs(
+      basin_source = "occupation_density_active",
+      basin_top_k_max = 1L,
+      basin_top_k_min = 1L,
+      basin_rank_by = "auto",
+      basin_compute = 1L
+    )
+    session$flushReact()
+
+    first <- basin_result()
+    expect_true(is.list(first))
+    first.identity <- first$construction_identity$fingerprint
+    expect_true(nzchar(first.identity))
+
+    session$setInputs(occupation_density_eta_index = "5")
+    session$flushReact()
+    expect_null(basin_result())
+    expect_false(isTRUE(basin_inspector_open()))
+    expect_match(basin_status(), "changed|stale", ignore.case = TRUE)
+
+    session$setInputs(basin_compute = 2L)
+    session$flushReact()
+    second <- basin_result()
+    expect_true(is.list(second))
+    expect_false(identical(
+      first.identity,
+      second$construction_identity$fingerprint
+    ))
+
+    request <- basin_construction_request(basin_source_state())
+    changed.graph <- request$graph_identity
+    changed.graph$graph.fingerprint <- paste0(
+      changed.graph$graph.fingerprint,
+      "-changed"
+    )
+    request$construction_identity <- gflowui:::gflowui_basin_construction_identity(
+      project_id = request$source$graph$project_id,
+      graph_set_id = request$source$graph$set_id,
+      graph_identity = changed.graph,
+      source_key = request$source$key,
+      source_fingerprint = request$source_fingerprint,
+      field = request$source$values,
+      vertex_mass = request$source$values,
+      vertex_mass_provenance = request$mass_provenance,
+      alignment_validation = request$alignment,
+      build_identity = request$build_identity
+    )
+    expect_true(invalidate_basin_result_if_needed(
+      request,
+      "Displayed graph changed."
+    ))
+    expect_null(basin_result())
+    expect_match(basin_status(), "graph changed", ignore.case = TRUE)
+
+    session$setInputs(basin_compute = 3L)
+    session$flushReact()
+    expect_true(is.list(basin_result()))
+    expect_true(isTRUE(basin_result()$cache_hit))
+  })
+})
+
 test_that("arm builder endpoint choices begin with explicit NONE", {
   local_projects_data_sandbox()
 
