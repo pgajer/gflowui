@@ -1371,7 +1371,7 @@ app_server <- function(input, output, session) {
     dim_background = FALSE,
     background_opacity = 0.22,
     vertex_color = "#dc2626",
-    vertex_size = 1.8,
+    vertex_size = 1.0,
     edge_mode = "none",
     edge_color = "#dc2626",
     edge_width = 2,
@@ -1420,7 +1420,7 @@ app_server <- function(input, output, session) {
     subject_state$dim_background <- FALSE
     subject_state$background_opacity <- 0.22
     subject_state$vertex_color <- "#dc2626"
-    subject_state$vertex_size <- 1.8
+    subject_state$vertex_size <- 1.0
     subject_state$edge_mode <- "none"
     subject_state$edge_color <- "#dc2626"
     subject_state$edge_width <- 2
@@ -3885,7 +3885,7 @@ app_server <- function(input, output, session) {
         dim_background = isTRUE(subject_state$dim_background),
         background_opacity = as.numeric(subject_state$background_opacity %||% 0.22),
         vertex_color = as.character(subject_state$vertex_color %||% "#dc2626"),
-        vertex_size = as.numeric(subject_state$vertex_size %||% 1.8),
+        vertex_size = as.numeric(subject_state$vertex_size %||% 1.0),
         edge_mode = as.character(subject_state$edge_mode %||% "none"),
         edge_color = as.character(subject_state$edge_color %||% "#dc2626"),
         edge_width = as.numeric(subject_state$edge_width %||% 2),
@@ -3961,7 +3961,7 @@ app_server <- function(input, output, session) {
         subject_vertex_color_choices(),
         default = "#dc2626"
       ),
-      vertex_size = as.numeric(subject_state$vertex_size %||% 1.8),
+      vertex_size = as.numeric(subject_state$vertex_size %||% 1.0),
       edge_mode = edge_mode_use,
       edge_color = normalize_palette_choice(
         subject_state$edge_color %||% "#dc2626",
@@ -4107,7 +4107,7 @@ app_server <- function(input, output, session) {
           subject_vertex_color_choices(),
           default = "#dc2626"
         ),
-        size = as.numeric(subject_state$vertex_size %||% 1.8),
+        size = as.numeric(subject_state$vertex_size %||% 1.0),
         dim_background = isTRUE(subject_state$dim_background),
         background_opacity = as.numeric(subject_state$background_opacity %||% 0.22),
         edge_color = normalize_palette_choice(
@@ -4133,7 +4133,7 @@ app_server <- function(input, output, session) {
         vertex_subject_ids = character(0),
         vertex_colors = character(0),
         color = as.character(st$vertex_color %||% "#dc2626"),
-        size = as.numeric(st$vertex_size %||% 1.8),
+        size = as.numeric(st$vertex_size %||% 1.0),
         dim_background = isTRUE(st$dim_background),
         background_opacity = as.numeric(st$background_opacity %||% 0.22),
         edge_color = as.character(st$edge_color %||% "#dc2626"),
@@ -4215,7 +4215,7 @@ app_server <- function(input, output, session) {
       vertex_subject_ids = subject_ids_use,
       vertex_colors = vertex_colors,
       color = as.character(st$vertex_color %||% "#dc2626"),
-      size = as.numeric(st$vertex_size %||% 1.8),
+      size = as.numeric(st$vertex_size %||% 1.0),
       dim_background = isTRUE(st$dim_background),
       background_opacity = as.numeric(st$background_opacity %||% 0.22),
       edge_color = as.character(st$edge_color %||% "#dc2626"),
@@ -7922,10 +7922,8 @@ app_server <- function(input, output, session) {
     result$graph_k <- graph_k
     occupation_density_result(result)
     subject_state$selected_ids <- subject_id
-    subject_state$show_overlay <- TRUE
     subject_state$edge_mode <- "temporal"
     shiny::updateSelectInput(session, "subject_ids", selected = subject_id)
-    shiny::updateCheckboxInput(session, "subject_show_overlay", value = TRUE)
     shiny::updateSelectInput(session, "subject_edge_mode", selected = "temporal")
     graph_layout_state$color_by <- "occupation_density_active"
     shiny::updateSelectInput(
@@ -12781,11 +12779,31 @@ app_server <- function(input, output, session) {
             shiny::selectInput(
               "subject_vertex_size",
               label = NULL,
-              choices = c("1.0x" = "1.0", "1.5x" = "1.5", "1.8x" = "1.8", "2.0x" = "2.0", "2.5x" = "2.5", "3.0x" = "3.0"),
-              selected = if (formatC(as.numeric(subject_state_panel$vertex_size %||% 1.8), format = "f", digits = 1) %in% c("1.0", "1.5", "1.8", "2.0", "2.5", "3.0")) {
-                formatC(as.numeric(subject_state_panel$vertex_size %||% 1.8), format = "f", digits = 1)
-              } else {
-                "1.8"
+              choices = c(
+                "0.75x" = "0.75",
+                "1.0x" = "1.0",
+                "1.25x" = "1.25",
+                "1.5x" = "1.5",
+                "1.8x" = "1.8",
+                "2.0x" = "2.0",
+                "2.5x" = "2.5",
+                "3.0x" = "3.0"
+              ),
+              selected = {
+                requested <- suppressWarnings(as.numeric(
+                  subject_state_panel$vertex_size %||% 1.0
+                ))
+                allowed <- c(0.75, 1.0, 1.25, 1.5, 1.8, 2.0, 2.5, 3.0)
+                labels <- c(
+                  "0.75", "1.0", "1.25", "1.5",
+                  "1.8", "2.0", "2.5", "3.0"
+                )
+                matched <- which(abs(allowed - requested) < 1e-8)
+                if (length(matched) > 0L) {
+                  labels[[matched[[1L]]]]
+                } else {
+                  "1.0"
+                }
               },
               width = "180px"
             )
@@ -13411,7 +13429,7 @@ app_server <- function(input, output, session) {
       } else {
         size_choices <- c(
           paste0(format(seq(0.1, 0.9, by = 0.1), nsmall = 1, trim = TRUE), "x"),
-          "1.0x", "1.25x", "1.50x", "2.0x"
+          "0.75x", "1.0x", "1.25x", "1.50x", "2.0x"
         )
         if (!(graph_ui$size_selected %in% size_choices)) {
           size_choices <- unique(c(size_choices, graph_ui$size_selected))
