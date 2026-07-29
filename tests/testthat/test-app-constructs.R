@@ -764,6 +764,19 @@ test_that("basin server invalidates changed fields and graph identities", {
       fixed = TRUE
     )
     expect_match(plot.workspace.with.cards, "Value scale", fixed = TRUE)
+    session$setInputs(
+      basin_plot_features = c("support", "mass", "prominence"),
+      basin_plot_add_histograms = 2L
+    )
+    session$flushReact()
+    expect_length(basin_plot_specs(), 3L)
+    expect_identical(
+      basin_plot_specs()[[3L]]$features,
+      "prominence"
+    )
+    session$setInputs(basin_plot_add_histograms = 3L)
+    session$flushReact()
+    expect_length(basin_plot_specs(), 3L)
     session$setInputs(basin_plot_clear_all = 1L)
     session$flushReact()
     expect_length(basin_plot_specs(), 0L)
@@ -783,6 +796,9 @@ test_that("basin server invalidates changed fields and graph identities", {
     )$html
     expect_match(plot.workspace.with.pairs, "X-axis scale", fixed = TRUE)
     expect_match(plot.workspace.with.pairs, "Y-axis scale", fixed = TRUE)
+    session$setInputs(basin_plot_add_pairs = 2L)
+    session$flushReact()
+    expect_length(basin_plot_specs(), 3L)
     session$setInputs(basin_plot_clear_all = 2L)
     session$flushReact()
     session$setInputs(
@@ -802,6 +818,9 @@ test_that("basin server invalidates changed fields and graph identities", {
       "All coordinate scales",
       fixed = TRUE
     )
+    session$setInputs(basin_plot_add_matrix = 2L)
+    session$flushReact()
+    expect_length(basin_plot_specs(), 1L)
 
     session$setInputs(basin_inspector_show_extremum_vertex = TRUE)
     session$flushReact()

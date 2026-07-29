@@ -9720,7 +9720,7 @@ app_server <- function(input, output, session) {
       return(invisible(NULL))
     }
     first.id <- basin_plot_next_id() + 1L
-    added <- gflowui_basin_new_plot_specs(
+    candidates <- gflowui_basin_new_plot_specs(
       features = features,
       mode = mode,
       first_id = first.id,
@@ -9730,10 +9730,16 @@ app_server <- function(input, output, session) {
         result$construction_identity$fingerprint %||% ""
       )
     )
+    existing <- basin_plot_specs()
+    filtered <- gflowui_basin_filter_new_plot_specs(existing, candidates)
+    added <- filtered$specs
     if (length(added) < 1L) {
+      shiny::showNotification(
+        "All requested plots are already present in the workspace.",
+        type = "message"
+      )
       return(invisible(NULL))
     }
-    existing <- basin_plot_specs()
     if (length(existing) + length(added) > 36L) {
       shiny::showNotification(
         "The Basin Plot Workspace is limited to 36 plot cards.",
@@ -9743,6 +9749,17 @@ app_server <- function(input, output, session) {
     }
     basin_plot_next_id(max(vapply(added, `[[`, integer(1), "id")))
     basin_plot_specs(c(existing, added))
+    if (filtered$skipped > 0L) {
+      shiny::showNotification(
+        sprintf(
+          "Added %d new plot%s; skipped %d already present.",
+          length(added),
+          if (identical(length(added), 1L)) "" else "s",
+          filtered$skipped
+        ),
+        type = "message"
+      )
+    }
     invisible(NULL)
   }
 
