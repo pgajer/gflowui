@@ -84,6 +84,7 @@ app_server <- function(input, output, session) {
     unselected_opacity = 0.28,
     inspector_filter = "all",
     inspector_columns = "compact",
+    inspector_show_extremum_vertex = FALSE,
     inspector_width = 620
   )
   graph_vertex_color_choices <- function() {
@@ -8665,7 +8666,7 @@ app_server <- function(input, output, session) {
       top.k.min = top.min,
       include.vertex.lists = FALSE
     )
-    table <- gflowui_basin_table(summary)
+    table <- gflowui_basin_table(summary, result$prominence_complex)
     existing.colors <- basin_color_map()
     defaults <- stats::setNames(table$color, table$key)
     defaults[names(existing.colors)] <- existing.colors
@@ -8702,6 +8703,58 @@ app_server <- function(input, output, session) {
       }
       fallback
     }
+    ranking_measure_label <- function(measure) {
+      labels <- c(
+        "primary.support.mass" = "Mass",
+        "primary.support.size" = "Support",
+        "raw.allocated.mass" = "Allocated mass",
+        "raw.support.mass" = "Raw mass",
+        "raw.support.size" = "Raw support",
+        "retained.support.mass" = "Retained mass",
+        "retained.support.size" = "Retained support"
+      )
+      measure <- as.character(measure %||% "")
+      label <- unname(labels[measure])
+      if (length(label) == 1L && !is.na(label) && nzchar(label)) {
+        return(label)
+      }
+      if (nzchar(measure)) {
+        return(gsub(".", " ", measure, fixed = TRUE))
+      }
+      "Unavailable"
+    }
+    ranking.resolved <- result$ranking_resolved %||%
+      result$summary$rank.resolved %||% character()
+    ranking_for_direction <- function(direction) {
+      if (direction %in% names(ranking.resolved)) {
+        ranking.resolved[[direction]]
+      } else {
+        ""
+      }
+    }
+    max.ranking <- ranking_measure_label(ranking_for_direction("max"))
+    min.ranking <- ranking_measure_label(ranking_for_direction("min"))
+    ranking.description <- if (identical(max.ranking, min.ranking)) {
+      sprintf(
+        paste(
+          "Basins are ranked separately within maxima and minima.",
+          "Ranking measure: %s."
+        ),
+        max.ranking
+      )
+    } else {
+      sprintf(
+        paste(
+          "Basins are ranked separately within maxima and minima.",
+          "Ranking measures: maxima use %s; minima use %s."
+        ),
+        max.ranking,
+        min.ranking
+      )
+    }
+    show.extremum.vertex <- isTRUE(
+      basin_display_settings$inspector_show_extremum_vertex
+    )
     header <- shiny::tags$tr(
       shiny::tags$th("Show"),
       shiny::tags$th("Color"),
@@ -8713,39 +8766,43 @@ app_server <- function(input, output, session) {
         ),
         "Extremum / basin"
       ),
-      shiny::tags$th(
-        title = definition_for(
-          "extremum.vertex.id",
-          "External vertex ID of the representative extremum."
-        ),
-        "Extremum vertex"
-      ),
+      if (show.extremum.vertex) {
+        shiny::tags$th(
+          title = definition_for(
+            "extremum.vertex",
+            "Internal integer vertex index of the representative extremum."
+          ),
+          "Extremum vertex"
+        )
+      } else NULL,
       shiny::tags$th(
         title = definition_for("extremum.value", "Raw extremum value."),
-        "Value"
+        "Extremum value"
       ),
       shiny::tags$th(
         title = definition_for(
           "primary.support.size",
           "Number of uniquely assigned vertices."
         ),
-        "Primary support"
+        "Support"
       ),
       shiny::tags$th(
         title = definition_for(
           "primary.support.mass",
           "Normalized uniquely assigned mass."
         ),
-        "Primary mass"
+        "Mass"
       ),
       shiny::tags$th(
         title = definition_for(
-          "raw.allocated.mass",
-          "Membership-weighted conserved raw mass."
+          "persistence",
+          paste(
+            "Field-level prominence: peak minus merge level for maxima,",
+            "or merge level minus trough for minima."
+          )
         ),
-        "Allocated mass"
+        "Prominence"
       ),
-      shiny::tags$th("Ranking measure"),
       shiny::tags$th(
         class = "gf-basin-full-column",
         title = definition_for("raw.support.size", "Raw support size."),
@@ -8766,11 +8823,6 @@ app_server <- function(input, output, session) {
           "Retained overlapping coverage mass."
         ),
         "Retained mass"
-      ),
-      shiny::tags$th(
-        class = "gf-basin-full-column",
-        title = definition_for("persistence", "Birth-to-death persistence."),
-        "Persistence"
       ),
       shiny::tags$th(
         class = "gf-basin-full-column",
@@ -8818,7 +8870,9 @@ app_server <- function(input, output, session) {
           },
           as.character(row$display.label)
         ),
-        shiny::tags$td(as.character(row$extremum.vertex.id)),
+        if (show.extremum.vertex) {
+          shiny::tags$td(as.integer(row$extremum.vertex))
+        } else NULL,
         shiny::tags$td(formatC(
           as.numeric(row$extremum.value),
           digits = 5,
@@ -8828,10 +8882,9 @@ app_server <- function(input, output, session) {
         shiny::tags$td(if (is.finite(row$primary.support.mass)) {
           formatC(as.numeric(row$primary.support.mass), digits = 4, format = "fg")
         } else "\u2014"),
-        shiny::tags$td(if (is.finite(row$raw.allocated.mass)) {
-          formatC(as.numeric(row$raw.allocated.mass), digits = 4, format = "fg")
+        shiny::tags$td(if (is.finite(row$prominence)) {
+          formatC(as.numeric(row$prominence), digits = 4, format = "g")
         } else "\u2014"),
-        shiny::tags$td(as.character(row$rank.measure)),
         shiny::tags$td(
           class = "gf-basin-full-column",
           as.integer(row$raw.support.size)
@@ -8848,12 +8901,6 @@ app_server <- function(input, output, session) {
               digits = 4,
               format = "fg"
             )
-          } else "\u2014"
-        ),
-        shiny::tags$td(
-          class = "gf-basin-full-column",
-          if (is.finite(row$persistence)) {
-            formatC(as.numeric(row$persistence), digits = 4, format = "g")
           } else "\u2014"
         ),
         shiny::tags$td(
@@ -8931,6 +8978,12 @@ app_server <- function(input, output, session) {
           selected = basin_display_settings$inspector_columns %||% "compact",
           width = "130px"
         ),
+        shiny::checkboxInput(
+          "basin_inspector_show_extremum_vertex",
+          "Show extremum vertex",
+          value = show.extremum.vertex,
+          width = "180px"
+        ),
         shiny::selectInput(
           "basin_display_mode",
           "Display",
@@ -8990,6 +9043,15 @@ app_server <- function(input, output, session) {
           class = "btn-light btn-sm"
         )
       ),
+      shiny::p(
+        class = "gf-basin-table-description",
+        ranking.description,
+        paste(
+          "Support is the number of primarily assigned vertices;",
+          "Mass is their normalized mass;",
+          "Prominence is the extremum-to-merge field difference."
+        )
+      ),
       shiny::div(
         class = "table-responsive gf-basin-table-scroll",
         shiny::tags$table(
@@ -9007,6 +9069,13 @@ app_server <- function(input, output, session) {
           as.character(build$build.id %||% "unavailable"),
           as.character(build$runtime$id %||% "unavailable"),
           if (isTRUE(result$cache_hit)) "hit" else "miss"
+        )),
+        shiny::p(sprintf(
+          paste(
+            "Prominence: exact plateau-aware superlevel merge tree on the",
+            "same graph and field (cache %s)."
+          ),
+          if (isTRUE(result$prominence_cache_hit)) "hit" else "miss"
         )),
         shiny::p(
           "Plotly shows selected minimum basins as outlined halos. ",
@@ -9238,6 +9307,12 @@ app_server <- function(input, output, session) {
     if (value %in% c("compact", "full")) {
       basin_display_settings$inspector_columns <- value
     }
+  }, ignoreInit = TRUE)
+
+  shiny::observeEvent(input$basin_inspector_show_extremum_vertex, {
+    basin_display_settings$inspector_show_extremum_vertex <- isTRUE(
+      input$basin_inspector_show_extremum_vertex
+    )
   }, ignoreInit = TRUE)
 
   shiny::observeEvent(input$basin_inspector_width, {

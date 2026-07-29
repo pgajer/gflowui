@@ -1087,7 +1087,7 @@ body.gf-general-inspector-resizing {
 }
 
 .gf-basin-table {
-  min-width: 1080px;
+  min-width: 760px;
   font-size: 0.82rem;
 }
 
@@ -1096,7 +1096,13 @@ body.gf-general-inspector-resizing {
 }
 
 .gf-basin-columns-full .gf-basin-table {
-  min-width: 1480px;
+  min-width: 1280px;
+}
+
+.gf-basin-table-description {
+  margin: 0 0 0.55rem;
+  color: #475569;
+  font-size: 0.84rem;
 }
 
 .gf-basin-table th:nth-child(-n+3),
