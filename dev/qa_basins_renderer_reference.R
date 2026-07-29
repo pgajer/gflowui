@@ -148,10 +148,15 @@ if (requireNamespace("rgl", quietly = TRUE)) {
 
 build <- gflow::get.gflow.build.identity(refresh = TRUE)
 selected.keys <- as.character(result$table$key[result$table$selected])
+measured.at <- format(
+  Sys.time(),
+  "%Y-%m-%d %H:%M:%S %Z",
+  tz = "America/New_York"
+)
 lines <- c(
   "# Basin Renderer Final-State QA",
   "",
-  "Date: 2026-07-28",
+  sprintf("Measured at: %s", measured.at),
   "",
   sprintf("- Project: `%s`", project.id),
   "- Estimate: Subject 15 graph-heat occupation density, path index 4",
@@ -161,6 +166,7 @@ lines <- c(
     gflowui:::gflowui_basin_field_fingerprint(density$values)
   ),
   sprintf("- Alignment evidence fingerprint: `%s`", alignment$evidence.fingerprint),
+  sprintf("- gflow source revision: `%s`", build$source.revision),
   sprintf("- gflow build ID: `%s`", build$build.id),
   sprintf("- gflow runtime ID: `%s`", build$runtime$id),
   sprintf("- Selected basin keys: `%s`", paste(selected.keys, collapse = "`, `")),
