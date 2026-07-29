@@ -769,6 +769,11 @@ test_that("basin server invalidates changed fields and graph identities", {
       fixed = TRUE
     )
     expect_match(plot.workspace.with.cards, "Value scale", fixed = TRUE)
+    expect_match(
+      plot.workspace.with.cards,
+      '<option value="log10" selected>Log10 (positive values only)</option>',
+      fixed = TRUE
+    )
     session$setInputs(
       basin_plot_features = c("support", "mass", "prominence"),
       basin_plot_add_histograms = 2L
@@ -801,6 +806,17 @@ test_that("basin server invalidates changed fields and graph identities", {
     )$html
     expect_match(plot.workspace.with.pairs, "X-axis scale", fixed = TRUE)
     expect_match(plot.workspace.with.pairs, "Y-axis scale", fixed = TRUE)
+    expect_equal(
+      lengths(regmatches(
+        plot.workspace.with.pairs,
+        gregexpr(
+          '<option value="log10" selected>Log10 (positive values only)</option>',
+          plot.workspace.with.pairs,
+          fixed = TRUE
+        )
+      )),
+      6L
+    )
     session$setInputs(basin_plot_add_pairs = 2L)
     session$flushReact()
     expect_length(basin_plot_specs(), 3L)

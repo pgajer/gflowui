@@ -9330,7 +9330,8 @@ app_server <- function(input, output, session) {
     opacity.id <- paste0("basin_plot_point_opacity_", card.id)
     x.scale.id <- paste0("basin_plot_x_scale_", card.id)
     y.scale.id <- paste0("basin_plot_y_scale_", card.id)
-    default.x.scale <- if (identical(as.character(spec$kind), "matrix")) {
+    default.x.scale <- "log10"
+    default.y.scale <- if (identical(as.character(spec$kind), "scatter")) {
       "log10"
     } else {
       "raw"
@@ -9357,6 +9358,7 @@ app_server <- function(input, output, session) {
       card.x.scale.id <- x.scale.id
       card.y.scale.id <- y.scale.id
       card.default.x.scale <- default.x.scale
+      card.default.y.scale <- default.y.scale
       output[[output.id]] <- shiny::renderPlot({
         active <- basin_result()
         active.fingerprint <- as.character(
@@ -9399,7 +9401,7 @@ app_server <- function(input, output, session) {
           point_size = input[[card.size.id]] %||% 1.1,
           point_opacity = input[[card.opacity.id]] %||% 0.75,
           x_scale = input[[card.x.scale.id]] %||% card.default.x.scale,
-          y_scale = input[[card.y.scale.id]] %||% "raw"
+          y_scale = input[[card.y.scale.id]] %||% card.default.y.scale
         )
       }, res = 110)
       output[[status.id]] <- shiny::renderText({
@@ -9430,7 +9432,7 @@ app_server <- function(input, output, session) {
           data,
           card.spec,
           x_scale = input[[card.x.scale.id]] %||% card.default.x.scale,
-          y_scale = input[[card.y.scale.id]] %||% "raw"
+          y_scale = input[[card.y.scale.id]] %||% card.default.y.scale
         )
         excluded <- attr(scaled, "gflowui_nonpositive_excluded") %||% 0L
         scope.label <- names(basin_plot_scope_choices)[
@@ -9512,7 +9514,10 @@ app_server <- function(input, output, session) {
               x.scale.id,
               "Value scale",
               choices = basin_plot_scale_choices,
-              selected = basin_plot_input_value(x.scale.id, "raw")
+              selected = basin_plot_input_value(
+                x.scale.id,
+                default.x.scale
+              )
             )
           } else NULL,
           if (!is.histogram && !is.matrix) {
@@ -9520,7 +9525,10 @@ app_server <- function(input, output, session) {
               x.scale.id,
               "X-axis scale",
               choices = basin_plot_scale_choices,
-              selected = basin_plot_input_value(x.scale.id, "raw")
+              selected = basin_plot_input_value(
+                x.scale.id,
+                default.x.scale
+              )
             )
           } else NULL,
           if (!is.histogram && !is.matrix) {
@@ -9528,7 +9536,10 @@ app_server <- function(input, output, session) {
               y.scale.id,
               "Y-axis scale",
               choices = basin_plot_scale_choices,
-              selected = basin_plot_input_value(y.scale.id, "raw")
+              selected = basin_plot_input_value(
+                y.scale.id,
+                default.y.scale
+              )
             )
           } else NULL,
           if (is.matrix) {
