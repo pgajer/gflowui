@@ -171,7 +171,7 @@ Final check logs:
 - gflow:
   `/Users/pgajer/current_projects/gflow/gflow.Rcheck/00check.log`
 - gflowui:
-  `/private/tmp/gflowui-final-check.uIgOJl/gflowui.Rcheck/00check.log`
+  `/Users/pgajer/current_projects/gflowui/gflowui.Rcheck/00check.log`
 
 The source-loaded application is started from the final gflowui source at:
 `http://127.0.0.1:3867/`.
