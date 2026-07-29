@@ -326,6 +326,7 @@ test_that("canonical basin overlay computes both directions and reuses cache", {
   expect_true(all(restored$table$prominence >= 0))
   expect_s3_class(restored$prominence_complex, "basin_complex")
   expect_identical(restored$prominence_method, "superlevel_merge_tree")
+  expect_gte(nrow(restored$all_table), nrow(restored$table))
   expect_false(any(restored$table$selected))
   expect_true(all(restored$values_max == "Other basins"))
   expect_true(all(restored$values_min == "Other basins"))
@@ -339,6 +340,57 @@ test_that("canonical basin overlay computes both directions and reuses cache", {
   )
   expect_true(isTRUE(empty$cache_hit))
   expect_true(isTRUE(restored$cache_hit))
+})
+
+test_that("basin plot helpers preserve all, listed, and selected scopes", {
+  table <- data.frame(
+    key = c("max|a", "max|b", "min|c"),
+    type = c("max", "max", "min"),
+    display.label = c("M1", "M2", "m1"),
+    primary.support.size = c(8L, 5L, 7L),
+    primary.support.mass = c(0.4, 0.2, 0.3),
+    extremum.value = c(1.2, 1.0, 0.1),
+    prominence = c(0.8, 0.5, 0.6),
+    stringsAsFactors = FALSE
+  )
+  result <- list(
+    all_table = table,
+    table = table[c(1L, 3L), , drop = FALSE]
+  )
+  expect_equal(
+    nrow(gflowui:::gflowui_basin_plot_data(result, "all", "both")),
+    3L
+  )
+  expect_equal(
+    nrow(gflowui:::gflowui_basin_plot_data(result, "listed", "both")),
+    2L
+  )
+  selected <- gflowui:::gflowui_basin_plot_data(
+    result,
+    "selected",
+    "max",
+    selected_keys = "max|b"
+  )
+  expect_equal(selected$key, "max|b")
+
+  histograms <- gflowui:::gflowui_basin_new_plot_specs(
+    c("support", "mass", "prominence"),
+    "histograms",
+    first_id = 4L
+  )
+  expect_length(histograms, 3L)
+  expect_equal(vapply(histograms, `[[`, integer(1), "id"), 4:6)
+  pairs <- gflowui:::gflowui_basin_new_plot_specs(
+    c("support", "mass", "prominence"),
+    "pairs"
+  )
+  expect_length(pairs, 3L)
+  matrix.spec <- gflowui:::gflowui_basin_new_plot_specs(
+    c("support", "mass", "extremum_value", "prominence"),
+    "matrix"
+  )
+  expect_length(matrix.spec, 1L)
+  expect_length(matrix.spec[[1L]]$features, 4L)
 })
 
 test_that("basin inspector row updates preserve explicit selection and colors", {

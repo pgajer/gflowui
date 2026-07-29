@@ -971,6 +971,14 @@ gflowui_estimate_basin_overlay <- function(
     include.vertex.lists = FALSE
   )
   table <- gflowui_basin_table(summary, prominence_complex)
+  all.summary <- summary(
+    basin,
+    rank.by = rank_by,
+    top.k.max = sum(basin$basin.table$type == "max"),
+    top.k.min = sum(basin$basin.table$type == "min"),
+    include.vertex.lists = FALSE
+  )
+  all.table <- gflowui_basin_table(all.summary, prominence_complex)
   display_direction <- if (direction == "min") "min" else "max"
   values <- gflowui_basin_display_values(
     basin,
@@ -1028,6 +1036,7 @@ gflowui_estimate_basin_overlay <- function(
       "min"
     ),
     table = if (direction == "both") table else legacy_table,
+    all_table = all.table,
     summary = summary,
     top_k = as.integer(if (display_direction == "max") top_k_max else top_k_min),
     top_k_max = as.integer(top_k_max),
@@ -1041,6 +1050,7 @@ gflowui_estimate_basin_overlay <- function(
     basin_count_min = as.integer(sum(basin$basin.table$type == "min")),
     direction = direction,
     ranking = ranking,
+    rank_by = rank_by,
     ranking_resolved = summary$rank.resolved,
     basin = basin,
     prominence_complex = prominence_complex,

@@ -1029,9 +1029,17 @@ body.gf-general-inspector-resizing {
 
 .gf-general-inspector-stack > .shiny-html-output {
   min-height: 0;
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   display: flex;
   flex-direction: column;
+}
+
+#basin_inspector_ui {
+  flex: 1 1 54%;
+}
+
+#basin_plot_workspace_ui {
+  flex: 1 1 46%;
 }
 
 .gf-basin-inspector {
@@ -1050,11 +1058,24 @@ body.gf-general-inspector-resizing {
 }
 
 .gf-basin-inspector-header,
-.gf-basin-inspector-toolbar {
+.gf-basin-inspector-toolbar,
+.gf-basin-inspector-summary-controls {
   display: flex;
   align-items: center;
   gap: 0.65rem;
   flex-wrap: wrap;
+}
+
+.gf-basin-inspector-summary-controls {
+  margin: 0.45rem 0 0.15rem;
+  padding: 0.55rem;
+  border: 1px solid rgba(15, 139, 119, 0.16);
+  border-radius: 0.65rem;
+  background: rgba(240, 253, 250, 0.55);
+}
+
+.gf-basin-inspector-summary-controls .form-group {
+  margin-bottom: 0;
 }
 
 .gf-basin-inspector-header {
@@ -1165,4 +1186,116 @@ body.gf-general-inspector-resizing {
   overflow: auto;
   margin-top: 0.6rem;
   font-size: 0.86rem;
+}
+
+.gf-basin-plot-workspace {
+  min-width: 0;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid rgba(37, 99, 235, 0.22);
+  border-radius: 0.9rem;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 6px 20px rgba(26, 47, 51, 0.06);
+}
+
+.gf-basin-plot-workspace-header,
+.gf-basin-plot-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.7rem;
+}
+
+.gf-basin-plot-workspace-header h4,
+.gf-basin-plot-card-header h5 {
+  margin: 0;
+}
+
+.gf-basin-plot-workspace-header p {
+  margin: 0.12rem 0 0;
+  color: var(--gf-muted);
+  font-size: 0.82rem;
+}
+
+.gf-basin-plot-builder {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  margin: 0.65rem 0;
+  padding: 0.65rem;
+  border-radius: 0.7rem;
+  background: rgba(239, 246, 255, 0.72);
+}
+
+.gf-basin-plot-builder .form-group {
+  margin-bottom: 0;
+}
+
+.gf-basin-plot-builder-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  padding-bottom: 0.12rem;
+}
+
+.gf-basin-plot-empty {
+  margin: 0.65rem 0 0;
+  padding: 1rem;
+  border: 1px dashed rgba(100, 116, 139, 0.35);
+  border-radius: 0.65rem;
+  color: #64748b;
+  text-align: center;
+}
+
+.gf-basin-plot-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 0.75rem;
+  align-items: start;
+}
+
+.gf-basin-plot-card {
+  min-width: 0;
+  padding: 0.7rem;
+  border: 1px solid rgba(100, 116, 139, 0.24);
+  border-radius: 0.75rem;
+  background: #fff;
+}
+
+.gf-basin-plot-card-stale {
+  border-color: rgba(180, 83, 9, 0.45);
+  background: rgba(255, 251, 235, 0.8);
+}
+
+.gf-basin-plot-card-status {
+  min-height: 1.1rem;
+  margin: 0.25rem 0 0.4rem;
+  color: #64748b;
+  font-size: 0.78rem;
+}
+
+.gf-basin-plot-card-controls {
+  margin-bottom: 0.45rem;
+  font-size: 0.82rem;
+}
+
+.gf-basin-plot-card-controls > summary {
+  cursor: pointer;
+  color: #334155;
+  font-weight: 600;
+}
+
+.gf-basin-plot-control-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+  gap: 0.45rem;
+  margin-top: 0.5rem;
+}
+
+.gf-basin-plot-control-grid .form-group {
+  margin-bottom: 0;
+}
+
+.gf-basin-plot-card .shiny-plot-output {
+  max-width: 100%;
 }
