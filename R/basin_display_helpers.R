@@ -699,12 +699,11 @@ gflowui_basin_table <- function(summary) {
     return(table)
   }
   table$key <- paste(table$type, table$basin.id, sep = "|")
-  table$display.label <- sprintf(
-    "%s Basin %02d",
-    ifelse(table$type == "max", "Maximum", "Minimum"),
+  table$display.label <- paste0(
+    ifelse(table$type == "max", "M", "m"),
     as.integer(table$rank)
   )
-  table$selected <- TRUE
+  table$selected <- FALSE
   table$color <- unname(gflowui_basin_default_colors(table)[table$key])
   table
 }
@@ -884,7 +883,7 @@ gflowui_estimate_basin_overlay <- function(
   values <- gflowui_basin_display_values(
     basin,
     table,
-    selected_keys = table$key,
+    selected_keys = table$key[table$selected],
     direction = display_direction
   )
   direction_rows <- basin$basin.table$type == display_direction
@@ -927,13 +926,13 @@ gflowui_estimate_basin_overlay <- function(
     values_max = gflowui_basin_display_values(
       basin,
       table,
-      table$key,
+      table$key[table$selected],
       "max"
     ),
     values_min = gflowui_basin_display_values(
       basin,
       table,
-      table$key,
+      table$key[table$selected],
       "min"
     ),
     table = if (direction == "both") table else legacy_table,

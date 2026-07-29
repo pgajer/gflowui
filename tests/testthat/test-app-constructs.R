@@ -675,6 +675,8 @@ test_that("basin server invalidates changed fields and graph identities", {
     first <- basin_result()
     expect_true(is.list(first))
     expect_true(isTRUE(basin_inspector_open()))
+    expect_length(basin_selected_keys(), 0L)
+    expect_false(any(first$table$selected))
     first.identity <- first$construction_identity$fingerprint
     expect_true(nzchar(first.identity))
 
@@ -684,12 +686,73 @@ test_that("basin server invalidates changed fields and graph identities", {
     expect_match(workspace, "Resize General Inspector", fixed = TRUE)
     inspector <- htmltools::renderTags(output$basin_inspector_ui)$html
     expect_match(inspector, "Basin Inspector", fixed = TRUE)
+    expect_match(inspector, "Extremum / basin", fixed = TRUE)
+    expect_match(inspector, ">M1<", fixed = TRUE)
+    expect_match(inspector, ">m1<", fixed = TRUE)
+    expect_false(grepl("<th>Type</th>", inspector, fixed = TRUE))
+    expect_false(grepl("<th>Rank</th>", inspector, fixed = TRUE))
+    expect_false(grepl("<th>Basin</th>", inspector, fixed = TRUE))
     expect_match(
       inspector,
       "gflowui-general-inspector-width",
       fixed = TRUE
     )
     expect_false(grepl("basin_inspector_maximize", inspector, fixed = TRUE))
+
+    selected.key <- as.character(first$table$key[[1L]])
+    session$setInputs(basin_inspector_row_event = list(
+      key = selected.key,
+      role = "selection",
+      checked = TRUE,
+      value = "",
+      nonce = 1
+    ))
+    session$flushReact()
+    expect_true(selected.key %in% basin_selected_keys())
+    expect_true(basin_result()$table$selected[[1L]])
+    session$setInputs(basin_inspector_row_event = list(
+      key = selected.key,
+      role = "selection",
+      checked = FALSE,
+      value = "",
+      nonce = 2
+    ))
+    session$flushReact()
+    expect_false(selected.key %in% basin_selected_keys())
+    expect_false(basin_result()$table$selected[[1L]])
+
+    if (requireNamespace("plotly", quietly = TRUE)) {
+      trace.names <- function() {
+        payload <- jsonlite::fromJSON(
+          as.character(output$reference_plot),
+          simplifyVector = FALSE
+        )
+        vapply(
+          payload$x$data %||% list(),
+          function(trace) as.character(trace$name %||% ""),
+          character(1)
+        )
+      }
+      session$setInputs(
+        basin_show_maxima = FALSE,
+        basin_show_minima = FALSE
+      )
+      session$flushReact()
+      expect_false(any(grepl("^Local max|^Local min", trace.names())))
+      session$setInputs(basin_show_maxima = TRUE)
+      session$flushReact()
+      expect_true("Local maxima" %in% trace.names())
+      session$setInputs(basin_show_maxima = FALSE)
+      session$flushReact()
+      expect_false("Local maxima" %in% trace.names())
+      session$setInputs(basin_show_minima = TRUE)
+      session$flushReact()
+      expect_true("Local minima" %in% trace.names())
+      session$setInputs(basin_show_minima = FALSE)
+      session$flushReact()
+      expect_false("Local minima" %in% trace.names())
+    }
+
     session$setInputs(basin_inspector_width = 760)
     session$flushReact()
     expect_equal(basin_display_settings$inspector_width, 760L)

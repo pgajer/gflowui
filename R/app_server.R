@@ -8707,15 +8707,20 @@ app_server <- function(input, output, session) {
     header <- shiny::tags$tr(
       shiny::tags$th("Show"),
       shiny::tags$th("Color"),
-      shiny::tags$th("Type"),
-      shiny::tags$th("Rank"),
-      shiny::tags$th("Basin"),
+      shiny::tags$th(
+        title = paste(
+          "M denotes a maximum basin and m denotes a minimum basin.",
+          "The number is its direction-specific rank under the selected",
+          "ranking measure."
+        ),
+        "Extremum / basin"
+      ),
       shiny::tags$th(
         title = definition_for(
           "extremum.vertex.id",
           "External vertex ID of the representative extremum."
         ),
-        "Extremum"
+        "Extremum vertex"
       ),
       shiny::tags$th(
         title = definition_for("extremum.value", "Raw extremum value."),
@@ -8807,9 +8812,14 @@ app_server <- function(input, output, session) {
           `data-gf-basin-key` = key,
           `data-gf-basin-role` = "color"
         )),
-        shiny::tags$td(if (row$type == "max") "Maximum" else "Minimum"),
-        shiny::tags$td(as.integer(row$rank)),
-        shiny::tags$td(as.character(row$basin.id)),
+        shiny::tags$td(
+          title = if (row$type == "max") {
+            sprintf("Maximum basin, rank %d", as.integer(row$rank))
+          } else {
+            sprintf("Minimum basin, rank %d", as.integer(row$rank))
+          },
+          as.character(row$display.label)
+        ),
         shiny::tags$td(as.character(row$extremum.vertex.id)),
         shiny::tags$td(formatC(
           as.numeric(row$extremum.value),
@@ -9189,19 +9199,7 @@ app_server <- function(input, output, session) {
     old.colors <- basin_color_map()
     colors[names(old.colors)] <- old.colors
     basin_color_map(colors)
-    all.keys <- if (
-      is.data.frame(result$basin$basin.table) &&
-        all(c("type", "basin.id") %in% names(result$basin$basin.table))
-    ) {
-      paste(
-        result$basin$basin.table$type,
-        result$basin$basin.table$basin.id,
-        sep = "|"
-      )
-    } else {
-      result$table$key
-    }
-    basin_selected_keys(unique(as.character(all.keys)))
+    basin_selected_keys(character())
     result <- update_basin_display_result(result)
     basin_result(result)
     basin_inspector_open(TRUE)

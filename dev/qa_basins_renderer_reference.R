@@ -81,6 +81,19 @@ result <- gflowui:::gflowui_estimate_basin_overlay(
   alignment_validation = alignment
 )
 result$table$selected <- TRUE
+selected.keys <- result$table$key[result$table$selected]
+result$values_max <- gflowui:::gflowui_basin_display_values(
+  result$basin,
+  result$table,
+  selected.keys,
+  "max"
+)
+result$values_min <- gflowui:::gflowui_basin_display_values(
+  result$basin,
+  result$table,
+  selected.keys,
+  "min"
+)
 coords <- as.matrix(readRDS(
   graph.set$layout_assets$grip_layouts$k03$path
 ))
@@ -120,8 +133,8 @@ if (requireNamespace("plotly", quietly = TRUE)) {
     character(1)
   )
   plotly.trace.count <- length(traces)
-  plotly.maximum.count <- sum(grepl("^Maximum Basin", trace.names))
-  plotly.minimum.count <- sum(grepl("^Minimum Basin.* halo$", trace.names))
+  plotly.maximum.count <- sum(grepl("^M[0-9]+$", trace.names))
+  plotly.minimum.count <- sum(grepl("^m[0-9]+ halo$", trace.names))
   stopifnot(
     plotly.maximum.count == length(maximum.specs),
     plotly.minimum.count == length(minimum.specs)
