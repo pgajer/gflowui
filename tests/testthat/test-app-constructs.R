@@ -631,9 +631,10 @@ test_that("basin panel discovers conditional-expectation estimates", {
     )))
 
     controls <- htmltools::renderTags(output$workflow_controls)$html
-    expect_match(controls, "Largest maximum basins", fixed = TRUE)
-    expect_match(controls, "Largest minimum basins", fixed = TRUE)
-    expect_match(controls, "Ranking measure", fixed = TRUE)
+    expect_false(grepl("Largest maximum basins", controls, fixed = TRUE))
+    expect_false(grepl("Largest minimum basins", controls, fixed = TRUE))
+    expect_false(grepl("Ranking measure", controls, fixed = TRUE))
+    expect_false(grepl("Field extrema", controls, fixed = TRUE))
     expect_match(
       controls,
       "Compute &amp; Open Basin Inspector",
@@ -682,6 +683,8 @@ test_that("basin server invalidates changed fields and graph identities", {
     first <- basin_result()
     expect_true(is.list(first))
     expect_true(isTRUE(basin_inspector_open()))
+    expect_gte(nrow(first$all_table), nrow(first$table))
+    expect_true(all(is.finite(first$all_table$prominence)))
     expect_length(basin_selected_keys(), 0L)
     expect_false(any(first$table$selected))
     first.identity <- first$construction_identity$fingerprint
@@ -693,6 +696,13 @@ test_that("basin server invalidates changed fields and graph identities", {
     expect_match(workspace, "Resize General Inspector", fixed = TRUE)
     inspector <- htmltools::renderTags(output$basin_inspector_ui)$html
     expect_match(inspector, "Basin Inspector", fixed = TRUE)
+    expect_match(inspector, "Largest maximum basins", fixed = TRUE)
+    expect_match(inspector, "Largest minimum basins", fixed = TRUE)
+    expect_match(inspector, "Ranking measure", fixed = TRUE)
+    expect_match(inspector, "Maximum extrema", fixed = TRUE)
+    expect_match(inspector, "Minimum extrema", fixed = TRUE)
+    expect_match(inspector, "Selected basins", fixed = TRUE)
+    expect_match(inspector, "Listed top-K", fixed = TRUE)
     expect_match(inspector, "Extremum / basin", fixed = TRUE)
     expect_match(inspector, ">M1<", fixed = TRUE)
     expect_match(inspector, ">m1<", fixed = TRUE)
@@ -715,6 +725,66 @@ test_that("basin server invalidates changed fields and graph identities", {
       fixed = TRUE
     )
     expect_false(grepl("basin_inspector_maximize", inspector, fixed = TRUE))
+
+    plot.workspace <- htmltools::renderTags(
+      output$basin_plot_workspace_ui
+    )$html
+    expect_match(plot.workspace, "Basin Plot Workspace", fixed = TRUE)
+    expect_match(plot.workspace, "Characteristics", fixed = TRUE)
+    expect_match(plot.workspace, "Add histograms", fixed = TRUE)
+    expect_match(plot.workspace, "Add pair plots", fixed = TRUE)
+    expect_match(plot.workspace, "Add matrix", fixed = TRUE)
+    session$setInputs(
+      basin_plot_features = c("support", "mass"),
+      basin_plot_builder_scope = "all",
+      basin_plot_builder_type = "both",
+      basin_plot_add_histograms = 1L
+    )
+    session$flushReact()
+    expect_length(basin_plot_specs(), 2L)
+    expect_true(all(vapply(
+      basin_plot_specs(),
+      function(spec) identical(spec$kind, "histogram"),
+      logical(1)
+    )))
+    plot.workspace.with.cards <- htmltools::renderTags(
+      output$basin_plot_workspace_ui
+    )$html
+    expect_match(
+      plot.workspace.with.cards,
+      "Support distribution",
+      fixed = TRUE
+    )
+    expect_match(
+      plot.workspace.with.cards,
+      "Mass distribution",
+      fixed = TRUE
+    )
+    session$setInputs(basin_plot_clear_all = 1L)
+    session$flushReact()
+    expect_length(basin_plot_specs(), 0L)
+    session$setInputs(
+      basin_plot_features = c("support", "mass", "prominence"),
+      basin_plot_add_pairs = 1L
+    )
+    session$flushReact()
+    expect_length(basin_plot_specs(), 3L)
+    expect_true(all(vapply(
+      basin_plot_specs(),
+      function(spec) identical(spec$kind, "scatter"),
+      logical(1)
+    )))
+    session$setInputs(basin_plot_clear_all = 2L)
+    session$flushReact()
+    session$setInputs(
+      basin_plot_features = c(
+        "support", "mass", "extremum_value", "prominence"
+      ),
+      basin_plot_add_matrix = 1L
+    )
+    session$flushReact()
+    expect_length(basin_plot_specs(), 1L)
+    expect_identical(basin_plot_specs()[[1L]]$kind, "matrix")
 
     session$setInputs(basin_inspector_show_extremum_vertex = TRUE)
     session$flushReact()
@@ -774,21 +844,21 @@ test_that("basin server invalidates changed fields and graph identities", {
         )
       }
       session$setInputs(
-        basin_show_maxima = FALSE,
-        basin_show_minima = FALSE
+        basin_extrema_max_scope = "none",
+        basin_extrema_min_scope = "none"
       )
       session$flushReact()
       expect_false(any(grepl("^Local max|^Local min", trace.names())))
-      session$setInputs(basin_show_maxima = TRUE)
+      session$setInputs(basin_extrema_max_scope = "all")
       session$flushReact()
       expect_true("Local maxima" %in% trace.names())
-      session$setInputs(basin_show_maxima = FALSE)
+      session$setInputs(basin_extrema_max_scope = "none")
       session$flushReact()
       expect_false("Local maxima" %in% trace.names())
-      session$setInputs(basin_show_minima = TRUE)
+      session$setInputs(basin_extrema_min_scope = "all")
       session$flushReact()
       expect_true("Local minima" %in% trace.names())
-      session$setInputs(basin_show_minima = FALSE)
+      session$setInputs(basin_extrema_min_scope = "none")
       session$flushReact()
       expect_false("Local minima" %in% trace.names())
     }
