@@ -9609,9 +9609,13 @@ app_server <- function(input, output, session) {
           } else NULL
         )
       ),
-      shiny::plotOutput(
-        output.id,
-        height = if (is.matrix) "430px" else "300px"
+      shiny::div(
+        class = "gf-basin-plot-frame",
+        shiny::plotOutput(
+          output.id,
+          width = "100%",
+          height = "100%"
+        )
       )
     )
   }

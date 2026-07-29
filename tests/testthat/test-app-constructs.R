@@ -763,6 +763,11 @@ test_that("basin server invalidates changed fields and graph identities", {
       "Mass distribution",
       fixed = TRUE
     )
+    expect_match(
+      plot.workspace.with.cards,
+      "gf-basin-plot-frame",
+      fixed = TRUE
+    )
     expect_match(plot.workspace.with.cards, "Value scale", fixed = TRUE)
     session$setInputs(
       basin_plot_features = c("support", "mass", "prominence"),
