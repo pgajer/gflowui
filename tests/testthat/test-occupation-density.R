@@ -391,6 +391,12 @@ test_that("basin plot helpers preserve all, listed, and selected scopes", {
   )
   expect_length(matrix.spec, 1L)
   expect_length(matrix.spec[[1L]]$features, 4L)
+  expect_true(all(
+    gflowui:::gflowui_basin_plot_scale_map(
+      matrix.spec[[1L]],
+      x_scale = "log10"
+    ) == "log10"
+  ))
 
   existing <- gflowui:::gflowui_basin_new_plot_specs(
     c("support", "mass"),
@@ -453,6 +459,18 @@ test_that("basin plot helpers preserve all, listed, and selected scopes", {
     gflowui:::gflowui_basin_plot_axis_label("mass", "log10"),
     "log10(Mass)"
   )
+
+  plot.file <- tempfile(fileext = ".png")
+  grDevices::png(plot.file, width = 900, height = 650)
+  expect_no_error(gflowui:::gflowui_draw_basin_plot(
+    data = log.table,
+    spec = log.spec,
+    point_color = "type",
+    y_scale = "log10"
+  ))
+  grDevices::dev.off()
+  expect_gt(file.info(plot.file)$size, 0)
+  unlink(plot.file)
 })
 
 test_that("basin inspector row updates preserve explicit selection and colors", {
