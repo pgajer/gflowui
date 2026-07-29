@@ -265,6 +265,22 @@ gflowui_basin_plot_complete_rows <- function(data, features) {
   data[keep, , drop = FALSE]
 }
 
+gflowui_basin_histogram_geometry <- function(x, bins = 20L) {
+  bins <- suppressWarnings(as.integer(bins))
+  if (!is.finite(bins) || bins < 1L) bins <- 20L
+  histogram <- graphics::hist(x, breaks = bins, plot = FALSE)
+  heights <- histogram$counts
+  if (length(heights) > 0L && max(heights) > 0) {
+    heights <- heights / max(heights)
+  }
+  list(
+    left = histogram$breaks[-length(histogram$breaks)],
+    right = histogram$breaks[-1L],
+    height = heights,
+    y_limits = c(0, 1.05)
+  )
+}
+
 gflowui_draw_basin_plot <- function(
     data,
     spec,
@@ -378,14 +394,13 @@ gflowui_draw_basin_plot <- function(
     diagonal <- function(x, ...) {
       usr <- graphics::par("usr")
       on.exit(graphics::par(usr = usr))
-      h <- graphics::hist(x, breaks = bins, plot = FALSE)
-      y <- h$counts
-      if (max(y) > 0) y <- y / max(y)
+      geometry <- gflowui_basin_histogram_geometry(x, bins = bins)
+      graphics::par(usr = c(usr[1:2], geometry$y_limits))
       graphics::rect(
-        h$breaks[-length(h$breaks)],
+        geometry$left,
         0,
-        h$breaks[-1L],
-        y,
+        geometry$right,
+        geometry$height,
         col = histogram_color,
         border = "#FFFFFF"
       )
