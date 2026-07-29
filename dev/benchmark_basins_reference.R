@@ -22,8 +22,8 @@ graph.asset <- readRDS(graph.file)
 graph <- graph.asset$X.graphs$k03
 density.asset <- readRDS(density.file)
 path.index <- 4L
-field <- as.numeric(density.asset$probability.mass[, path.index])
-field.before <- field
+source.field <- as.numeric(density.asset$probability.mass[, path.index])
+field <- gflowui:::gflowui_normalize_density(source.field)
 vertex.id <- enc2utf8(as.character(graph.asset$vertex_ids))
 
 stopifnot(
@@ -54,7 +54,15 @@ mass.provenance <- gflowui:::gflowui_basin_mass_provenance(
     "exact graph-asset vertex IDs, graph and density asset fingerprints,",
     "path index, and full ordered field comparison"
   ),
-  evidence_fingerprint = source.fingerprint
+  evidence_fingerprint = source.fingerprint,
+  evidence = list(
+    selected.path.index = path.index,
+    source.asset.fingerprint = gflowui:::gflowui_basin_file_sha256(
+      density.file
+    ),
+    selected.field.fingerprint =
+      gflowui:::gflowui_basin_field_fingerprint(field)
+  )
 )
 
 profile <- function(expression) {
@@ -133,6 +141,9 @@ with.trajectories <- profile(gflow::create.basin.complex(
 
 without <- uncached$value$basin
 with <- with.trajectories$value
+source.field.after <- as.numeric(
+  readRDS(density.file)$probability.mass[, path.index]
+)
 report <- list(
   measured.at = format(
     Sys.time(),
@@ -143,7 +154,17 @@ report <- list(
   vertices = length(field),
   path.index = path.index,
   field.finite = all(is.finite(field)),
-  raw.mass.unchanged = identical(field, field.before),
+  source.asset.field.exact.identity =
+    identical(source.field, source.field.after),
+  adapter.normalization.exact.identity = identical(source.field, field),
+  adapter.normalization.maximum.absolute.difference =
+    max(abs(source.field - field)),
+  constructed.field.exact.identity =
+    identical(field, without$field$input.values),
+  constructed.mass.exact.identity =
+    identical(field, without$field$vertex.mass.input),
+  source.to.constructed.maximum.absolute.difference =
+    max(abs(source.field - without$field$input.values)),
   direction = without$direction,
   assignment.rows = nrow(without$assignment),
   assignments.per.direction = table(without$assignment$direction),

@@ -8038,6 +8038,20 @@ app_server <- function(input, output, session) {
       vertex.ids <- enc2utf8(vertex.ids)
     }
     graph.asset.fingerprint <- unname(tools::md5sum(graph_file))
+    graph.contract <- spec$graph_set$basin_source_contract %||% list()
+    graph.identity <- tryCatch(
+      gflowui_basin_graph_identity(
+        adj_list = adj_list,
+        edge_length_list = weight_list,
+        vertex_id = vertex.ids,
+        graph_id = graph.contract$graph.id,
+        graph_k = picked$k_actual,
+        source_vertex_id = graph.contract$source.vertex.id,
+        declared_display_vertex_fingerprint =
+          graph.contract$display.vertex.id.fingerprint
+      ),
+      error = function(e) e
+    )
 
     component_ids <- rep.int(1L, n_vertices)
     comp_res <- tryCatch(
@@ -8125,6 +8139,7 @@ app_server <- function(input, output, session) {
         colorbar_title = NULL,
         color_transform = "identity",
         source_fingerprint = "",
+        alignment_contract = NULL,
         density_low = "yellow",
         density_midpoint = "none",
         density_high = "red") {
@@ -8148,6 +8163,7 @@ app_server <- function(input, output, session) {
         colorbar_title = as.character(colorbar_title %||% label),
         color_transform = as.character(color_transform %||% "identity"),
         source_fingerprint = as.character(source_fingerprint %||% ""),
+        alignment_contract = alignment_contract,
         density_low = as.character(density_low %||% "yellow"),
         density_midpoint = as.character(density_midpoint %||% "none"),
         density_high = as.character(density_high %||% "red")
@@ -8170,7 +8186,8 @@ app_server <- function(input, output, session) {
               key = src$key,
               values = src$values
             ))
-        )
+        ),
+        alignment_contract = src$alignment_contract
       )
       invisible(NULL)
     }
@@ -8227,6 +8244,7 @@ app_server <- function(input, output, session) {
         source_fingerprint = as.character(
           occupation_density$source_fingerprint %||% ""
         ),
+        alignment_contract = occupation_density$alignment_contract,
         density_low = "yellow",
         density_midpoint = "none",
         density_high = "red"
@@ -8325,6 +8343,16 @@ app_server <- function(input, output, session) {
       graph_set = spec$graph_set,
       graph_file = graph_file,
       graph_asset_fingerprint = graph.asset.fingerprint,
+      graph_identity = if (inherits(graph.identity, "error")) {
+        NULL
+      } else {
+        graph.identity
+      },
+      graph_identity_error = if (inherits(graph.identity, "error")) {
+        conditionMessage(graph.identity)
+      } else {
+        NULL
+      },
       vertex_ids = vertex.ids,
       sources = sources,
       choices = choices,
@@ -8403,10 +8431,146 @@ app_server <- function(input, output, session) {
       source_fingerprint = as.character(
         src$source_fingerprint %||% ""
       ),
+      alignment_contract = src$alignment_contract,
       vertex_id = st$vertex_ids,
       graph = st
     )
   })
+
+  basin_construction_request <- function(source) {
+    if (!is.list(source) || !is.list(source$graph)) {
+      stop(
+        "Apply an occupation density or choose a conditional-expectation estimate first.",
+        call. = FALSE
+      )
+    }
+    vertex.id <- enc2utf8(as.character(source$vertex_id %||% character()))
+    if (length(vertex.id) != length(source$values) ||
+        anyNA(vertex.id) || any(!nzchar(vertex.id)) ||
+        anyDuplicated(vertex.id)) {
+      stop(
+        paste(
+          "The selected graph does not provide reviewed, unique external",
+          "vertex IDs in graph order; basin construction was not started."
+        ),
+        call. = FALSE
+      )
+    }
+    graph.identity <- source$graph$graph_identity
+    if (!is.list(graph.identity)) {
+      stop(
+        as.character(
+          source$graph$graph_identity_error %||%
+            paste(
+              "The displayed graph lacks a source-independent graph ID,",
+              "k, fingerprint, or ordered-vertex fingerprint."
+            )
+        ),
+        call. = FALSE
+      )
+    }
+    alignment <- gflowui_validate_basin_source_alignment(
+      source_contract = source$alignment_contract,
+      graph_identity = graph.identity,
+      field = source$values,
+      source_fingerprint = source$source_fingerprint
+    )
+    source.fingerprint <- gflowui_basin_sha256(list(
+      schema = "gflowui_basin_source_request/2",
+      source.key = source$key,
+      source.asset.fingerprint = source$source_fingerprint,
+      field.fingerprint = gflowui_basin_field_fingerprint(source$values),
+      alignment.evidence.fingerprint = alignment$evidence.fingerprint
+    ))
+    is.occupation <- identical(
+      as.character(source$key),
+      "occupation_density_active"
+    )
+    mass.provenance <- if (is.occupation) {
+      gflowui_basin_mass_provenance(
+        mass_kind = "occupation_probability",
+        source_id = alignment$source.id,
+        source_fingerprint = source.fingerprint,
+        authority = sprintf(
+          "gflowui project manifest %s",
+          source$graph$project_id %||% "unknown"
+        ),
+        validator = alignment$validator,
+        validator_version = alignment$validator.version,
+        algorithm = alignment$algorithm,
+        evidence_fingerprint = alignment$evidence.fingerprint,
+        contract_version = alignment$contract.version,
+        evidence = alignment$evidence,
+        validation_status = alignment$status
+      )
+    } else {
+      NULL
+    }
+    build.identity <- gflow::get.gflow.build.identity()
+    identity <- gflowui_basin_construction_identity(
+      project_id = source$graph$project_id,
+      graph_set_id = source$graph$set_id,
+      graph_identity = graph.identity,
+      source_key = source$key,
+      source_fingerprint = source.fingerprint,
+      field = source$values,
+      vertex_mass = if (is.occupation) source$values else NULL,
+      vertex_mass_provenance = mass.provenance,
+      alignment_validation = alignment,
+      build_identity = build.identity
+    )
+    list(
+      source = source,
+      vertex_id = vertex.id,
+      graph_identity = graph.identity,
+      alignment = alignment,
+      source_fingerprint = source.fingerprint,
+      is_occupation = is.occupation,
+      mass_provenance = mass.provenance,
+      build_identity = build.identity,
+      construction_identity = identity
+    )
+  }
+
+  invalidate_basin_result_if_needed <- function(
+      request,
+      message = "Estimate or graph inputs changed. Compute Basin Complex again.") {
+    result <- shiny::isolate(basin_result())
+    if (!is.list(result)) {
+      return(invisible(FALSE))
+    }
+    current <- as.character(
+      result$construction_identity$fingerprint %||% ""
+    )
+    active <- if (is.list(request)) {
+      as.character(request$construction_identity$fingerprint %||% "")
+    } else {
+      ""
+    }
+    if (nzchar(current) && identical(current, active)) {
+      return(invisible(FALSE))
+    }
+    basin_result(NULL)
+    basin_inspector_open(FALSE)
+    if (identical(
+      as.character(graph_layout_state$color_by %||% ""),
+      "basin_active"
+    )) {
+      next.color <- if (is.list(request)) {
+        as.character(request$source$key %||% "")
+      } else {
+        ""
+      }
+      graph_layout_state$color_by <- next.color
+      shiny::updateSelectInput(
+        session,
+        "graph_layout_color_by",
+        selected = next.color
+      )
+    }
+    basin_status(message)
+    invisible(TRUE)
+  }
 
   output$basin_status <- shiny::renderText({
     basin_status()
@@ -8872,15 +9036,27 @@ app_server <- function(input, output, session) {
     )
   })
 
-  shiny::observeEvent(input$basin_source, {
-    result <- shiny::isolate(basin_result())
-    selected <- as.character(input$basin_source %||% "")
-    if (is.list(result) &&
-        !identical(as.character(result$source_key %||% ""), selected)) {
-      basin_result(NULL)
-      basin_status("Estimate source changed. Compute Basin Complex to apply it.")
+  shiny::observe({
+    source <- basin_source_state()
+    if (!is.list(shiny::isolate(basin_result()))) {
+      return()
     }
-  }, ignoreInit = TRUE)
+    request <- tryCatch(
+      basin_construction_request(source),
+      error = function(e) e
+    )
+    if (inherits(request, "error")) {
+      invalidate_basin_result_if_needed(
+        NULL,
+        sprintf(
+          "Basin result is stale because the active source cannot be validated: %s",
+          conditionMessage(request)
+        )
+      )
+    } else {
+      invalidate_basin_result_if_needed(request)
+    }
+  })
 
   shiny::observe({
     source <- basin_source_state()
@@ -8928,67 +9104,26 @@ app_server <- function(input, output, session) {
 
   shiny::observeEvent(input$basin_compute, {
     source <- basin_source_state()
-    if (!is.list(source) || !is.list(source$graph)) {
-      shiny::showNotification(
-        "Apply an occupation density or choose a conditional-expectation estimate first.",
-        type = "warning"
-      )
+    request <- tryCatch(
+      basin_construction_request(source),
+      error = function(e) e
+    )
+    if (inherits(request, "error")) {
+      basin_result(NULL)
+      basin_inspector_open(FALSE)
+      basin_status(sprintf(
+        "Basin reconstruction was not started: %s",
+        conditionMessage(request)
+      ))
+      shiny::showNotification(conditionMessage(request), type = "error")
       return()
     }
+    source <- request$source
     top.max <- suppressWarnings(as.integer(input$basin_top_k_max %||% 6L))
     top.min <- suppressWarnings(as.integer(input$basin_top_k_min %||% 6L))
     if (!is.finite(top.max) || top.max < 0L) top.max <- 6L
     if (!is.finite(top.min) || top.min < 0L) top.min <- 6L
     rank.by <- as.character(input$basin_rank_by %||% "auto")
-    vertex.id <- as.character(source$vertex_id %||% character())
-    if (length(vertex.id) != length(source$values) ||
-        anyNA(vertex.id) || any(!nzchar(vertex.id)) ||
-        anyDuplicated(vertex.id)) {
-      message <- paste(
-        "The selected graph does not provide reviewed, unique external",
-        "vertex IDs in graph order; basin construction was not started."
-      )
-      basin_status(message)
-      shiny::showNotification(message, type = "error")
-      return()
-    }
-    source.fingerprint <- gflowui_basin_hash(list(
-      project.id = source$graph$project_id,
-      graph.set.id = source$graph$set_id,
-      graph.k = source$graph$k_actual,
-      graph.asset.fingerprint = source$graph$graph_asset_fingerprint,
-      source.key = source$key,
-      upstream.source.fingerprint = source$source_fingerprint,
-      vertex.id = vertex.id,
-      values = source$values
-    ))
-    is.occupation <- identical(
-      as.character(source$key),
-      "occupation_density_active"
-    )
-    mass.provenance <- if (is.occupation) {
-      evidence <- gflowui_basin_hash(list(
-        project.id = source$graph$project_id,
-        graph.set.id = source$graph$set_id,
-        graph.k = source$graph$k_actual,
-        graph.asset.fingerprint = source$graph$graph_asset_fingerprint,
-        upstream.source.fingerprint = source$source_fingerprint,
-        source.fingerprint = source.fingerprint,
-        vertex.id = vertex.id
-      ))
-      gflowui_basin_mass_provenance(
-        mass_kind = "occupation_probability",
-        source_id = source$key,
-        source_fingerprint = source.fingerprint,
-        authority = sprintf(
-          "gflowui project manifest %s",
-          source$graph$project_id %||% "unknown"
-        ),
-        evidence_fingerprint = evidence
-      )
-    } else {
-      NULL
-    }
     result <- tryCatch(
       gflowui_estimate_basin_overlay(
         adj_list = source$graph$adj_list,
@@ -8998,11 +9133,12 @@ app_server <- function(input, output, session) {
         top_k_max = top.max,
         top_k_min = top.min,
         rank_by = rank.by,
-        vertex_mass = if (is.occupation) source$values else NULL,
-        vertex_id = vertex.id,
-        vertex_mass_provenance = mass.provenance,
+        vertex_mass = if (request$is_occupation) source$values else NULL,
+        vertex_id = request$vertex_id,
+        vertex_mass_provenance = request$mass_provenance,
         source_key = source$key,
-        source_fingerprint = source.fingerprint
+        source_fingerprint = request$source_fingerprint,
+        alignment_validation = request$alignment
       ),
       error = function(e) e
     )
@@ -9024,6 +9160,8 @@ app_server <- function(input, output, session) {
     result$graph_k <- suppressWarnings(as.integer(
       source$graph$k_actual %||% NA_integer_
     ))
+    result$construction_identity <- request$construction_identity
+    result$alignment_validation <- request$alignment
     colors <- stats::setNames(result$table$color, result$table$key)
     old.colors <- basin_color_map()
     colors[names(old.colors)] <- old.colors
@@ -9843,6 +9981,25 @@ app_server <- function(input, output, session) {
             ),
             showlegend = FALSE
           )
+      } else if (identical(src$type, "categorical") &&
+                 identical(src_key, "basin_active") &&
+                 identical(
+                   as.character(
+                     basin_display_settings$display_mode %||% "both"
+                   ),
+                   "both"
+                 )) {
+        specs <- gflowui_basin_layer_specs(
+          basin_display = basin_result(),
+          visible_vertices = idx,
+          point_size = point_size,
+          opacity = base_marker_opacity,
+          unselected_color =
+            basin_display_settings$unselected_color %||% "#D1D5DB",
+          unselected_opacity =
+            basin_display_settings$unselected_opacity %||% 0.28
+        )
+        p <- gflowui_add_plotly_basin_layers(p, specs, coords)
       } else if (identical(src$type, "categorical")) {
         pal_info <- categorical_palette(
           plot_data$value,
@@ -9973,74 +10130,6 @@ app_server <- function(input, output, session) {
             ),
             showlegend = FALSE
           )
-      }
-
-      basin.display <- basin_result()
-      basin.mode <- as.character(
-        basin_display_settings$display_mode %||% "both"
-      )
-      if (identical(src_key, "basin_active") &&
-          identical(basin.mode, "both") &&
-          is.list(basin.display) &&
-          inherits(basin.display$basin, "basin_complex") &&
-          is.data.frame(basin.display$table)) {
-        minimum.rows <- basin.display$table[
-          basin.display$table$type == "min" &
-            basin.display$table$selected,
-          ,
-          drop = FALSE
-        ]
-        minimum.assignment <- basin.display$basin$assignment
-        minimum.assignment <- minimum.assignment[
-          minimum.assignment$direction == "min" &
-            minimum.assignment$assignment.status == "assigned",
-          ,
-          drop = FALSE
-        ]
-        for (basin.index in seq_len(nrow(minimum.rows))) {
-          basin.row <- minimum.rows[basin.index, , drop = FALSE]
-          vertices <- suppressWarnings(as.integer(
-            minimum.assignment$vertex[
-              minimum.assignment$basin.id == basin.row$basin.id
-            ]
-          ))
-          vertices <- vertices[
-            is.finite(vertices) & vertices %in% idx
-          ]
-          if (length(vertices) < 1L) {
-            next
-          }
-          p <- p %>%
-            plotly::add_trace(
-              type = "scatter3d",
-              mode = "markers",
-              x = coords[vertices, 1],
-              y = coords[vertices, 2],
-              z = coords[vertices, 3],
-              key = vertices,
-              customdata = vertices,
-              name = paste0(
-                as.character(basin.row$display.label),
-                " halo"
-              ),
-              text = sprintf(
-                "%s<br>vertex=%d",
-                as.character(basin.row$display.label),
-                vertices
-              ),
-              hoverinfo = "text",
-              marker = list(
-                size = max(4, point_size * 1.65),
-                color = "rgba(255,255,255,0)",
-                opacity = 1,
-                line = list(
-                  color = as.character(basin.row$color),
-                  width = 5
-                )
-              ),
-              showlegend = TRUE
-            )
-        }
       }
 
       basin_source <- basin_source_state()
@@ -10843,27 +10932,23 @@ app_server <- function(input, output, session) {
           is.list(basin.display) &&
           inherits(basin.display$basin, "basin_complex") &&
           is.data.frame(basin.display$table)) {
-        minimum.rows <- basin.display$table[
-          basin.display$table$type == "min" &
-            basin.display$table$selected,
-          ,
-          drop = FALSE
-        ]
-        minimum.assignment <- basin.display$basin$assignment
-        minimum.assignment <- minimum.assignment[
-          minimum.assignment$direction == "min" &
-            minimum.assignment$assignment.status == "assigned",
-          ,
-          drop = FALSE
-        ]
-        for (basin.index in seq_len(nrow(minimum.rows))) {
-          basin.row <- minimum.rows[basin.index, , drop = FALSE]
-          original <- suppressWarnings(as.integer(
-            minimum.assignment$vertex[
-              minimum.assignment$basin.id == basin.row$basin.id
-            ]
-          ))
-          view.index <- match(original, keep_idx)
+        basin.specs <- gflowui_basin_layer_specs(
+          basin_display = basin.display,
+          visible_vertices = keep_idx,
+          point_size = point_size,
+          opacity = basin_display_settings$opacity %||% 0.85,
+          unselected_color =
+            basin_display_settings$unselected_color %||% "#D1D5DB",
+          unselected_opacity =
+            basin_display_settings$unselected_opacity %||% 0.28
+        )
+        basin.specs <- basin.specs[vapply(
+          basin.specs,
+          function(spec) identical(spec$kind, "minimum_halo"),
+          logical(1)
+        )]
+        for (spec in basin.specs) {
+          view.index <- match(spec$vertices, keep_idx)
           view.index <- view.index[
             is.finite(view.index) &
               view.index >= 1L &
@@ -10873,39 +10958,17 @@ app_server <- function(input, output, session) {
             next
           }
           basin_layers[[length(basin_layers) + 1L]] <- list(
-            fun = function(
-                ctx,
-                basin_idx,
-                basin_color,
-                marker_size,
-                marker_opacity) {
-              idx <- suppressWarnings(as.integer(basin_idx))
-              idx <- idx[
-                is.finite(idx) & idx >= 1L & idx <= nrow(ctx$X)
-              ]
-              if (length(idx) < 1L) {
-                return(invisible(NULL))
-              }
-              rgl::points3d(
-                ctx$X[idx, , drop = FALSE],
-                col = grDevices::adjustcolor(
-                  basin_color,
-                  alpha.f = marker_opacity
-                ),
-                size = max(7, marker_size * 2.1)
+            fun = function(ctx, layer_spec) {
+              gflowui_draw_rgl_basin_layers(
+                ctx$X,
+                list(layer_spec)
               )
               invisible(NULL)
             },
             args = list(
-              basin_idx = view.index,
-              basin_color = as.character(basin.row$color),
-              marker_size = point_size,
-              marker_opacity = max(
-                0.25,
-                min(
-                  0.7,
-                  as.numeric(basin_display_settings$opacity %||% 0.85) * 0.6
-                )
+              layer_spec = utils::modifyList(
+                spec,
+                list(vertices = view.index)
               )
             ),
             with_ctx = TRUE

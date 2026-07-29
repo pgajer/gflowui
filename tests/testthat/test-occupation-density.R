@@ -401,6 +401,329 @@ test_that("basin cache identity distinguishes build and runtime changes", {
   expect_false(identical(first, third))
 })
 
+test_that("occupation-density alignment rejects mismatched source contracts", {
+  adjacency <- list(c(2L), c(1L, 3L), c(2L, 4L), 3L)
+  weights <- lapply(adjacency, function(x) rep(1, length(x)))
+  display_id <- paste0("display-", 1:4)
+  source_id <- as.character(1:4)
+  graph <- gflowui:::gflowui_basin_graph_identity(
+    adjacency,
+    weights,
+    display_id,
+    graph_id = "graph-k03",
+    graph_k = 3L,
+    source_vertex_id = source_id
+  )
+  field <- c(0.1, 0.2, 0.3, 0.4)
+  contract <- list(
+    contract.version = "occupation-fixture/1",
+    algorithm = "fixture exact comparison",
+    graph.id = graph$graph.id,
+    graph.k = graph$graph.k,
+    graph.fingerprint = graph$graph.fingerprint,
+    vertex.id.fingerprint = graph$vertex.id.fingerprint,
+    display.vertex.id.fingerprint = graph$display.vertex.id.fingerprint,
+    source.vertex.id = source_id,
+    field.fingerprint = gflowui:::gflowui_basin_field_fingerprint(field),
+    source.field.fingerprint =
+      gflowui:::gflowui_basin_field_fingerprint(field),
+    source.asset.fingerprint = "occupation-asset",
+    source.id = "occupation-density"
+  )
+  validated <- gflowui:::gflowui_validate_basin_source_alignment(
+    contract,
+    graph,
+    field,
+    "occupation-asset"
+  )
+  expect_identical(validated$status, "validated")
+
+  mutations <- list(
+    graph.id = "wrong-graph",
+    graph.k = 4L,
+    graph.fingerprint = "wrong-graph-fingerprint",
+    vertex.id.fingerprint = "wrong-vertex-fingerprint",
+    display.vertex.id.fingerprint = "wrong-display-fingerprint",
+    source.vertex.id = rev(source_id),
+    field.fingerprint = "wrong-field-fingerprint"
+  )
+  for (name in names(mutations)) {
+    changed <- contract
+    changed[[name]] <- mutations[[name]]
+    expect_error(
+      gflowui:::gflowui_validate_basin_source_alignment(
+        changed,
+        graph,
+        field,
+        "occupation-asset"
+      ),
+      "alignment failed|ordered source vertex IDs"
+    )
+  }
+})
+
+test_that("conditional-expectation alignment requires the same graph contract", {
+  adjacency <- list(2L, c(1L, 3L), 2L)
+  weights <- lapply(adjacency, function(x) rep(1, length(x)))
+  graph <- gflowui:::gflowui_basin_graph_identity(
+    adjacency,
+    weights,
+    paste0("display-", 1:3),
+    graph_id = "condexp-graph",
+    graph_k = 5L,
+    source_vertex_id = as.character(1:3)
+  )
+  field <- c(0.2, 0.8, 0.4)
+  contract <- list(
+    contract.version = "condexp-fixture/1",
+    algorithm = "fixture exact comparison",
+    graph.id = graph$graph.id,
+    graph.k = graph$graph.k,
+    graph.fingerprint = graph$graph.fingerprint,
+    vertex.id.fingerprint = graph$vertex.id.fingerprint,
+    display.vertex.id.fingerprint = graph$display.vertex.id.fingerprint,
+    source.vertex.id = graph$source.vertex.id,
+    field.fingerprint = gflowui:::gflowui_basin_field_fingerprint(field),
+    source.asset.fingerprint = "condexp-asset",
+    source.id = "conditional-expectation"
+  )
+  expect_identical(
+    gflowui:::gflowui_validate_basin_source_alignment(
+      contract, graph, field, "condexp-asset"
+    )$status,
+    "validated"
+  )
+  expect_error(
+    gflowui:::gflowui_validate_basin_source_alignment(
+      NULL, graph, field, "condexp-asset"
+    ),
+    "required source-side"
+  )
+  contract$graph.k <- 7L
+  expect_error(
+    gflowui:::gflowui_validate_basin_source_alignment(
+      contract, graph, field, "condexp-asset"
+    ),
+    "graph.k"
+  )
+})
+
+test_that("basin cache identity includes typed provenance and alignment evidence", {
+  args <- list(
+    adj_list = list(2L, 1L),
+    edge_length_list = list(1, 1),
+    field = c(0, 1),
+    vertex_mass = c(0.25, 0.75),
+    vertex_id = c("a", "b"),
+    source_key = "fixture",
+    source_fingerprint = "source",
+    build_identity = list(
+      build.id = "build",
+      runtime = list(id = "runtime")
+    )
+  )
+  provenance <- gflowui:::gflowui_basin_mass_provenance(
+    mass_kind = "occupation_probability",
+    source_id = "fixture",
+    source_fingerprint = "source",
+    authority = "authority-A",
+    algorithm = "algorithm-A",
+    evidence_fingerprint = "evidence-A",
+    contract_version = "contract-A",
+    evidence = list(source.graph.id = "graph-A")
+  )
+  alignment <- list(
+    status = "validated",
+    contract.version = "contract-A",
+    algorithm = "algorithm-A",
+    evidence.fingerprint = "alignment-A"
+  )
+  base <- do.call(
+    gflowui:::gflowui_basin_cache_key,
+    c(args, list(
+      vertex_mass_provenance = provenance,
+      alignment_validation = alignment
+    ))
+  )
+  variants <- list()
+  variants$authority <- provenance
+  variants$authority$attestations[[1L]]$authority <- "authority-B"
+  variants$contract <- provenance
+  variants$contract$attestations[[1L]]$contract.version <- "contract-B"
+  variants$algorithm <- provenance
+  variants$algorithm$attestations[[1L]]$algorithm <- "algorithm-B"
+  variants$evidence <- provenance
+  variants$evidence$attestations[[1L]]$evidence.fingerprint <- "evidence-B"
+  for (variant in variants) {
+    changed <- do.call(
+      gflowui:::gflowui_basin_cache_key,
+      c(args, list(
+        vertex_mass_provenance = variant,
+        alignment_validation = alignment
+      ))
+    )
+    expect_false(identical(base, changed))
+  }
+  for (field in c("status", "contract.version", "algorithm",
+                  "evidence.fingerprint")) {
+    changed.alignment <- alignment
+    changed.alignment[[field]] <- paste0(changed.alignment[[field]], "-B")
+    changed <- do.call(
+      gflowui:::gflowui_basin_cache_key,
+      c(args, list(
+        vertex_mass_provenance = provenance,
+        alignment_validation = changed.alignment
+      ))
+    )
+    expect_false(identical(base, changed))
+  }
+})
+
+test_that("failed basin objects are never restored as cache hits", {
+  adjacency <- list(2L, c(1L, 3L), 2L)
+  weights <- lapply(adjacency, function(x) rep(1, length(x)))
+  field <- c(0, 2, 1)
+  build <- gflow::get.gflow.build.identity()
+  key <- gflowui:::gflowui_basin_cache_key(
+    adjacency,
+    weights,
+    field,
+    NULL,
+    paste0("cache-", 1:3),
+    "failed-object-fixture",
+    "failed-object-source",
+    build
+  )
+  assign(
+    key,
+    list(status = "error", diagnostics = list(message = "old failure")),
+    envir = gflowui:::.gflowui_basin_cache
+  )
+  result <- gflowui:::gflowui_estimate_basin_overlay(
+    adjacency,
+    weights,
+    field,
+    vertex_id = paste0("cache-", 1:3),
+    source_key = "failed-object-fixture",
+    source_fingerprint = "failed-object-source"
+  )
+  expect_false(isTRUE(result$cache_hit))
+  expect_identical(
+    get(key, envir = gflowui:::.gflowui_basin_cache)$status,
+    "ok"
+  )
+})
+
+test_that("construction identity changes for same-key fields and graph inputs", {
+  graph <- list(
+    graph.id = "graph",
+    graph.k = 3L,
+    graph.fingerprint = "graph-A",
+    vertex.id.fingerprint = "vertices-A",
+    display.vertex.id.fingerprint = "display-A"
+  )
+  identity <- list(build.id = "build", runtime = list(id = "runtime"))
+  make_identity <- function(field, graph_identity = graph) {
+    gflowui:::gflowui_basin_construction_identity(
+      project_id = "project",
+      graph_set_id = "set",
+      graph_identity = graph_identity,
+      source_key = "same-key",
+      source_fingerprint = "source",
+      field = field,
+      vertex_mass = NULL,
+      vertex_mass_provenance = NULL,
+      alignment_validation = list(
+        status = "validated",
+        evidence.fingerprint = "evidence"
+      ),
+      build_identity = identity
+    )
+  }
+  first <- make_identity(c(0, 1))
+  expect_false(identical(
+    first$fingerprint,
+    make_identity(c(1, 0))$fingerprint
+  ))
+  graph$graph.fingerprint <- "graph-B"
+  expect_false(identical(
+    first$fingerprint,
+    make_identity(c(0, 1), graph)$fingerprint
+  ))
+})
+
+test_that("Plotly basin layers contain selected fills and minimum halos", {
+  skip_if_not_installed("plotly")
+  adjacency <- list(
+    c(2L, 4L), c(1L, 3L, 5L), c(2L, 6L),
+    c(1L, 5L), c(2L, 4L, 6L), c(3L, 5L)
+  )
+  weights <- lapply(adjacency, function(x) rep(1, length(x)))
+  result <- gflowui:::gflowui_estimate_basin_overlay(
+    adjacency,
+    weights,
+    c(0, 1, 0, 1, 3, 1),
+    top_k_max = 2L,
+    top_k_min = 2L,
+    vertex_id = paste0("plotly-", 1:6),
+    source_key = "plotly-layer-fixture"
+  )
+  result$table$selected <- TRUE
+  coords <- cbind(1:6, (1:6)^2, (1:6)^3)
+  specs <- gflowui:::gflowui_basin_layer_specs(
+    result,
+    visible_vertices = 1:6,
+    point_size = 3,
+    opacity = 0.8
+  )
+  expect_true(any(vapply(
+    specs, function(x) identical(x$kind, "maximum_fill"), logical(1)
+  )))
+  expect_true(any(vapply(
+    specs, function(x) identical(x$kind, "minimum_halo"), logical(1)
+  )))
+  plot <- gflowui:::gflowui_add_plotly_basin_layers(
+    plotly::plot_ly(),
+    specs,
+    coords
+  )
+  traces <- plotly::plotly_build(plot)$x$data
+  trace.names <- vapply(traces, function(x) as.character(x$name), character(1))
+  expect_true(any(grepl("^Maximum Basin", trace.names)))
+  expect_true(any(grepl("^Minimum Basin.* halo$", trace.names)))
+  halos <- traces[grepl(" halo$", trace.names)]
+  expect_true(all(vapply(
+    halos,
+    function(x) identical(x$marker$color, "rgba(255,255,255,0)") &&
+      is.list(x$marker$line) && x$marker$line$width == 5,
+    logical(1)
+  )))
+})
+
+test_that("actual RGL basin layers contain the selected minimum vertices", {
+  skip_if_not_installed("rgl")
+  old <- options(rgl.useNULL = TRUE)
+  on.exit(options(old), add = TRUE)
+  device <- rgl::open3d(useNULL = TRUE)
+  on.exit(try(rgl::close3d(device), silent = TRUE), add = TRUE)
+  coords <- cbind(1:4, c(0, 1, 0, 1), c(1, 1, 2, 2))
+  specs <- list(list(
+    kind = "minimum_halo",
+    key = "min|fixture",
+    name = "Minimum Basin 01 halo",
+    vertices = c(2L, 4L),
+    color = "#2563EB",
+    rgl.size = 8,
+    rgl.opacity = 0.5
+  ))
+  before <- rgl::rgl.ids(type = "shapes")
+  ids <- gflowui:::gflowui_draw_rgl_basin_layers(coords, specs)
+  after <- rgl::rgl.ids(type = "shapes")
+  expect_length(ids, 1L)
+  expect_true(all(ids %in% after$id))
+  expect_gt(nrow(after), nrow(before))
+})
+
 test_that("strict graph-local density extrema are ranked deterministically", {
   adj_list <- list(
     c(2L, 3L),
@@ -440,9 +763,29 @@ test_that("precomputed heat paths expose every time and current top-K basins", {
   dir.create(file.path(root, "paths"), recursive = TRUE)
   on.exit(unlink(root, recursive = TRUE, force = TRUE), add = TRUE)
 
+  source_vertex_id <- as.character(1:4)
+  vertex_fingerprint <- gflowui:::gflowui_basin_sha256(list(
+    schema = "hmp_graph_heat_vertices_v1",
+    vertex.id = source_vertex_id
+  ))
+  graph_fingerprint <- paste(rep("a", 64L), collapse = "")
+  display_vertex_fingerprint <- paste(rep("b", 64L), collapse = "")
   path <- list(
+    contract.id = "fixture-path/1",
     subject.id = "15",
-    settings = list(graph.k = 3L),
+    settings = list(
+      contract.id = "fixture-path/1",
+      graph.id = "fixture-graph",
+      graph.k = 3L
+    ),
+    selected = data.frame(
+      graph.id = "fixture-graph",
+      graph.k = 3L,
+      graph.fingerprint = graph_fingerprint,
+      vertex.fingerprint = vertex_fingerprint,
+      stringsAsFactors = FALSE
+    ),
+    spectral.coordinates = data.frame(point.id = source_vertex_id),
     probability.mass = matrix(
       c(
         0.40, 0.30, 0.20, 0.10,
@@ -481,6 +824,16 @@ test_that("precomputed heat paths expose every time and current top-K basins", {
     project_root = root,
     occupation_density_sets = list(list(
       id = "subject15_path",
+      basin_source_contract = list(
+        contract.version = "fixture-path/1",
+        graph.id = "fixture-graph",
+        graph.k = 3L,
+        graph.fingerprint = graph_fingerprint,
+        vertex.id.fingerprint = vertex_fingerprint,
+        source.vertex.id = source_vertex_id,
+        display.vertex.id.fingerprint = display_vertex_fingerprint,
+        algorithm = "fixture exact alignment"
+      ),
       methods = list(list(
         id = "graph_heat_kernel",
         source = "precomputed_path",
