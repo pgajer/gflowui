@@ -186,6 +186,55 @@ gflowui_basin_new_plot_specs <- function(
   })
 }
 
+gflowui_basin_plot_spec_signature <- function(spec) {
+  kind <- as.character(spec$kind)
+  if (length(kind) < 1L || !nzchar(kind[[1L]])) {
+    kind <- "unknown"
+  } else {
+    kind <- kind[[1L]]
+  }
+  features <- sort(unique(as.character(spec$features)))
+  fingerprint <- as.character(spec$construction_fingerprint)
+  if (length(fingerprint) < 1L || !nzchar(fingerprint[[1L]])) {
+    fingerprint <- ""
+  } else {
+    fingerprint <- fingerprint[[1L]]
+  }
+  paste(
+    fingerprint,
+    kind,
+    paste(features, collapse = "+"),
+    sep = "|"
+  )
+}
+
+gflowui_basin_filter_new_plot_specs <- function(existing, candidates) {
+  existing <- if (is.list(existing)) existing else list()
+  candidates <- if (is.list(candidates)) candidates else list()
+  seen <- if (length(existing) > 0L) {
+    unique(vapply(
+      existing,
+      gflowui_basin_plot_spec_signature,
+      character(1)
+    ))
+  } else {
+    character()
+  }
+  keep <- logical(length(candidates))
+  for (index in seq_along(candidates)) {
+    signature <- gflowui_basin_plot_spec_signature(candidates[[index]])
+    if (!signature %in% seen) {
+      keep[[index]] <- TRUE
+      seen <- c(seen, signature)
+    }
+  }
+  list(
+    specs = candidates[keep],
+    skipped = as.integer(sum(!keep)),
+    requested = as.integer(length(candidates))
+  )
+}
+
 gflowui_basin_plot_title <- function(spec) {
   labels <- vapply(
     spec$features,

@@ -392,6 +392,44 @@ test_that("basin plot helpers preserve all, listed, and selected scopes", {
   expect_length(matrix.spec, 1L)
   expect_length(matrix.spec[[1L]]$features, 4L)
 
+  existing <- gflowui:::gflowui_basin_new_plot_specs(
+    c("support", "mass"),
+    "histograms",
+    construction_fingerprint = "field-a"
+  )
+  overlapping <- gflowui:::gflowui_basin_new_plot_specs(
+    c("support", "mass", "prominence"),
+    "histograms",
+    construction_fingerprint = "field-a"
+  )
+  filtered <- gflowui:::gflowui_basin_filter_new_plot_specs(
+    existing,
+    overlapping
+  )
+  expect_length(filtered$specs, 1L)
+  expect_identical(filtered$specs[[1L]]$features, "prominence")
+  expect_equal(filtered$skipped, 2L)
+
+  repeated.pairs <- gflowui:::gflowui_basin_filter_new_plot_specs(
+    pairs,
+    gflowui:::gflowui_basin_new_plot_specs(
+      c("prominence", "mass", "support"),
+      "pairs"
+    )
+  )
+  expect_length(repeated.pairs$specs, 0L)
+  expect_equal(repeated.pairs$skipped, 3L)
+
+  current.field <- gflowui:::gflowui_basin_filter_new_plot_specs(
+    existing,
+    gflowui:::gflowui_basin_new_plot_specs(
+      c("support", "mass"),
+      "histograms",
+      construction_fingerprint = "field-b"
+    )
+  )
+  expect_length(current.field$specs, 2L)
+
   log.table <- gflowui:::gflowui_basin_plot_data(
     result,
     "all",
