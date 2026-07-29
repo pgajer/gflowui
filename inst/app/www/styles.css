@@ -1035,17 +1035,18 @@ body.gf-general-inspector-resizing {
 }
 
 #basin_inspector_ui {
-  flex: 1 1 54%;
+  min-height: 860px;
+  flex: 0 0 auto;
 }
 
 #basin_plot_workspace_ui {
-  flex: 1 1 46%;
+  flex: 0 0 auto;
 }
 
 .gf-basin-inspector {
   min-width: 0;
-  min-height: 0;
-  flex: 1 1 auto;
+  min-height: 860px;
+  flex: 0 0 auto;
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -1101,10 +1102,23 @@ body.gf-general-inspector-resizing {
 }
 
 .gf-basin-table-scroll {
-  min-height: 220px;
+  min-height: 260px;
   max-height: none;
   flex: 1 1 auto;
   overflow: auto;
+}
+
+.gf-basin-characteristics {
+  min-height: 320px;
+  flex: 1 1 auto;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding-top: 0.15rem;
+}
+
+.gf-basin-characteristics h5 {
+  margin: 0 0 0.2rem;
 }
 
 .gf-basin-table {

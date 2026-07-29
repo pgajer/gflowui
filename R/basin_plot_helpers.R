@@ -17,6 +17,78 @@ gflowui_basin_plot_feature_label <- function(feature) {
   }
 }
 
+gflowui_basin_plot_scale_choices <- function() {
+  c(
+    "Raw" = "raw",
+    "Log10 (positive values only)" = "log10"
+  )
+}
+
+gflowui_basin_plot_scale_map <- function(
+    spec,
+    x_scale = "raw",
+    y_scale = "raw") {
+  features <- as.character(spec$features)
+  x_scale <- if (identical(as.character(x_scale), "log10")) {
+    "log10"
+  } else {
+    "raw"
+  }
+  y_scale <- if (identical(as.character(y_scale), "log10")) {
+    "log10"
+  } else {
+    "raw"
+  }
+  scales <- stats::setNames(rep("raw", length(features)), features)
+  if (identical(as.character(spec$kind), "histogram")) {
+    scales[[features[[1L]]]] <- x_scale
+  } else if (identical(as.character(spec$kind), "scatter")) {
+    scales[[features[[1L]]]] <- x_scale
+    scales[[features[[2L]]]] <- y_scale
+  } else {
+    scales[] <- x_scale
+  }
+  scales
+}
+
+gflowui_basin_plot_scaled_data <- function(
+    data,
+    spec,
+    x_scale = "raw",
+    y_scale = "raw") {
+  features <- as.character(spec$features)
+  data <- gflowui_basin_plot_complete_rows(data, features)
+  initial.rows <- nrow(data)
+  scales <- gflowui_basin_plot_scale_map(
+    spec,
+    x_scale = x_scale,
+    y_scale = y_scale
+  )
+  log.features <- names(scales)[scales == "log10"]
+  if (length(log.features) > 0L && nrow(data) > 0L) {
+    keep <- rep(TRUE, nrow(data))
+    for (feature in log.features) {
+      keep <- keep & data[[feature]] > 0
+    }
+    data <- data[keep, , drop = FALSE]
+    for (feature in log.features) {
+      data[[feature]] <- log10(data[[feature]])
+    }
+  }
+  attr(data, "gflowui_scale_map") <- scales
+  attr(data, "gflowui_nonpositive_excluded") <- initial.rows - nrow(data)
+  data
+}
+
+gflowui_basin_plot_axis_label <- function(feature, scale = "raw") {
+  label <- gflowui_basin_plot_feature_label(feature)
+  if (identical(as.character(scale), "log10")) {
+    sprintf("log10(%s)", label)
+  } else {
+    label
+  }
+}
+
 gflowui_basin_plot_data <- function(
     result,
     scope = c("all", "listed", "selected"),
@@ -152,15 +224,23 @@ gflowui_draw_basin_plot <- function(
     point_color = "type",
     point_glyph = 19L,
     point_size = 1.1,
-    point_opacity = 0.75) {
+    point_opacity = 0.75,
+    x_scale = "raw",
+    y_scale = "raw") {
   features <- as.character(spec$features)
-  data <- gflowui_basin_plot_complete_rows(data, features)
+  data <- gflowui_basin_plot_scaled_data(
+    data,
+    spec,
+    x_scale = x_scale,
+    y_scale = y_scale
+  )
+  scales <- attr(data, "gflowui_scale_map")
   if (nrow(data) < 1L) {
     graphics::plot.new()
     graphics::text(
       0.5,
       0.5,
-      "No finite basin rows for this plot.",
+      "No eligible basin rows for this scale.",
       col = "#64748B"
     )
     return(invisible(data))
@@ -196,7 +276,7 @@ gflowui_draw_basin_plot <- function(
         gflowui_basin_plot_title(spec),
         nrow(data)
       ),
-      xlab = gflowui_basin_plot_feature_label(feature)
+      xlab = gflowui_basin_plot_axis_label(feature, scales[[feature]])
     )
   } else if (identical(as.character(spec$kind), "scatter")) {
     x.feature <- features[[1L]]
@@ -207,8 +287,14 @@ gflowui_draw_basin_plot <- function(
       pch = point_glyph,
       cex = point_size,
       col = point_colors,
-      xlab = gflowui_basin_plot_feature_label(x.feature),
-      ylab = gflowui_basin_plot_feature_label(y.feature),
+      xlab = gflowui_basin_plot_axis_label(
+        x.feature,
+        scales[[x.feature]]
+      ),
+      ylab = gflowui_basin_plot_axis_label(
+        y.feature,
+        scales[[y.feature]]
+      ),
       main = sprintf("%s (n=%d)", gflowui_basin_plot_title(spec), nrow(data))
     )
     if (identical(as.character(point_color), "type") &&
@@ -224,11 +310,9 @@ gflowui_draw_basin_plot <- function(
     }
   } else {
     matrix.data <- data[, features, drop = FALSE]
-    names(matrix.data) <- vapply(
-      features,
-      gflowui_basin_plot_feature_label,
-      character(1)
-    )
+    names(matrix.data) <- vapply(features, function(feature) {
+      gflowui_basin_plot_axis_label(feature, scales[[feature]])
+    }, character(1))
     diagonal <- function(x, ...) {
       usr <- graphics::par("usr")
       on.exit(graphics::par(usr = usr))
