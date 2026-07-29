@@ -282,6 +282,11 @@ test_that("default sidebar control values do not keep re-invalidating the app", 
     open_project("agp")
     session$flushReact()
 
+    expect_equal(subject_state$vertex_size, 1.0)
+    controls <- htmltools::renderTags(output$workflow_controls)$html
+    expect_match(controls, "0.75x", fixed = TRUE)
+    expect_match(controls, "1.25x", fixed = TRUE)
+
     session$setInputs(
       graph_layout_renderer = "plotly",
       graph_layout_vertex = "point",
@@ -291,7 +296,7 @@ test_that("default sidebar control values do not keep re-invalidating the app", 
       subject_dim_background = FALSE,
       subject_background_opacity = "0.22",
       subject_vertex_color = "#dc2626",
-      subject_vertex_size = "1.8",
+      subject_vertex_size = "1.0",
       subject_edge_mode = "none",
       subject_edge_color = "#dc2626",
       subject_edge_width = "2",
@@ -659,10 +664,12 @@ test_that("basin server invalidates changed fields and graph identities", {
       occupation_density_mode = "parameters",
       occupation_density_subject = "15",
       occupation_density_method = "graph_heat_kernel",
-      occupation_density_eta_index = "4"
+      occupation_density_eta_index = "4",
+      subject_show_overlay = FALSE
     )
     show_occupation_density_selection(notify_errors = FALSE)
     session$flushReact()
+    expect_false(isTRUE(subject_state$show_overlay))
     session$setInputs(
       basin_source = "occupation_density_active",
       basin_top_k_max = 1L,
