@@ -460,6 +460,17 @@ test_that("basin plot helpers preserve all, listed, and selected scopes", {
     "log10(Mass)"
   )
 
+  negative.log.geometry <- gflowui:::gflowui_basin_histogram_geometry(
+    c(-8, -7.5, -7, -6, -5, -4, -3, -2, -1),
+    bins = 5L
+  )
+  expect_equal(negative.log.geometry$y_limits, c(0, 1.05))
+  expect_true(any(negative.log.geometry$height > 0))
+  expect_true(all(
+    negative.log.geometry$height >= negative.log.geometry$y_limits[[1L]] &
+      negative.log.geometry$height <= negative.log.geometry$y_limits[[2L]]
+  ))
+
   plot.file <- tempfile(fileext = ".png")
   grDevices::png(plot.file, width = 900, height = 650)
   expect_no_error(gflowui:::gflowui_draw_basin_plot(
