@@ -175,3 +175,33 @@ Final check logs:
 
 The source-loaded application is started from the final gflowui source at:
 `http://127.0.0.1:3867/`.
+
+## 2026-07-29 Regression Revalidation
+
+The audit dispositions were revalidated after both repositories advanced:
+
+- `gflow` source revision:
+  `a6a34bfd5abf8dd5edde121bf7f3c9426891295f`;
+- `gflowui` source revision before this evidence-only update:
+  `ca15b592e02b3b08225914db1ae77fb421a2cab0`;
+- complete `gflow` source suite: 810 passed, 10 expected skips, no failures or
+  warnings;
+- `make audit-cleanup-boundary`: passed for 108 exports, 96 S3 methods,
+  44 dependency declarations, and 81 native registrations;
+- `make check`: tests, examples, vignettes, and manuals passed with the one
+  expected incoming-feasibility warning for non-mainstream `dgraphs` and
+  `grip`;
+- the checked `gflow_0.2.0.tar.gz` was installed under R 4.7, and the installed
+  namespace exports `compute.tube.lens.corridor`;
+- complete `gflowui` source suite: 493 passed, one expected
+  fixture-dependent skip, and no failures or warnings;
+- the corrected Subject15 benchmark again confirmed exact source-asset,
+  constructed-field, and constructed-mass invariants, with only the documented
+  `5.20417042793042e-18` adapter-normalization difference; and
+- the renderer evidence generator again passed with 6 maximum fills, 6
+  minimum halos, 13 Plotly traces, 6 actual RGL marker layers, and no
+  diagnostic errors.
+
+The renderer evidence generator now records the actual Eastern-time
+measurement and `gflow` source revision, preventing a rerun against a newer
+build from retaining the original audit date.
