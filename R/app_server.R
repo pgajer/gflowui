@@ -9330,6 +9330,11 @@ app_server <- function(input, output, session) {
     opacity.id <- paste0("basin_plot_point_opacity_", card.id)
     x.scale.id <- paste0("basin_plot_x_scale_", card.id)
     y.scale.id <- paste0("basin_plot_y_scale_", card.id)
+    default.x.scale <- if (identical(as.character(spec$kind), "matrix")) {
+      "log10"
+    } else {
+      "raw"
+    }
     current.fingerprint <- as.character(
       result$construction_identity$fingerprint %||% ""
     )
@@ -9351,6 +9356,7 @@ app_server <- function(input, output, session) {
       card.opacity.id <- opacity.id
       card.x.scale.id <- x.scale.id
       card.y.scale.id <- y.scale.id
+      card.default.x.scale <- default.x.scale
       output[[output.id]] <- shiny::renderPlot({
         active <- basin_result()
         active.fingerprint <- as.character(
@@ -9392,7 +9398,7 @@ app_server <- function(input, output, session) {
           point_glyph = input[[card.glyph.id]] %||% 19L,
           point_size = input[[card.size.id]] %||% 1.1,
           point_opacity = input[[card.opacity.id]] %||% 0.75,
-          x_scale = input[[card.x.scale.id]] %||% "raw",
+          x_scale = input[[card.x.scale.id]] %||% card.default.x.scale,
           y_scale = input[[card.y.scale.id]] %||% "raw"
         )
       }, res = 110)
@@ -9423,7 +9429,7 @@ app_server <- function(input, output, session) {
         scaled <- gflowui_basin_plot_scaled_data(
           data,
           card.spec,
-          x_scale = input[[card.x.scale.id]] %||% "raw",
+          x_scale = input[[card.x.scale.id]] %||% card.default.x.scale,
           y_scale = input[[card.y.scale.id]] %||% "raw"
         )
         excluded <- attr(scaled, "gflowui_nonpositive_excluded") %||% 0L
@@ -9530,7 +9536,10 @@ app_server <- function(input, output, session) {
               x.scale.id,
               "All coordinate scales",
               choices = basin_plot_scale_choices,
-              selected = basin_plot_input_value(x.scale.id, "raw")
+              selected = basin_plot_input_value(
+                x.scale.id,
+                default.x.scale
+              )
             )
           } else NULL,
           if (is.histogram || is.matrix) {

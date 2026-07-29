@@ -330,6 +330,18 @@ gflowui_draw_basin_plot <- function(
   } else if (identical(as.character(spec$kind), "scatter")) {
     x.feature <- features[[1L]]
     y.feature <- features[[2L]]
+    show.type.legend <- identical(as.character(point_color), "type") &&
+      length(unique(data$type)) > 1L
+    if (show.type.legend) {
+      original.mar <- graphics::par("mar")
+      on.exit(graphics::par(mar = original.mar), add = TRUE)
+      graphics::par(mar = c(
+        original.mar[[1L]],
+        original.mar[[2L]],
+        original.mar[[3L]],
+        max(original.mar[[4L]], 8)
+      ))
+    }
     graphics::plot(
       data[[x.feature]],
       data[[y.feature]],
@@ -346,13 +358,14 @@ gflowui_draw_basin_plot <- function(
       ),
       main = sprintf("%s (n=%d)", gflowui_basin_plot_title(spec), nrow(data))
     )
-    if (identical(as.character(point_color), "type") &&
-        length(unique(data$type)) > 1L) {
+    if (show.type.legend) {
       graphics::legend(
         "topright",
+        inset = c(-0.24, 0),
         legend = c("Maximum", "Minimum"),
         col = c("#111827", "#06B6D4"),
         pch = point_glyph,
+        xpd = NA,
         bty = "n",
         cex = 0.8
       )
@@ -389,7 +402,7 @@ gflowui_draw_basin_plot <- function(
     graphics::pairs(
       matrix.data,
       lower.panel = panel,
-      upper.panel = NULL,
+      upper.panel = panel,
       diag.panel = diagonal,
       main = sprintf("%s; n=%d", gflowui_basin_plot_title(spec), nrow(data))
     )

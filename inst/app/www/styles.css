@@ -1305,7 +1305,7 @@ body.gf-general-inspector-resizing {
 
 .gf-basin-plot-card-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.75rem;
   align-items: start;
 }

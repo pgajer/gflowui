@@ -818,6 +818,11 @@ test_that("basin server invalidates changed fields and graph identities", {
       "All coordinate scales",
       fixed = TRUE
     )
+    expect_match(
+      plot.workspace.with.matrix,
+      '<option value="log10" selected>Log10 (positive values only)</option>',
+      fixed = TRUE
+    )
     session$setInputs(basin_plot_add_matrix = 2L)
     session$flushReact()
     expect_length(basin_plot_specs(), 1L)
