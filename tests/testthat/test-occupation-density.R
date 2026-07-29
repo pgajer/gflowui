@@ -391,6 +391,30 @@ test_that("basin plot helpers preserve all, listed, and selected scopes", {
   )
   expect_length(matrix.spec, 1L)
   expect_length(matrix.spec[[1L]]$features, 4L)
+
+  log.table <- gflowui:::gflowui_basin_plot_data(
+    result,
+    "all",
+    "both"
+  )
+  log.table$prominence[[2L]] <- 0
+  log.spec <- list(kind = "scatter", features = c("mass", "prominence"))
+  scaled <- gflowui:::gflowui_basin_plot_scaled_data(
+    log.table,
+    log.spec,
+    x_scale = "raw",
+    y_scale = "log10"
+  )
+  expect_equal(nrow(scaled), 2L)
+  expect_equal(attr(scaled, "gflowui_nonpositive_excluded"), 1L)
+  expect_equal(
+    scaled$prominence,
+    log10(log.table$prominence[c(1L, 3L)])
+  )
+  expect_identical(
+    gflowui:::gflowui_basin_plot_axis_label("mass", "log10"),
+    "log10(Mass)"
+  )
 })
 
 test_that("basin inspector row updates preserve explicit selection and colors", {

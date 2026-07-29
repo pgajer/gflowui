@@ -9192,21 +9192,25 @@ app_server <- function(input, output, session) {
           class = "btn-light btn-sm"
         )
       ),
-      shiny::p(
-        class = "gf-basin-table-description",
-        ranking.description,
-        paste(
-          "Support is the number of primarily assigned vertices;",
-          "Mass is their normalized mass;",
-          "Prominence is the extremum-to-merge field difference."
-        )
-      ),
-      shiny::div(
-        class = "table-responsive gf-basin-table-scroll",
-        shiny::tags$table(
-          class = "table table-sm gf-basin-table",
-          shiny::tags$thead(header),
-          shiny::tags$tbody(rows)
+      shiny::tags$section(
+        class = "gf-basin-characteristics",
+        shiny::h5("Basin characteristics"),
+        shiny::p(
+          class = "gf-basin-table-description",
+          ranking.description,
+          paste(
+            "Support is the number of primarily assigned vertices;",
+            "Mass is their normalized mass;",
+            "Prominence is the extremum-to-merge field difference."
+          )
+        ),
+        shiny::div(
+          class = "table-responsive gf-basin-table-scroll",
+          shiny::tags$table(
+            class = "table table-sm gf-basin-table",
+            shiny::tags$thead(header),
+            shiny::tags$tbody(rows)
+          )
         )
       ),
       shiny::tags$details(
@@ -9283,6 +9287,7 @@ app_server <- function(input, output, session) {
     "Diamond" = "18",
     "Cross" = "4"
   )
+  basin_plot_scale_choices <- gflowui_basin_plot_scale_choices()
   basin_plot_input_value <- function(id, default) {
     value <- shiny::isolate(input[[id]])
     if (is.null(value) || length(value) < 1L) default else value
@@ -9315,6 +9320,8 @@ app_server <- function(input, output, session) {
     glyph.id <- paste0("basin_plot_glyph_", card.id)
     size.id <- paste0("basin_plot_point_size_", card.id)
     opacity.id <- paste0("basin_plot_point_opacity_", card.id)
+    x.scale.id <- paste0("basin_plot_x_scale_", card.id)
+    y.scale.id <- paste0("basin_plot_y_scale_", card.id)
     current.fingerprint <- as.character(
       result$construction_identity$fingerprint %||% ""
     )
@@ -9334,6 +9341,8 @@ app_server <- function(input, output, session) {
       card.glyph.id <- glyph.id
       card.size.id <- size.id
       card.opacity.id <- opacity.id
+      card.x.scale.id <- x.scale.id
+      card.y.scale.id <- y.scale.id
       output[[output.id]] <- shiny::renderPlot({
         active <- basin_result()
         active.fingerprint <- as.character(
@@ -9374,7 +9383,9 @@ app_server <- function(input, output, session) {
           point_color = input[[card.point.color.id]] %||% "type",
           point_glyph = input[[card.glyph.id]] %||% 19L,
           point_size = input[[card.size.id]] %||% 1.1,
-          point_opacity = input[[card.opacity.id]] %||% 0.75
+          point_opacity = input[[card.opacity.id]] %||% 0.75,
+          x_scale = input[[card.x.scale.id]] %||% "raw",
+          y_scale = input[[card.y.scale.id]] %||% "raw"
         )
       }, res = 110)
       output[[status.id]] <- shiny::renderText({
@@ -9401,10 +9412,13 @@ app_server <- function(input, output, session) {
           type = type,
           selected_keys = basin_selected_keys()
         )
-        complete <- gflowui_basin_plot_complete_rows(
+        scaled <- gflowui_basin_plot_scaled_data(
           data,
-          card.spec$features
+          card.spec,
+          x_scale = input[[card.x.scale.id]] %||% "raw",
+          y_scale = input[[card.y.scale.id]] %||% "raw"
         )
+        excluded <- attr(scaled, "gflowui_nonpositive_excluded") %||% 0L
         scope.label <- names(basin_plot_scope_choices)[
           match(scope, basin_plot_scope_choices)
         ]
@@ -9417,12 +9431,21 @@ app_server <- function(input, output, session) {
         if (length(type.label) != 1L || is.na(type.label)) {
           type.label <- type
         }
-        sprintf(
+        status <- sprintf(
           "%s; %s; n=%d finite rows",
           scope.label,
           type.label,
-          nrow(complete)
+          nrow(scaled)
         )
+        if (excluded > 0L) {
+          status <- sprintf(
+            "%s; %d non-positive row%s excluded by log10",
+            status,
+            as.integer(excluded),
+            if (identical(as.integer(excluded), 1L)) "" else "s"
+          )
+        }
+        status
       })
     })
     is.histogram <- identical(as.character(spec$kind), "histogram")
@@ -9448,6 +9471,7 @@ app_server <- function(input, output, session) {
       ),
       shiny::tags$details(
         class = "gf-basin-plot-card-controls",
+        open = NA,
         shiny::tags$summary("Plot controls"),
         shiny::div(
           class = "gf-basin-plot-control-grid",
@@ -9469,6 +9493,38 @@ app_server <- function(input, output, session) {
               spec$type %||% "both"
             )
           ),
+          if (is.histogram) {
+            shiny::selectInput(
+              x.scale.id,
+              "Value scale",
+              choices = basin_plot_scale_choices,
+              selected = basin_plot_input_value(x.scale.id, "raw")
+            )
+          } else NULL,
+          if (!is.histogram && !is.matrix) {
+            shiny::selectInput(
+              x.scale.id,
+              "X-axis scale",
+              choices = basin_plot_scale_choices,
+              selected = basin_plot_input_value(x.scale.id, "raw")
+            )
+          } else NULL,
+          if (!is.histogram && !is.matrix) {
+            shiny::selectInput(
+              y.scale.id,
+              "Y-axis scale",
+              choices = basin_plot_scale_choices,
+              selected = basin_plot_input_value(y.scale.id, "raw")
+            )
+          } else NULL,
+          if (is.matrix) {
+            shiny::selectInput(
+              x.scale.id,
+              "All coordinate scales",
+              choices = basin_plot_scale_choices,
+              selected = basin_plot_input_value(x.scale.id, "raw")
+            )
+          } else NULL,
           if (is.histogram || is.matrix) {
             shiny::sliderInput(
               bins.id,

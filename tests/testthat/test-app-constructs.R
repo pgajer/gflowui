@@ -703,6 +703,7 @@ test_that("basin server invalidates changed fields and graph identities", {
     expect_match(inspector, "Minimum extrema", fixed = TRUE)
     expect_match(inspector, "Selected basins", fixed = TRUE)
     expect_match(inspector, "Listed top-K", fixed = TRUE)
+    expect_match(inspector, "Basin characteristics", fixed = TRUE)
     expect_match(inspector, "Extremum / basin", fixed = TRUE)
     expect_match(inspector, ">M1<", fixed = TRUE)
     expect_match(inspector, ">m1<", fixed = TRUE)
@@ -760,6 +761,7 @@ test_that("basin server invalidates changed fields and graph identities", {
       "Mass distribution",
       fixed = TRUE
     )
+    expect_match(plot.workspace.with.cards, "Value scale", fixed = TRUE)
     session$setInputs(basin_plot_clear_all = 1L)
     session$flushReact()
     expect_length(basin_plot_specs(), 0L)
@@ -774,6 +776,11 @@ test_that("basin server invalidates changed fields and graph identities", {
       function(spec) identical(spec$kind, "scatter"),
       logical(1)
     )))
+    plot.workspace.with.pairs <- htmltools::renderTags(
+      output$basin_plot_workspace_ui
+    )$html
+    expect_match(plot.workspace.with.pairs, "X-axis scale", fixed = TRUE)
+    expect_match(plot.workspace.with.pairs, "Y-axis scale", fixed = TRUE)
     session$setInputs(basin_plot_clear_all = 2L)
     session$flushReact()
     session$setInputs(
@@ -785,6 +792,14 @@ test_that("basin server invalidates changed fields and graph identities", {
     session$flushReact()
     expect_length(basin_plot_specs(), 1L)
     expect_identical(basin_plot_specs()[[1L]]$kind, "matrix")
+    plot.workspace.with.matrix <- htmltools::renderTags(
+      output$basin_plot_workspace_ui
+    )$html
+    expect_match(
+      plot.workspace.with.matrix,
+      "All coordinate scales",
+      fixed = TRUE
+    )
 
     session$setInputs(basin_inspector_show_extremum_vertex = TRUE)
     session$flushReact()
