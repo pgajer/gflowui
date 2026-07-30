@@ -713,6 +713,8 @@ test_that("basin server invalidates changed fields and graph identities", {
     expect_match(inspector, "Bundle directory", fixed = TRUE)
     expect_match(inspector, "Save full basin bundle", fixed = TRUE)
     expect_match(inspector, "display filters are ignored", fixed = TRUE)
+    expect_match(inspector, "Show basin colors", fixed = TRUE)
+    expect_match(inspector, "Reset basin colors", fixed = TRUE)
     expect_match(inspector, "Extremum / basin", fixed = TRUE)
     expect_match(inspector, "gf-basin-show-column", fixed = TRUE)
     expect_match(inspector, "gf-basin-label-column", fixed = TRUE)
@@ -931,6 +933,15 @@ test_that("basin server invalidates changed fields and graph identities", {
     session$flushReact()
     expect_true(selected.key %in% basin_selected_keys())
     expect_true(basin_result()$table$selected[[1L]])
+    expect_identical(graph_layout_state$color_by, "basin_active")
+    show_occupation_density_selection(notify_errors = FALSE)
+    session$flushReact()
+    expect_identical(
+      graph_layout_state$color_by,
+      "occupation_density_active"
+    )
+    expect_true(selected.key %in% basin_selected_keys())
+    expect_true(basin_result()$table$selected[[1L]])
     session$setInputs(basin_inspector_row_event = list(
       key = selected.key,
       role = "selection",
@@ -941,6 +952,43 @@ test_that("basin server invalidates changed fields and graph identities", {
     session$flushReact()
     expect_false(selected.key %in% basin_selected_keys())
     expect_false(basin_result()$table$selected[[1L]])
+    expect_identical(graph_layout_state$color_by, "basin_active")
+    expect_true(all(basin_result()$values == "Other basins"))
+
+    show_occupation_density_selection(notify_errors = FALSE)
+    session$flushReact()
+    session$setInputs(basin_inspector_row_event = list(
+      key = selected.key,
+      role = "selection",
+      checked = TRUE,
+      value = "",
+      nonce = 3
+    ))
+    session$flushReact()
+    expect_identical(graph_layout_state$color_by, "basin_active")
+    expect_true(selected.key %in% basin_selected_keys())
+    expect_true(any(basin_result()$values != "Other basins"))
+
+    show_occupation_density_selection(notify_errors = FALSE)
+    session$flushReact()
+    session$setInputs(basin_show_colors = 1L)
+    session$flushReact()
+    expect_identical(graph_layout_state$color_by, "basin_active")
+    expect_match(basin_status(), "Showing basin colors", fixed = TRUE)
+
+    show_occupation_density_selection(notify_errors = FALSE)
+    session$flushReact()
+    session$setInputs(basin_clear_all = 1L)
+    session$flushReact()
+    expect_identical(graph_layout_state$color_by, "basin_active")
+    expect_length(basin_selected_keys(), 0L)
+    expect_true(all(basin_result()$values == "Other basins"))
+
+    show_occupation_density_selection(notify_errors = FALSE)
+    session$flushReact()
+    session$setInputs(basin_reset_colors = 1L)
+    session$flushReact()
+    expect_identical(graph_layout_state$color_by, "basin_active")
 
     if (requireNamespace("plotly", quietly = TRUE)) {
       trace.names <- function() {
