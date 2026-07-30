@@ -670,7 +670,8 @@ gflowui_basin_cache_key <- function(
     source_fingerprint,
     build_identity,
     vertex_mass_provenance = NULL,
-    alignment_validation = NULL) {
+    alignment_validation = NULL,
+    construction_fingerprint = NULL) {
   gflowui_basin_hash(list(
     graph = list(
       adjacency = lapply(adj_list, as.integer),
@@ -683,6 +684,9 @@ gflowui_basin_cache_key <- function(
     source.fingerprint = as.character(source_fingerprint),
     vertex.mass.provenance = vertex_mass_provenance,
     alignment.validation = alignment_validation,
+    construction.fingerprint = as.character(
+      construction_fingerprint %||% ""
+    ),
     gflow.build.id = build_identity$build.id,
     gflow.runtime.id = build_identity$runtime$id,
     method = "trajectory_flow",
@@ -769,7 +773,8 @@ gflowui_estimate_basin_overlay <- function(
     vertex_mass_provenance = NULL,
     source_key = "",
     source_fingerprint = NULL,
-    alignment_validation = NULL) {
+    alignment_validation = NULL,
+    construction_fingerprint = NULL) {
   if (!is.list(adj_list) || length(adj_list) < 1L) {
     stop("The selected graph has no adjacency data.", call. = FALSE)
   }
@@ -868,8 +873,10 @@ gflowui_estimate_basin_overlay <- function(
     source_fingerprint,
     build_identity,
     vertex_mass_provenance = vertex_mass_provenance,
-    alignment_validation = alignment_validation
+    alignment_validation = alignment_validation,
+    construction_fingerprint = construction_fingerprint
   )
+  prominence_cache_key <- paste0("merge-tree-prominence|", cache_key)
   cache_hit <- exists(cache_key, envir = .gflowui_basin_cache, inherits = FALSE)
   if (isTRUE(cache_hit)) {
     cached <- get(cache_key, envir = .gflowui_basin_cache, inherits = FALSE)
@@ -879,10 +886,50 @@ gflowui_estimate_basin_overlay <- function(
       rm(list = cache_key, envir = .gflowui_basin_cache)
     }
   }
-  basin <- if (cache_hit) {
+  prominence_cache_hit <- exists(
+    prominence_cache_key,
+    envir = .gflowui_basin_prominence_cache,
+    inherits = FALSE
+  )
+  if (isTRUE(prominence_cache_hit)) {
+    cached <- get(
+      prominence_cache_key,
+      envir = .gflowui_basin_prominence_cache,
+      inherits = FALSE
+    )
+    prominence_cache_hit <- inherits(cached, "basin_complex") &&
+      identical(as.character(cached$status %||% ""), "ok")
+    if (!isTRUE(prominence_cache_hit)) {
+      rm(
+        list = prominence_cache_key,
+        envir = .gflowui_basin_prominence_cache
+      )
+    }
+  }
+  memory_cache_hit <- isTRUE(cache_hit) && isTRUE(prominence_cache_hit)
+  disk_cache <- list(found = FALSE, path = "", reason = "")
+  if (!isTRUE(memory_cache_hit)) {
+    disk_cache <- gflowui_load_basin_disk_cache(
+      construction_fingerprint,
+      cache_key,
+      field
+    )
+    if (isTRUE(disk_cache$found)) {
+      assign(cache_key, disk_cache$basin, envir = .gflowui_basin_cache)
+      assign(
+        prominence_cache_key,
+        disk_cache$prominence_complex,
+        envir = .gflowui_basin_prominence_cache
+      )
+      cache_hit <- TRUE
+      prominence_cache_hit <- TRUE
+    }
+  }
+  constructed_basin <- !isTRUE(cache_hit)
+  basin <- if (isTRUE(cache_hit)) {
     get(cache_key, envir = .gflowui_basin_cache, inherits = FALSE)
   } else {
-    value <- gflow::create.basin.complex(
+    gflow::create.basin.complex(
       adj.list = adj_list,
       edge.length.list = edge_length_list,
       field = field,
@@ -904,7 +951,6 @@ gflowui_estimate_basin_overlay <- function(
       vertex.id = vertex_id,
       vertex.mass.provenance = vertex_mass_provenance
     )
-    value
   }
   if (!is.list(basin) || !identical(as.character(basin$status), "ok")) {
     detail <- as.character(
@@ -914,32 +960,12 @@ gflowui_estimate_basin_overlay <- function(
     )
     stop(detail, call. = FALSE)
   }
-  if (!isTRUE(cache_hit)) {
+  if (isTRUE(constructed_basin)) {
     assign(cache_key, basin, envir = .gflowui_basin_cache)
   }
 
-  prominence_cache_key <- paste0("merge-tree-prominence|", cache_key)
-  prominence_cache_hit <- exists(
-    prominence_cache_key,
-    envir = .gflowui_basin_prominence_cache,
-    inherits = FALSE
-  )
-  if (isTRUE(prominence_cache_hit)) {
-    cached <- get(
-      prominence_cache_key,
-      envir = .gflowui_basin_prominence_cache,
-      inherits = FALSE
-    )
-    prominence_cache_hit <- inherits(cached, "basin_complex") &&
-      identical(as.character(cached$status %||% ""), "ok")
-    if (!isTRUE(prominence_cache_hit)) {
-      rm(
-        list = prominence_cache_key,
-        envir = .gflowui_basin_prominence_cache
-      )
-    }
-  }
-  prominence_complex <- if (prominence_cache_hit) {
+  constructed_prominence <- !isTRUE(prominence_cache_hit)
+  prominence_complex <- if (isTRUE(prominence_cache_hit)) {
     get(
       prominence_cache_key,
       envir = .gflowui_basin_prominence_cache,
@@ -969,11 +995,22 @@ gflowui_estimate_basin_overlay <- function(
     )
     stop(detail, call. = FALSE)
   }
-  if (!isTRUE(prominence_cache_hit)) {
+  if (isTRUE(constructed_prominence)) {
     assign(
       prominence_cache_key,
       prominence_complex,
       envir = .gflowui_basin_prominence_cache
+    )
+  }
+  disk_cache_write <- list(written = FALSE, path = "", reason = "")
+  if (!isTRUE(disk_cache$found) &&
+      (isTRUE(constructed_basin) || isTRUE(constructed_prominence))) {
+    disk_cache_write <- gflowui_write_basin_disk_cache(
+      construction_fingerprint,
+      cache_key,
+      field,
+      basin,
+      prominence_complex
     )
   }
 
@@ -1071,7 +1108,30 @@ gflowui_estimate_basin_overlay <- function(
     prominence_method = "superlevel_merge_tree",
     prominence_cache_hit = prominence_cache_hit,
     cache_key = cache_key,
-    cache_hit = cache_hit,
+    cache_hit = isTRUE(cache_hit),
+    cache_source = if (isTRUE(disk_cache$found)) {
+      "disk"
+    } else if (isTRUE(memory_cache_hit)) {
+      "memory"
+    } else {
+      "miss"
+    },
+    disk_cache_hit = isTRUE(disk_cache$found),
+    disk_cache_path = if (nzchar(as.character(
+        disk_cache$path %||% ""
+      ))) {
+      as.character(disk_cache$path)
+    } else {
+      as.character(disk_cache_write$path %||% "")
+    },
+    disk_cache_written = isTRUE(disk_cache_write$written),
+    disk_cache_reason = if (nzchar(as.character(
+        disk_cache$reason %||% ""
+      ))) {
+      as.character(disk_cache$reason)
+    } else {
+      as.character(disk_cache_write$reason %||% "")
+    },
     build_identity = build_identity,
     source_fingerprint = source_fingerprint
   )

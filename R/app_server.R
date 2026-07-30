@@ -9329,14 +9329,24 @@ app_server <- function(input, output, session) {
           "CLOSEST both-direction construction; connected exact plateaus; all edges admissible; build %s; runtime %s; cache %s.",
           as.character(build$build.id %||% "unavailable"),
           as.character(build$runtime$id %||% "unavailable"),
-          if (isTRUE(result$cache_hit)) "hit" else "miss"
+          as.character(result$cache_source %||%
+            if (isTRUE(result$cache_hit)) "memory" else "miss")
         )),
         shiny::p(sprintf(
           paste(
             "Prominence: exact plateau-aware superlevel merge tree on the",
             "same graph and field (cache %s)."
           ),
-          if (isTRUE(result$prominence_cache_hit)) "hit" else "miss"
+          if (identical(
+              as.character(result$cache_source %||% ""),
+              "disk"
+            )) {
+            "disk"
+          } else if (isTRUE(result$prominence_cache_hit)) {
+            "memory"
+          } else {
+            "miss"
+          }
         )),
         shiny::p(
           "Plotly shows selected minimum basins as outlined halos. ",
@@ -10084,7 +10094,9 @@ app_server <- function(input, output, session) {
         vertex_mass_provenance = request$mass_provenance,
         source_key = source$key,
         source_fingerprint = request$source_fingerprint,
-        alignment_validation = request$alignment
+        alignment_validation = request$alignment,
+        construction_fingerprint =
+          request$construction_identity$fingerprint
       ),
       error = function(e) e
     )
@@ -10138,7 +10150,8 @@ app_server <- function(input, output, session) {
       source$label,
       result$basin_count_max,
       result$basin_count_min,
-      if (isTRUE(result$cache_hit)) "hit" else "miss",
+      as.character(result$cache_source %||%
+        if (isTRUE(result$cache_hit)) "memory" else "miss"),
       result$ranking_resolved[["max"]],
       result$ranking_resolved[["min"]]
     ))
@@ -10155,11 +10168,31 @@ app_server <- function(input, output, session) {
     } else {
       ""
     }
-    if (!identical(fingerprint, basin_export_last_fingerprint())) {
+    if (!nzchar(fingerprint)) {
       basin_export_last_path("")
       basin_export_last_fingerprint("")
       basin_export_status(
         "No bundle saved for the active basin complex."
+      )
+      return()
+    }
+    match <- tryCatch(
+      gflowui_find_basin_export(fingerprint),
+      error = function(e) NULL
+    )
+    if (is.list(match) && isTRUE(match$found)) {
+      basin_export_last_path(match$path)
+      basin_export_last_fingerprint(fingerprint)
+      basin_export_status(sprintf(
+        "Matching bundle already saved: %s (ZIP SHA-256: %s).",
+        match$path,
+        match$zip_sha256
+      ))
+    } else {
+      basin_export_last_path("")
+      basin_export_last_fingerprint("")
+      basin_export_status(
+        "No validated bundle saved for the active basin complex."
       )
     }
   }, ignoreInit = FALSE)
@@ -10199,9 +10232,10 @@ app_server <- function(input, output, session) {
       result$construction_identity$fingerprint %||% ""
     ))
     basin_export_status(sprintf(
-      "Saved %d unfiltered basins to %s",
+      "Saved and indexed %d unfiltered basins to %s (ZIP SHA-256: %s).",
       saved$row_count,
-      saved$path
+      saved$path,
+      saved$zip_sha256
     ))
     shiny::updateTextInput(
       session,

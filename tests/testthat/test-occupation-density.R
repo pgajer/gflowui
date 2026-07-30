@@ -224,6 +224,32 @@ test_that("generic estimate basins support mass and support-size ranking", {
 })
 
 test_that("canonical basin overlay computes both directions and reuses cache", {
+  storage <- tempfile("gflowui-basin-cache-test-")
+  dir.create(storage)
+  withr::local_options(gflowui.basin_storage_dir = storage)
+  withr::defer(unlink(storage, recursive = TRUE, force = TRUE))
+  rm(
+    list = ls(gflowui:::.gflowui_basin_cache, all.names = TRUE),
+    envir = gflowui:::.gflowui_basin_cache
+  )
+  rm(
+    list = ls(gflowui:::.gflowui_basin_prominence_cache, all.names = TRUE),
+    envir = gflowui:::.gflowui_basin_prominence_cache
+  )
+  withr::defer({
+    rm(
+      list = ls(gflowui:::.gflowui_basin_cache, all.names = TRUE),
+      envir = gflowui:::.gflowui_basin_cache
+    )
+    rm(
+      list = ls(
+        gflowui:::.gflowui_basin_prominence_cache,
+        all.names = TRUE
+      ),
+      envir = gflowui:::.gflowui_basin_prominence_cache
+    )
+  })
+  construction.fingerprint <- paste(rep("c", 64L), collapse = "")
   adj_list <- list(
     c(2L, 4L),
     c(1L, 3L, 5L),
@@ -260,7 +286,8 @@ test_that("canonical basin overlay computes both directions and reuses cache", {
     vertex_id = vertex_id,
     vertex_mass_provenance = provenance,
     source_key = "fixture",
-    source_fingerprint = "fixture-source"
+    source_fingerprint = "fixture-source",
+    construction_fingerprint = construction.fingerprint
   )
   second <- gflowui:::gflowui_estimate_basin_overlay(
     adj_list,
@@ -273,13 +300,18 @@ test_that("canonical basin overlay computes both directions and reuses cache", {
     vertex_id = vertex_id,
     vertex_mass_provenance = provenance,
     source_key = "fixture",
-    source_fingerprint = "fixture-source"
+    source_fingerprint = "fixture-source",
+    construction_fingerprint = construction.fingerprint
   )
 
   expect_identical(first$direction, "both")
+  expect_identical(first$cache_source, "miss")
+  expect_true(isTRUE(first$disk_cache_written))
+  expect_true(file.exists(first$disk_cache_path))
   expect_equal(nrow(first$summary$maxima), 0L)
   expect_equal(nrow(first$summary$minima), 2L)
   expect_true(isTRUE(second$cache_hit))
+  expect_identical(second$cache_source, "memory")
   expect_identical(first$cache_key, second$cache_key)
   expect_equal(nrow(second$summary$minima), 0L)
   expect_true(all(c("max", "min") %in% first$basin$assignment$direction))
@@ -292,6 +324,84 @@ test_that("canonical basin overlay computes both directions and reuses cache", {
     "fixture manifest"
   )
 
+  rm(
+    list = ls(gflowui:::.gflowui_basin_cache, all.names = TRUE),
+    envir = gflowui:::.gflowui_basin_cache
+  )
+  rm(
+    list = ls(gflowui:::.gflowui_basin_prominence_cache, all.names = TRUE),
+    envir = gflowui:::.gflowui_basin_prominence_cache
+  )
+  disk <- gflowui:::gflowui_estimate_basin_overlay(
+    adj_list,
+    edge_length_list,
+    field,
+    direction = "both",
+    top_k_max = 2L,
+    top_k_min = 2L,
+    vertex_mass = field + 1,
+    vertex_id = vertex_id,
+    vertex_mass_provenance = provenance,
+    source_key = "fixture",
+    source_fingerprint = "fixture-source",
+    construction_fingerprint = construction.fingerprint
+  )
+  expect_true(isTRUE(disk$cache_hit))
+  expect_true(isTRUE(disk$disk_cache_hit))
+  expect_identical(disk$cache_source, "disk")
+
+  envelope <- readRDS(disk$disk_cache_path)
+  envelope$schema <- "gflowui_basin_disk_cache/obsolete"
+  saveRDS(envelope, disk$disk_cache_path)
+  rm(
+    list = ls(gflowui:::.gflowui_basin_cache, all.names = TRUE),
+    envir = gflowui:::.gflowui_basin_cache
+  )
+  rm(
+    list = ls(gflowui:::.gflowui_basin_prominence_cache, all.names = TRUE),
+    envir = gflowui:::.gflowui_basin_prominence_cache
+  )
+  invalidated <- gflowui:::gflowui_estimate_basin_overlay(
+    adj_list,
+    edge_length_list,
+    field,
+    direction = "both",
+    top_k_max = 2L,
+    top_k_min = 2L,
+    vertex_mass = field + 1,
+    vertex_id = vertex_id,
+    vertex_mass_provenance = provenance,
+    source_key = "fixture",
+    source_fingerprint = "fixture-source",
+    construction_fingerprint = construction.fingerprint
+  )
+  expect_identical(invalidated$cache_source, "miss")
+  expect_true(isTRUE(invalidated$disk_cache_written))
+  expect_match(invalidated$disk_cache_reason, "invalidated", fixed = TRUE)
+  expect_identical(
+    readRDS(invalidated$disk_cache_path)$schema,
+    "gflowui_basin_disk_cache/1"
+  )
+
+  changed.fingerprint <- paste(rep("d", 64L), collapse = "")
+  changed <- gflowui:::gflowui_estimate_basin_overlay(
+    adj_list,
+    edge_length_list,
+    field,
+    direction = "both",
+    top_k_max = 2L,
+    top_k_min = 2L,
+    vertex_mass = field + 1,
+    vertex_id = vertex_id,
+    vertex_mass_provenance = provenance,
+    source_key = "fixture",
+    source_fingerprint = "fixture-source",
+    construction_fingerprint = changed.fingerprint
+  )
+  expect_identical(changed$cache_source, "miss")
+  expect_false(identical(changed$cache_key, invalidated$cache_key))
+  expect_false(identical(changed$disk_cache_path, invalidated$disk_cache_path))
+
   empty <- gflowui:::gflowui_estimate_basin_overlay(
     adj_list,
     edge_length_list,
@@ -303,7 +413,8 @@ test_that("canonical basin overlay computes both directions and reuses cache", {
     vertex_id = vertex_id,
     vertex_mass_provenance = provenance,
     source_key = "fixture",
-    source_fingerprint = "fixture-source"
+    source_fingerprint = "fixture-source",
+    construction_fingerprint = construction.fingerprint
   )
   restored <- gflowui:::gflowui_estimate_basin_overlay(
     adj_list,
@@ -316,7 +427,8 @@ test_that("canonical basin overlay computes both directions and reuses cache", {
     vertex_id = vertex_id,
     vertex_mass_provenance = provenance,
     source_key = "fixture",
-    source_fingerprint = "fixture-source"
+    source_fingerprint = "fixture-source",
+    construction_fingerprint = construction.fingerprint
   )
   expect_equal(nrow(empty$table), 0L)
   expect_true(all(empty$values_max == "Other basins"))
@@ -485,6 +597,10 @@ test_that("basin plot helpers preserve all, listed, and selected scopes", {
 })
 
 test_that("basin export bundles contain the complete raw table and provenance", {
+  storage <- tempfile("gflowui-basin-index-test-")
+  dir.create(storage)
+  withr::local_options(gflowui.basin_storage_dir = storage)
+  withr::defer(unlink(storage, recursive = TRUE, force = TRUE))
   all.table <- data.frame(
     basin.id = c("basin-max-a", "basin-max-b", "basin-min-c"),
     extremum.id = c("extremum-max-a", "extremum-max-b", "extremum-min-c"),
@@ -575,6 +691,8 @@ test_that("basin export bundles contain the complete raw table and provenance", 
   expect_true(file.exists(saved$path))
   expect_identical(dirname(saved$path), normalizePath(destination))
   expect_equal(saved$row_count, 3L)
+  expect_true(isTRUE(saved$indexed))
+  expect_match(saved$zip_sha256, "^[a-f0-9]{64}$")
   expected.files <- c(
     "README.txt",
     "basin_analysis.rds",
@@ -606,6 +724,20 @@ test_that("basin export bundles contain the complete raw table and provenance", 
   expect_equal(provenance$counts$total, 3L)
   expect_true(isTRUE(provenance$export_scope$top_k_ignored))
   expect_identical(provenance$export_scope$coordinate_scale, "raw")
+  matched <- gflowui:::gflowui_find_basin_export(
+    result$construction_identity$fingerprint
+  )
+  expect_true(isTRUE(matched$found))
+  expect_identical(matched$path, saved$path)
+  expect_identical(matched$zip_sha256, saved$zip_sha256)
+  expect_false(isTRUE(gflowui:::gflowui_validate_basin_export_bundle(
+    saved$path,
+    expected_fingerprint = paste(rep("b", 64L), collapse = "")
+  )$valid))
+  expect_false(isTRUE(gflowui:::gflowui_validate_basin_export_bundle(
+    saved$path,
+    expected_sha256 = paste(rep("0", 64L), collapse = "")
+  )$valid))
 
   second <- gflowui:::gflowui_write_basin_export_bundle(
     result,
@@ -614,6 +746,20 @@ test_that("basin export bundles contain the complete raw table and provenance", 
   )
   expect_false(identical(saved$path, second$path))
   expect_true(file.exists(second$path))
+  expect_identical(
+    gflowui:::gflowui_find_basin_export(
+      result$construction_identity$fingerprint
+    )$path,
+    second$path
+  )
+  connection <- file(second$path, open = "ab")
+  writeBin(as.raw(0L), connection)
+  close(connection)
+  fallback <- gflowui:::gflowui_find_basin_export(
+    result$construction_identity$fingerprint
+  )
+  expect_true(isTRUE(fallback$found))
+  expect_identical(fallback$path, saved$path)
   expect_error(
     gflowui:::gflowui_write_basin_export_bundle(
       result,
