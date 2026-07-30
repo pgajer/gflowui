@@ -369,7 +369,8 @@ gflowui_basin_extrema_defaults <- function(source_type) {
     maxima_scope = if (is_density) "listed" else "none",
     label_maxima = is_density,
     minima_scope = "none",
-    label_minima = FALSE
+    label_minima = FALSE,
+    plot_builder_type = if (is_density) "max" else "both"
   )
 }
 

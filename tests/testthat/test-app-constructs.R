@@ -657,6 +657,7 @@ test_that("basin extrema defaults depend on estimate source type", {
   expect_true(density$label_maxima)
   expect_identical(density$minima_scope, "none")
   expect_false(density$label_minima)
+  expect_identical(density$plot_builder_type, "max")
 
   conditional <- gflowui:::gflowui_basin_extrema_defaults(
     "conditional_expectation"
@@ -665,6 +666,7 @@ test_that("basin extrema defaults depend on estimate source type", {
   expect_false(conditional$label_maxima)
   expect_identical(conditional$minima_scope, "none")
   expect_false(conditional$label_minima)
+  expect_identical(conditional$plot_builder_type, "both")
 })
 
 test_that("basin server invalidates changed fields and graph identities", {
@@ -719,6 +721,7 @@ test_that("basin server invalidates changed fields and graph identities", {
     expect_identical(basin_display_settings$minima_scope, "none")
     expect_false(isTRUE(basin_display_settings$show_minima))
     expect_false(isTRUE(basin_display_settings$label_minima))
+    expect_identical(basin_display_settings$plot_builder_type, "max")
 
     workspace <- htmltools::renderTags(output$workspace_view)$html
     expect_match(workspace, "gf_reference_split", fixed = TRUE)
@@ -800,6 +803,11 @@ test_that("basin server invalidates changed fields and graph identities", {
     expect_match(plot.workspace, "Add histograms", fixed = TRUE)
     expect_match(plot.workspace, "Add pair plots", fixed = TRUE)
     expect_match(plot.workspace, "Add matrix", fixed = TRUE)
+    expect_match(
+      plot.workspace,
+      '<option value="max" selected>Maximum only</option>',
+      fixed = TRUE
+    )
     session$setInputs(
       basin_plot_features = c("support", "mass"),
       basin_plot_builder_scope = "all",
@@ -1083,6 +1091,7 @@ test_that("basin server invalidates changed fields and graph identities", {
     expect_match(basin_status(), "without reconstruction", fixed = TRUE)
     expect_identical(basin_display_settings$maxima_scope, "none")
     expect_false(isTRUE(basin_display_settings$label_maxima))
+    expect_identical(basin_display_settings$plot_builder_type, "both")
 
     session$setInputs(occupation_density_eta_index = "5")
     session$flushReact()
@@ -1098,6 +1107,7 @@ test_that("basin server invalidates changed fields and graph identities", {
     expect_true(isTRUE(basin_display_settings$label_maxima))
     expect_identical(basin_display_settings$minima_scope, "none")
     expect_false(isTRUE(basin_display_settings$label_minima))
+    expect_identical(basin_display_settings$plot_builder_type, "max")
     expect_false(identical(
       first.identity,
       second$construction_identity$fingerprint
