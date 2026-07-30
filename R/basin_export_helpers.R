@@ -460,8 +460,18 @@ gflowui_write_basin_export_bundle <- function(
     }
     unlink(temporary.zip, force = TRUE)
   }
+  indexed <- gflowui_index_basin_export(
+    target,
+    expected_fingerprint = as.character(
+      result$construction_identity$fingerprint %||% ""
+    )
+  )
   list(
-    path = normalizePath(target, winslash = "/", mustWork = TRUE),
+    path = indexed$path,
+    zip_sha256 = indexed$zip_sha256,
+    reconstruction_fingerprint =
+      indexed$reconstruction_fingerprint,
+    indexed = isTRUE(indexed$indexed),
     row_count = nrow(characteristics),
     maximum_count = sum(characteristics$extremum_type == "maximum"),
     minimum_count = sum(characteristics$extremum_type == "minimum"),
