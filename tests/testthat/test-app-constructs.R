@@ -649,6 +649,24 @@ test_that("basin panel discovers conditional-expectation estimates", {
   })
 })
 
+test_that("basin extrema defaults depend on estimate source type", {
+  density <- gflowui:::gflowui_basin_extrema_defaults(
+    "occupation_probability"
+  )
+  expect_identical(density$maxima_scope, "listed")
+  expect_true(density$label_maxima)
+  expect_identical(density$minima_scope, "none")
+  expect_false(density$label_minima)
+
+  conditional <- gflowui:::gflowui_basin_extrema_defaults(
+    "conditional_expectation"
+  )
+  expect_identical(conditional$maxima_scope, "none")
+  expect_false(conditional$label_maxima)
+  expect_identical(conditional$minima_scope, "none")
+  expect_false(conditional$label_minima)
+})
+
 test_that("basin server invalidates changed fields and graph identities", {
   local_projects_data_sandbox()
 
@@ -695,6 +713,12 @@ test_that("basin server invalidates changed fields and graph identities", {
     expect_false(any(first$table$selected))
     first.identity <- first$construction_identity$fingerprint
     expect_true(nzchar(first.identity))
+    expect_identical(basin_display_settings$maxima_scope, "listed")
+    expect_true(isTRUE(basin_display_settings$show_maxima))
+    expect_true(isTRUE(basin_display_settings$label_maxima))
+    expect_identical(basin_display_settings$minima_scope, "none")
+    expect_false(isTRUE(basin_display_settings$show_minima))
+    expect_false(isTRUE(basin_display_settings$label_minima))
 
     workspace <- htmltools::renderTags(output$workspace_view)$html
     expect_match(workspace, "gf_reference_split", fixed = TRUE)
@@ -707,6 +731,16 @@ test_that("basin server invalidates changed fields and graph identities", {
     expect_match(inspector, "Ranking measure", fixed = TRUE)
     expect_match(inspector, "Maximum extrema", fixed = TRUE)
     expect_match(inspector, "Minimum extrema", fixed = TRUE)
+    expect_match(
+      inspector,
+      '<option value="listed" selected>Listed top-K</option>',
+      fixed = TRUE
+    )
+    expect_match(
+      inspector,
+      'id="basin_label_maxima"[^>]*checked="checked"',
+      perl = TRUE
+    )
     expect_match(inspector, "Selected basins", fixed = TRUE)
     expect_match(inspector, "Listed top-K", fixed = TRUE)
     expect_match(inspector, "Basin characteristics", fixed = TRUE)
@@ -1032,7 +1066,11 @@ test_that("basin server invalidates changed fields and graph identities", {
       fixed = TRUE
     )
 
-    session$setInputs(basin_inspector_close = 1L)
+    session$setInputs(
+      basin_extrema_max_scope = "none",
+      basin_label_maxima = FALSE,
+      basin_inspector_close = 1L
+    )
     session$flushReact()
     expect_false(isTRUE(basin_inspector_open()))
     session$setInputs(basin_compute = 2L)
@@ -1043,6 +1081,8 @@ test_that("basin server invalidates changed fields and graph identities", {
       first.identity
     )
     expect_match(basin_status(), "without reconstruction", fixed = TRUE)
+    expect_identical(basin_display_settings$maxima_scope, "none")
+    expect_false(isTRUE(basin_display_settings$label_maxima))
 
     session$setInputs(occupation_density_eta_index = "5")
     session$flushReact()
@@ -1054,6 +1094,10 @@ test_that("basin server invalidates changed fields and graph identities", {
     session$flushReact()
     second <- basin_result()
     expect_true(is.list(second))
+    expect_identical(basin_display_settings$maxima_scope, "listed")
+    expect_true(isTRUE(basin_display_settings$label_maxima))
+    expect_identical(basin_display_settings$minima_scope, "none")
+    expect_false(isTRUE(basin_display_settings$label_minima))
     expect_false(identical(
       first.identity,
       second$construction_identity$fingerprint
