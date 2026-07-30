@@ -484,6 +484,146 @@ test_that("basin plot helpers preserve all, listed, and selected scopes", {
   unlink(plot.file)
 })
 
+test_that("basin export bundles contain the complete raw table and provenance", {
+  all.table <- data.frame(
+    basin.id = c("basin-max-a", "basin-max-b", "basin-min-c"),
+    extremum.id = c("extremum-max-a", "extremum-max-b", "extremum-min-c"),
+    parent.basin.id = NA_character_,
+    key = c("max|a", "max|b", "min|c"),
+    display.label = c("M1", "M2", "m1"),
+    type = c("max", "max", "min"),
+    rank = c(1L, 2L, 1L),
+    method = "trajectory_flow",
+    rank.measure = "primary.support.mass",
+    extremum.vertex = c(2L, 4L, 7L),
+    extremum.vertex.id = c("sample-2", "sample-4", "sample-7"),
+    extremum.value = c(1.2, 1.0, 0.1),
+    primary.support.size = c(8L, 5L, 7L),
+    primary.support.mass = c(0.4, 0.2, 0.3),
+    prominence = c(0.8, 0.5, 0.6),
+    raw.support.size = c(9L, 6L, 8L),
+    raw.support.mass = c(0.45, 0.24, 0.34),
+    retained.support.size = c(8L, 5L, 7L),
+    retained.support.mass = c(0.4, 0.2, 0.3),
+    raw.allocated.mass = c(0.4, 0.2, 0.3),
+    assignment.status = "assigned",
+    retention.status = "retained",
+    selected = c(TRUE, FALSE, TRUE),
+    color = c("#111111", "#222222", "#333333"),
+    stringsAsFactors = FALSE
+  )
+  result <- list(
+    table = all.table[1L, , drop = FALSE],
+    all_table = all.table,
+    project_id = "fixture-project",
+    graph_set_id = "fixture-set",
+    graph_k = 3L,
+    source_key = "fixture-estimate",
+    source_label = "Fixture estimate",
+    source_fingerprint = "source-fingerprint",
+    rank_by = "auto",
+    ranking_resolved = c(
+      max = "primary.support.mass",
+      min = "primary.support.mass"
+    ),
+    prominence_method = "superlevel_merge_tree",
+    construction_identity = list(
+      fingerprint = paste(rep("a", 64L), collapse = ""),
+      record = list(
+        project.id = "fixture-project",
+        graph.set.id = "fixture-set",
+        source.key = "fixture-estimate",
+        source.fingerprint = "source-fingerprint",
+        graph = list(
+          graph.k = 3L,
+          graph.fingerprint = "graph-fingerprint",
+          topology.fingerprint = "topology-fingerprint",
+          vertex.id.fingerprint = "vertex-fingerprint",
+          display.vertex.id.fingerprint = "display-vertex-fingerprint"
+        ),
+        construction = list(
+          method = "trajectory_flow",
+          direction = "both",
+          modulation = "CLOSEST",
+          plateau.policy = "connected_exact"
+        )
+      )
+    ),
+    summary = list(mass.provenance = NULL)
+  )
+  characteristics <- gflowui:::gflowui_basin_export_characteristics(result)
+  expect_equal(nrow(characteristics), 3L)
+  expect_equal(
+    characteristics$extremum_basin,
+    c("M1", "M2", "m1")
+  )
+  expect_false(any(c("selected", "color", "internal_key") %in%
+    names(characteristics)))
+
+  destination <- tempfile("gflowui-basin-export-test-")
+  dir.create(destination)
+  on.exit(unlink(destination, recursive = TRUE, force = TRUE), add = TRUE)
+  exported.at <- as.POSIXct(
+    "2026-07-29 12:34:56",
+    tz = "America/New_York"
+  )
+  saved <- gflowui:::gflowui_write_basin_export_bundle(
+    result,
+    destination,
+    exported_at = exported.at
+  )
+  expect_true(file.exists(saved$path))
+  expect_identical(dirname(saved$path), normalizePath(destination))
+  expect_equal(saved$row_count, 3L)
+  expected.files <- c(
+    "README.txt",
+    "basin_analysis.rds",
+    "basin_characteristics.csv",
+    "basin_column_definitions.csv",
+    "basin_internal_mapping.csv",
+    "basin_provenance.json"
+  )
+  archive <- utils::unzip(saved$path, list = TRUE)
+  expect_setequal(archive$Name, expected.files)
+
+  extracted <- tempfile("gflowui-basin-export-extracted-")
+  dir.create(extracted)
+  on.exit(unlink(extracted, recursive = TRUE, force = TRUE), add = TRUE)
+  utils::unzip(saved$path, exdir = extracted)
+  csv <- utils::read.csv(
+    file.path(extracted, "basin_characteristics.csv"),
+    stringsAsFactors = FALSE
+  )
+  expect_equal(nrow(csv), nrow(result$all_table))
+  expect_gt(nrow(csv), nrow(result$table))
+  expect_equal(csv$mass, result$all_table$primary.support.mass)
+  expect_equal(csv$prominence, result$all_table$prominence)
+  rds <- readRDS(file.path(extracted, "basin_analysis.rds"))
+  expect_equal(nrow(rds$basin_characteristics), 3L)
+  provenance <- jsonlite::fromJSON(
+    file.path(extracted, "basin_provenance.json")
+  )
+  expect_equal(provenance$counts$total, 3L)
+  expect_true(isTRUE(provenance$export_scope$top_k_ignored))
+  expect_identical(provenance$export_scope$coordinate_scale, "raw")
+
+  second <- gflowui:::gflowui_write_basin_export_bundle(
+    result,
+    destination,
+    exported_at = exported.at
+  )
+  expect_false(identical(saved$path, second$path))
+  expect_true(file.exists(second$path))
+  expect_error(
+    gflowui:::gflowui_write_basin_export_bundle(
+      result,
+      file.path(destination, "missing")
+    ),
+    "does not exist",
+    fixed = TRUE
+  )
+})
+
 test_that("basin inspector row updates preserve explicit selection and colors", {
   keys <- c("max|basin_a", "min|basin_b")
   colors <- stats::setNames(c("#DC2626", "#2563EB"), keys)
