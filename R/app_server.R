@@ -9188,6 +9188,15 @@ app_server <- function(input, output, session) {
           width = "190px"
         ),
         shiny::actionButton(
+          "basin_show_colors",
+          "Show basin colors",
+          class = "btn-primary btn-sm",
+          title = paste(
+            "Switch the graph from its current color source to basin colors.",
+            "Unselected vertices use the configured unselected color."
+          )
+        ),
+        shiny::actionButton(
           "basin_select_displayed",
           "Select displayed",
           class = "btn-light btn-sm"
@@ -9204,8 +9213,9 @@ app_server <- function(input, output, session) {
         ),
         shiny::actionButton(
           "basin_reset_colors",
-          "Reset colors",
-          class = "btn-light btn-sm"
+          "Reset basin colors",
+          class = "btn-light btn-sm",
+          title = "Restore the default maximum/minimum basin palette."
         )
       ),
       shiny::div(
@@ -10176,6 +10186,36 @@ app_server <- function(input, output, session) {
     }
   }, ignoreInit = TRUE)
 
+  activate_basin_color_source <- function(
+      result = shiny::isolate(basin_result()),
+      update_status = FALSE) {
+    if (!is.list(result) ||
+        !is.data.frame(result$table) ||
+        length(result$values %||% character()) < 1L) {
+      return(invisible(FALSE))
+    }
+    graph_layout_state$color_by <- "basin_active"
+    shiny::updateSelectInput(
+      session,
+      "graph_layout_color_by",
+      selected = "basin_active"
+    )
+    if (isTRUE(update_status)) {
+      basin_status(sprintf(
+        paste(
+          "Showing basin colors for %s.",
+          "Unselected vertices use the Basin Inspector background color."
+        ),
+        result$source_label %||% "the active basin complex"
+      ))
+    }
+    invisible(TRUE)
+  }
+
+  shiny::observeEvent(input$basin_show_colors, {
+    activate_basin_color_source(update_status = TRUE)
+  }, ignoreInit = TRUE)
+
   shiny::observeEvent(input$basin_select_displayed, {
     result <- basin_result()
     if (is.list(result) && is.data.frame(result$table)) {
@@ -10184,7 +10224,9 @@ app_server <- function(input, output, session) {
         basin_selected_keys(),
         as.character(displayed$key)
       )))
-      basin_result(update_basin_display_result(result))
+      result <- update_basin_display_result(result)
+      basin_result(result)
+      activate_basin_color_source(result)
     }
   }, ignoreInit = TRUE)
 
@@ -10198,7 +10240,9 @@ app_server <- function(input, output, session) {
       ))
     }
     if (is.list(result)) {
-      basin_result(update_basin_display_result(result))
+      result <- update_basin_display_result(result)
+      basin_result(result)
+      activate_basin_color_source(result)
     }
   }, ignoreInit = TRUE)
 
@@ -10206,7 +10250,9 @@ app_server <- function(input, output, session) {
     result <- basin_result()
     basin_selected_keys(character())
     if (is.list(result)) {
-      basin_result(update_basin_display_result(result))
+      result <- update_basin_display_result(result)
+      basin_result(result)
+      activate_basin_color_source(result)
     }
   }, ignoreInit = TRUE)
 
@@ -10217,7 +10263,9 @@ app_server <- function(input, output, session) {
       colors <- basin_color_map()
       colors[names(defaults)] <- defaults
       basin_color_map(colors)
-      basin_result(update_basin_display_result(result))
+      result <- update_basin_display_result(result)
+      basin_result(result)
+      activate_basin_color_source(result)
     }
   }, ignoreInit = TRUE)
 
@@ -10227,7 +10275,9 @@ app_server <- function(input, output, session) {
       basin_display_settings$display_mode <- mode
       result <- shiny::isolate(basin_result())
       if (is.list(result)) {
-        basin_result(update_basin_display_result(result))
+        result <- update_basin_display_result(result)
+        basin_result(result)
+        activate_basin_color_source(result)
       }
     }
   }, ignoreInit = TRUE)
@@ -10236,6 +10286,7 @@ app_server <- function(input, output, session) {
     opacity <- suppressWarnings(as.numeric(input$basin_global_opacity))
     if (is.finite(opacity)) {
       basin_display_settings$opacity <- max(0, min(1, opacity))
+      activate_basin_color_source()
     }
   }, ignoreInit = TRUE)
 
@@ -10243,6 +10294,7 @@ app_server <- function(input, output, session) {
     color <- as.character(input$basin_unselected_color %||% "")
     if (nzchar(color)) {
       basin_display_settings$unselected_color <- color
+      activate_basin_color_source()
     }
   }, ignoreInit = TRUE)
 
@@ -10250,6 +10302,7 @@ app_server <- function(input, output, session) {
     opacity <- suppressWarnings(as.numeric(input$basin_unselected_opacity))
     if (is.finite(opacity)) {
       basin_display_settings$unselected_opacity <- max(0, min(1, opacity))
+      activate_basin_color_source()
     }
   }, ignoreInit = TRUE)
 
@@ -10279,7 +10332,9 @@ app_server <- function(input, output, session) {
     }
     basin_selected_keys(next.state$selected_keys)
     basin_color_map(next.state$color_map)
-    basin_result(update_basin_display_result(result))
+    result <- update_basin_display_result(result)
+    basin_result(result)
+    activate_basin_color_source(result)
   }, ignoreInit = TRUE)
 
   reference_renderer_state <- shiny::reactive({
