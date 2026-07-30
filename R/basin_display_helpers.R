@@ -360,6 +360,19 @@ gflowui_basin_construction_identity <- function(
   )
 }
 
+gflowui_basin_extrema_defaults <- function(source_type) {
+  is_density <- identical(
+    as.character(source_type %||% ""),
+    "occupation_probability"
+  )
+  list(
+    maxima_scope = if (is_density) "listed" else "none",
+    label_maxima = is_density,
+    minima_scope = "none",
+    label_minima = FALSE
+  )
+}
+
 gflowui_basin_default_colors <- function(table) {
   if (!is.data.frame(table) || nrow(table) < 1L) {
     return(structure(character(), names = character()))

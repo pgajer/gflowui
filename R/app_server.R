@@ -250,6 +250,42 @@ app_server <- function(input, output, session) {
       ))
     )
   }
+  apply_basin_extrema_source_defaults <- function(source_type) {
+    defaults <- gflowui_basin_extrema_defaults(source_type)
+    basin_display_settings$maxima_scope <- defaults$maxima_scope
+    basin_display_settings$show_maxima <- !identical(
+      defaults$maxima_scope,
+      "none"
+    )
+    basin_display_settings$label_maxima <- defaults$label_maxima
+    basin_display_settings$minima_scope <- defaults$minima_scope
+    basin_display_settings$show_minima <- !identical(
+      defaults$minima_scope,
+      "none"
+    )
+    basin_display_settings$label_minima <- defaults$label_minima
+    shiny::updateSelectInput(
+      session,
+      "basin_extrema_max_scope",
+      selected = defaults$maxima_scope
+    )
+    shiny::updateCheckboxInput(
+      session,
+      "basin_label_maxima",
+      value = defaults$label_maxima
+    )
+    shiny::updateSelectInput(
+      session,
+      "basin_extrema_min_scope",
+      selected = defaults$minima_scope
+    )
+    shiny::updateCheckboxInput(
+      session,
+      "basin_label_minima",
+      value = defaults$label_minima
+    )
+    invisible(defaults)
+  }
   normalize_palette_choice <- function(x, choices, default = NULL) {
     vals <- tolower(unname(as.character(choices %||% character(0))))
     default_use <- as.character(default %||% "")
@@ -10062,6 +10098,13 @@ app_server <- function(input, output, session) {
     colors[names(old.colors)] <- old.colors
     basin_color_map(colors)
     basin_selected_keys(character())
+    apply_basin_extrema_source_defaults(
+      if (isTRUE(request$is_occupation)) {
+        "occupation_probability"
+      } else {
+        "conditional_expectation"
+      }
+    )
     result <- update_basin_display_result(result)
     basin_result(result)
     basin_inspector_open(TRUE)
