@@ -101,7 +101,8 @@ app_server <- function(input, output, session) {
     inspector_filter = "all",
     inspector_columns = "compact",
     inspector_show_extremum_vertex = FALSE,
-    inspector_width = 620
+    inspector_width = 620,
+    plot_builder_type = "both"
   )
   graph_vertex_color_choices <- function() {
     c(
@@ -264,6 +265,7 @@ app_server <- function(input, output, session) {
       "none"
     )
     basin_display_settings$label_minima <- defaults$label_minima
+    basin_display_settings$plot_builder_type <- defaults$plot_builder_type
     shiny::updateSelectInput(
       session,
       "basin_extrema_max_scope",
@@ -283,6 +285,11 @@ app_server <- function(input, output, session) {
       session,
       "basin_label_minima",
       value = defaults$label_minima
+    )
+    shiny::updateSelectInput(
+      session,
+      "basin_plot_builder_type",
+      selected = defaults$plot_builder_type
     )
     invisible(defaults)
   }
@@ -473,6 +480,12 @@ app_server <- function(input, output, session) {
     basin_display_settings$label_minima <- isTRUE(
       input$basin_label_minima
     )
+  }, ignoreInit = FALSE, ignoreNULL = TRUE)
+  shiny::observeEvent(input$basin_plot_builder_type, {
+    type <- as.character(input$basin_plot_builder_type %||% "both")
+    if (type %in% c("both", "max", "min")) {
+      basin_display_settings$plot_builder_type <- type
+    }
   }, ignoreInit = FALSE, ignoreNULL = TRUE)
 
   shiny::observe({
@@ -9740,7 +9753,9 @@ app_server <- function(input, output, session) {
       c("support", "mass")
     )
     builder.scope <- basin_plot_input_value("basin_plot_builder_scope", "all")
-    builder.type <- basin_plot_input_value("basin_plot_builder_type", "both")
+    builder.type <- as.character(
+      basin_display_settings$plot_builder_type %||% "both"
+    )
     specs <- basin_plot_specs()
     shiny::tags$section(
       id = "gf_basin_plot_workspace",
