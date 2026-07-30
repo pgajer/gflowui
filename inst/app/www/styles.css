@@ -1101,6 +1101,38 @@ body.gf-general-inspector-resizing {
   margin-bottom: 0;
 }
 
+.gf-basin-export {
+  margin: 0 0 0.65rem;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid rgba(37, 99, 235, 0.2);
+  border-radius: 0.65rem;
+  background: rgba(239, 246, 255, 0.7);
+}
+
+.gf-basin-export-controls {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
+.gf-basin-export-controls .form-group {
+  margin-bottom: 0;
+}
+
+.gf-basin-export-description,
+.gf-basin-export-status {
+  margin: 0.35rem 0 0;
+  color: #475569;
+  font-size: 0.82rem;
+  overflow-wrap: anywhere;
+}
+
+.gf-basin-export-status {
+  color: #1e3a5f;
+  font-weight: 600;
+}
+
 .gf-basin-table-scroll {
   min-height: 260px;
   max-height: none;

@@ -22,7 +22,8 @@ Imports:
     dgraphs,
     digest,
     gflow,
-    jsonlite
+    jsonlite,
+    zip
 Suggests:
     geosmooth,
     grip,

@@ -68,6 +68,14 @@ app_server <- function(input, output, session) {
   basin_status <- shiny::reactiveVal(
     "Apply an occupation density or choose a conditional-expectation estimate."
   )
+  basin_export_directory <- shiny::reactiveVal(
+    normalizePath(path.expand("~"), winslash = "/", mustWork = TRUE)
+  )
+  basin_export_status <- shiny::reactiveVal(
+    "No bundle saved for the active basin complex."
+  )
+  basin_export_last_path <- shiny::reactiveVal("")
+  basin_export_last_fingerprint <- shiny::reactiveVal("")
   density_display_settings <- shiny::reactiveValues(
     low = "yellow",
     midpoint = "none",
@@ -9200,6 +9208,39 @@ app_server <- function(input, output, session) {
           class = "btn-light btn-sm"
         )
       ),
+      shiny::div(
+        class = "gf-basin-export",
+        shiny::div(
+          class = "gf-basin-export-controls",
+          shiny::textInput(
+            "basin_export_directory",
+            "Bundle directory",
+            value = shiny::isolate(basin_export_directory()),
+            placeholder = "~/",
+            width = "390px"
+          ),
+          shiny::actionButton(
+            "basin_export_bundle",
+            "Save full basin bundle",
+            class = "btn-primary btn-sm"
+          )
+        ),
+        shiny::p(
+          class = "gf-basin-export-description",
+          sprintf(
+            paste(
+              "Exports all %d basins in raw coordinates.",
+              "Rows, top-K, selections, and display filters are ignored.",
+              "Use ~ or an absolute directory path."
+            ),
+            nrow(result$all_table)
+          )
+        ),
+        shiny::p(
+          class = "gf-basin-export-status",
+          shiny::textOutput("basin_export_status", inline = TRUE)
+        )
+      ),
       shiny::tags$section(
         class = "gf-basin-characteristics",
         shiny::h5("Basin characteristics"),
@@ -9258,6 +9299,14 @@ app_server <- function(input, output, session) {
   shiny::outputOptions(
     output,
     "basin_inspector_ui",
+    suspendWhenHidden = FALSE
+  )
+  output$basin_export_status <- shiny::renderText({
+    basin_export_status()
+  })
+  shiny::outputOptions(
+    output,
+    "basin_export_status",
     suspendWhenHidden = FALSE
   )
 
@@ -10029,6 +10078,73 @@ app_server <- function(input, output, session) {
 
   shiny::observeEvent(input$basin_inspector_close, {
     basin_inspector_open(FALSE)
+  }, ignoreInit = TRUE)
+
+  shiny::observeEvent(basin_result(), {
+    result <- basin_result()
+    fingerprint <- if (is.list(result)) {
+      as.character(result$construction_identity$fingerprint %||% "")
+    } else {
+      ""
+    }
+    if (!identical(fingerprint, basin_export_last_fingerprint())) {
+      basin_export_last_path("")
+      basin_export_last_fingerprint("")
+      basin_export_status(
+        "No bundle saved for the active basin complex."
+      )
+    }
+  }, ignoreInit = FALSE)
+
+  shiny::observeEvent(input$basin_export_directory, {
+    value <- trimws(as.character(input$basin_export_directory %||% ""))
+    if (length(value) == 1L && !is.na(value) && nzchar(value)) {
+      basin_export_directory(value)
+    }
+  }, ignoreInit = TRUE)
+
+  shiny::observeEvent(input$basin_export_bundle, {
+    result <- shiny::isolate(basin_result())
+    destination <- trimws(as.character(
+      input$basin_export_directory %||% basin_export_directory()
+    ))
+    basin_export_status("Saving the full basin bundle...")
+    saved <- tryCatch(
+      gflowui_write_basin_export_bundle(
+        result,
+        destination = destination
+      ),
+      error = function(e) e
+    )
+    if (inherits(saved, "error")) {
+      message <- sprintf(
+        "Basin bundle was not saved: %s",
+        conditionMessage(saved)
+      )
+      basin_export_status(message)
+      shiny::showNotification(message, type = "error", duration = 8)
+      return()
+    }
+    basin_export_directory(dirname(saved$path))
+    basin_export_last_path(saved$path)
+    basin_export_last_fingerprint(as.character(
+      result$construction_identity$fingerprint %||% ""
+    ))
+    basin_export_status(sprintf(
+      "Saved %d unfiltered basins to %s",
+      saved$row_count,
+      saved$path
+    ))
+    shiny::updateTextInput(
+      session,
+      "basin_export_directory",
+      value = dirname(saved$path)
+    )
+    shiny::showNotification(
+      sprintf("Saved basin bundle: %s", saved$path),
+      type = "message",
+      duration = 8
+    )
   }, ignoreInit = TRUE)
 
   shiny::observeEvent(input$basin_inspector_filter, {

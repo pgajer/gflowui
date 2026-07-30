@@ -657,6 +657,12 @@ test_that("basin server invalidates changed fields and graph identities", {
   if (!(project_id %in% reg$id)) {
     skip("The Subject 15 reference project is not registered")
   }
+  export.directory <- tempfile("gflowui-basin-server-export-")
+  dir.create(export.directory)
+  on.exit(
+    unlink(export.directory, recursive = TRUE, force = TRUE),
+    add = TRUE
+  )
 
   shiny::testServer(gflowui:::app_server, {
     open_project(project_id)
@@ -704,6 +710,9 @@ test_that("basin server invalidates changed fields and graph identities", {
     expect_match(inspector, "Selected basins", fixed = TRUE)
     expect_match(inspector, "Listed top-K", fixed = TRUE)
     expect_match(inspector, "Basin characteristics", fixed = TRUE)
+    expect_match(inspector, "Bundle directory", fixed = TRUE)
+    expect_match(inspector, "Save full basin bundle", fixed = TRUE)
+    expect_match(inspector, "display filters are ignored", fixed = TRUE)
     expect_match(inspector, "Extremum / basin", fixed = TRUE)
     expect_match(inspector, "gf-basin-show-column", fixed = TRUE)
     expect_match(inspector, "gf-basin-label-column", fixed = TRUE)
@@ -728,6 +737,24 @@ test_that("basin server invalidates changed fields and graph identities", {
       fixed = TRUE
     )
     expect_false(grepl("basin_inspector_maximize", inspector, fixed = TRUE))
+    session$setInputs(basin_export_directory = export.directory)
+    session$flushReact()
+    session$setInputs(basin_export_bundle = 1L)
+    session$flushReact()
+    export.path <- basin_export_last_path()
+    expect_true(file.exists(export.path))
+    expect_identical(dirname(export.path), normalizePath(export.directory))
+    expect_match(basin_export_status(), export.path, fixed = TRUE)
+    export.contents <- tempfile("gflowui-basin-server-contents-")
+    dir.create(export.contents)
+    utils::unzip(export.path, exdir = export.contents)
+    exported.table <- utils::read.csv(
+      file.path(export.contents, "basin_characteristics.csv"),
+      stringsAsFactors = FALSE
+    )
+    expect_equal(nrow(exported.table), nrow(first$all_table))
+    expect_gt(nrow(exported.table), nrow(first$table))
+    unlink(export.contents, recursive = TRUE, force = TRUE)
 
     plot.workspace <- htmltools::renderTags(
       output$basin_plot_workspace_ui
