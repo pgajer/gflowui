@@ -45,13 +45,16 @@ gflowui_numeric_color_encoding <- function(
   mapped <- raw
   colorbar <- list(title = as.character(title))
   floor_value <- NA_real_
+  softening_scale <- NA_real_
 
-  if (!identical(as.character(transform), "density_log10")) {
+  transform <- as.character(transform)
+  if (!(transform %in% c("density_log10", "density_asinh"))) {
     return(list(
       raw_values = raw,
       mapped_values = mapped,
       colorbar = colorbar,
-      floor_value = floor_value
+      floor_value = floor_value,
+      softening_scale = softening_scale
     ))
   }
 
@@ -61,7 +64,8 @@ gflowui_numeric_color_encoding <- function(
       raw_values = raw,
       mapped_values = mapped,
       colorbar = colorbar,
-      floor_value = floor_value
+      floor_value = floor_value,
+      softening_scale = softening_scale
     ))
   }
 
@@ -70,6 +74,37 @@ gflowui_numeric_color_encoding <- function(
     density_log_decades <- 6
   }
   peak <- max(positive)
+
+  if (identical(transform, "density_asinh")) {
+    softening_scale <- max(
+      peak * 10^(-density_log_decades),
+      .Machine$double.xmin
+    )
+    finite <- is.finite(raw)
+    mapped[finite] <- asinh(raw[finite] / softening_scale)
+    limits <- c(0, asinh(peak / softening_scale))
+    ticks <- pretty(limits, n = 5)
+    ticks <- ticks[
+      is.finite(ticks) & ticks >= limits[[1L]] & ticks <= limits[[2L]]
+    ]
+    ticks <- sort(unique(c(limits[[1L]], ticks, limits[[2L]])))
+    tick_values <- softening_scale * sinh(ticks)
+    tick_values[abs(tick_values) < .Machine$double.eps] <- 0
+    colorbar <- list(
+      title = paste0(as.character(title), "<br>(asinh color)"),
+      tickvals = ticks,
+      ticktext = formatC(tick_values, format = "e", digits = 1)
+    )
+    return(list(
+      raw_values = raw,
+      mapped_values = mapped,
+      colorbar = colorbar,
+      floor_value = floor_value,
+      softening_scale = softening_scale,
+      color_limits = limits
+    ))
+  }
+
   floor_value <- max(peak * 10^(-density_log_decades), .Machine$double.xmin)
   finite <- is.finite(raw)
   mapped[finite] <- log10(pmax(raw[finite], floor_value))
@@ -93,6 +128,7 @@ gflowui_numeric_color_encoding <- function(
     mapped_values = mapped,
     colorbar = colorbar,
     floor_value = floor_value,
+    softening_scale = softening_scale,
     color_limits = limits
   )
 }

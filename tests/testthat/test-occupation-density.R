@@ -102,6 +102,32 @@ test_that("density colors use a bounded log scale without changing raw mass", {
   expect_identical(identity$colorbar$title, "Value")
 })
 
+test_that("occupation-density normalization retains legitimate zeros", {
+  raw <- c(0, 0, 1, 3)
+  normalized <- gflowui:::gflowui_normalize_density(raw)
+
+  expect_equal(normalized, c(0, 0, 0.25, 0.75))
+  expect_identical(which(normalized == 0), c(1L, 2L))
+})
+
+test_that("active density colors preserve zeros with a scaled asinh mapping", {
+  mass <- c(0, 1e-15, 1e-12, 1e-8, 1e-4, 1e-2, NA_real_)
+  encoded <- gflowui:::gflowui_numeric_color_encoding(
+    mass,
+    transform = "density_asinh",
+    title = "Probability mass"
+  )
+
+  expect_equal(encoded$raw_values, mass)
+  expect_true(is.na(encoded$floor_value))
+  expect_equal(encoded$softening_scale, 1e-8)
+  expect_equal(encoded$mapped_values[[1L]], 0)
+  expect_true(all(diff(encoded$mapped_values[1:6]) > 0))
+  expect_equal(encoded$color_limits[[1L]], 0)
+  expect_match(encoded$colorbar$title, "asinh color", fixed = TRUE)
+  expect_identical(encoded$colorbar$ticktext[[1L]], "0.0e+00")
+})
+
 test_that("density palettes expose selectable endpoints and midpoint", {
   expect_equal(
     gflowui:::gflowui_density_palette(),
