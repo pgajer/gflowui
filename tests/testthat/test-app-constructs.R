@@ -701,7 +701,7 @@ test_that("basin server invalidates changed fields and graph identities", {
       basin_source = "occupation_density_active",
       basin_top_k_max = 1L,
       basin_top_k_min = 1L,
-      basin_rank_by = "auto",
+      basin_rank_by = "primary.support.mass",
       basin_compute = 1L
     )
     session$flushReact()
@@ -732,6 +732,17 @@ test_that("basin server invalidates changed fields and graph identities", {
     expect_match(inspector, "Largest maximum basins", fixed = TRUE)
     expect_match(inspector, "Largest minimum basins", fixed = TRUE)
     expect_match(inspector, "Ranking measure", fixed = TRUE)
+    expect_false(grepl(">Auto</option>", inspector, fixed = TRUE))
+    expect_match(
+      inspector,
+      '<option value="primary.support.mass" selected>Mass</option>',
+      fixed = TRUE
+    )
+    expect_match(
+      inspector,
+      '<option value="extremum.value">Peak value</option>',
+      fixed = TRUE
+    )
     expect_match(inspector, "Maximum extrema", fixed = TRUE)
     expect_match(inspector, "Minimum extrema", fixed = TRUE)
     expect_match(
@@ -776,6 +787,32 @@ test_that("basin server invalidates changed fields and graph identities", {
       fixed = TRUE
     )
     expect_false(grepl("basin_inspector_maximize", inspector, fixed = TRUE))
+    session$setInputs(basin_rank_by = "extremum.value")
+    session$flushReact()
+    expect_match(
+      basin_status(),
+      "Basin summary updated without reconstruction",
+      fixed = TRUE
+    )
+    peak.ranked <- basin_result()
+    expect_identical(
+      unname(peak.ranked$ranking_resolved),
+      rep("extremum.value", 2L)
+    )
+    peak.inspector <- htmltools::renderTags(
+      output$basin_inspector_ui
+    )$html
+    expect_match(
+      peak.inspector,
+      "Peak value ranks maxima from highest to lowest",
+      fixed = TRUE
+    )
+    session$setInputs(basin_rank_by = "primary.support.mass")
+    session$flushReact()
+    expect_identical(
+      unname(basin_result()$ranking_resolved),
+      rep("primary.support.mass", 2L)
+    )
     session$setInputs(basin_export_directory = export.directory)
     session$flushReact()
     session$setInputs(basin_export_bundle = 1L)
@@ -800,6 +837,15 @@ test_that("basin server invalidates changed fields and graph identities", {
     )$html
     expect_match(plot.workspace, "Basin Plot Workspace", fixed = TRUE)
     expect_match(plot.workspace, "Characteristics", fixed = TRUE)
+    expect_match(plot.workspace, "Extremum value rank", fixed = TRUE)
+    expect_match(plot.workspace, "Support rank", fixed = TRUE)
+    expect_match(plot.workspace, "Mass rank", fixed = TRUE)
+    expect_match(plot.workspace, "Prominence rank", fixed = TRUE)
+    expect_match(
+      plot.workspace,
+      "Ranks are computed separately within maxima and minima",
+      fixed = TRUE
+    )
     expect_match(plot.workspace, "Add histograms", fixed = TRUE)
     expect_match(plot.workspace, "Add pair plots", fixed = TRUE)
     expect_match(plot.workspace, "Add matrix", fixed = TRUE)

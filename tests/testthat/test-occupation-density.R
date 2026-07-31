@@ -484,6 +484,46 @@ test_that("basin plot helpers preserve all, listed, and selected scopes", {
     selected_keys = "max|b"
   )
   expect_equal(selected$key, "max|b")
+  all.plot.data <- gflowui:::gflowui_basin_plot_data(
+    result,
+    "all",
+    "both"
+  )
+  expect_true(all(c(
+    "extremum_value_rank",
+    "support_rank",
+    "mass_rank",
+    "prominence_rank"
+  ) %in% names(all.plot.data)))
+  expect_equal(all.plot.data$extremum_value_rank, c(1L, 2L, 1L))
+  expect_equal(all.plot.data$support_rank, c(1L, 2L, 1L))
+  expect_equal(all.plot.data$mass_rank, c(1L, 2L, 1L))
+  expect_equal(all.plot.data$prominence_rank, c(1L, 2L, 1L))
+  expect_true(all(c(
+    "Extremum value rank",
+    "Support rank",
+    "Mass rank",
+    "Prominence rank"
+  ) %in% names(gflowui:::gflowui_basin_plot_feature_choices())))
+  rank.table <- data.frame(
+    key = c("max|a", "max|b", "min|c", "min|d"),
+    type = c("max", "max", "min", "min"),
+    display.label = c("M1", "M2", "m1", "m2"),
+    primary.support.size = c(5L, 8L, 4L, 7L),
+    primary.support.mass = c(0.2, 0.4, 0.1, 0.3),
+    extremum.value = c(1.0, 1.2, -0.5, -0.2),
+    prominence = c(0.4, 0.8, 0.3, 0.6),
+    stringsAsFactors = FALSE
+  )
+  ranked.plot.data <- gflowui:::gflowui_basin_plot_data(
+    list(all_table = rank.table, table = rank.table),
+    "all",
+    "both"
+  )
+  expect_equal(ranked.plot.data$extremum_value_rank, c(2L, 1L, 1L, 2L))
+  expect_equal(ranked.plot.data$support_rank, c(2L, 1L, 2L, 1L))
+  expect_equal(ranked.plot.data$mass_rank, c(2L, 1L, 2L, 1L))
+  expect_equal(ranked.plot.data$prominence_rank, c(2L, 1L, 2L, 1L))
 
   histograms <- gflowui:::gflowui_basin_new_plot_specs(
     c("support", "mass", "prominence"),

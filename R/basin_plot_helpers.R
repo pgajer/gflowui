@@ -3,7 +3,11 @@ gflowui_basin_plot_feature_choices <- function() {
     "Support" = "support",
     "Mass" = "mass",
     "Extremum value" = "extremum_value",
-    "Prominence" = "prominence"
+    "Prominence" = "prominence",
+    "Extremum value rank" = "extremum_value_rank",
+    "Support rank" = "support_rank",
+    "Mass rank" = "mass_rank",
+    "Prominence rank" = "prominence_rank"
   )
 }
 
@@ -96,11 +100,7 @@ gflowui_basin_plot_data <- function(
     selected_keys = character()) {
   scope <- match.arg(scope)
   type <- match.arg(type)
-  table <- if (identical(scope, "listed")) {
-    result$table
-  } else {
-    result$all_table
-  }
+  table <- result$all_table
   if (!is.data.frame(table) || nrow(table) < 1L) {
     return(data.frame(
       key = character(),
@@ -110,27 +110,106 @@ gflowui_basin_plot_data <- function(
       mass = numeric(),
       extremum_value = numeric(),
       prominence = numeric(),
+      extremum_value_rank = integer(),
+      support_rank = integer(),
+      mass_rank = integer(),
+      prominence_rank = integer(),
       stringsAsFactors = FALSE
     ))
   }
-  if (identical(scope, "selected")) {
-    table <- table[
-      as.character(table$key) %in% as.character(selected_keys),
-      ,
-      drop = FALSE
-    ]
+  tie.breaker <- if ("basin.id" %in% names(table)) {
+    as.character(table$basin.id)
+  } else {
+    as.character(table$key)
+  }
+  direction.rank <- function(value, minimum.lowest = FALSE) {
+    value <- suppressWarnings(as.numeric(value))
+    rank <- rep.int(NA_integer_, length(value))
+    for (direction in c("max", "min")) {
+      rows <- which(
+        as.character(table$type) == direction & is.finite(value)
+      )
+      if (length(rows) < 1L) {
+        next
+      }
+      order.value <- if (isTRUE(minimum.lowest) &&
+          identical(direction, "min")) {
+        value[rows]
+      } else {
+        -value[rows]
+      }
+      ordered <- order(
+        order.value,
+        tie.breaker[rows],
+        method = "radix"
+      )
+      rank[rows[ordered]] <- seq_along(rows)
+    }
+    rank
+  }
+  extremum.value <- suppressWarnings(as.numeric(table$extremum.value))
+  support <- suppressWarnings(as.integer(table$primary.support.size))
+  mass <- suppressWarnings(as.numeric(table$primary.support.mass))
+  prominence <- suppressWarnings(as.numeric(table$prominence))
+  extremum.value.rank <- direction.rank(
+    extremum.value,
+    minimum.lowest = TRUE
+  )
+  support.rank <- direction.rank(support)
+  mass.rank <- direction.rank(mass)
+  prominence.rank <- direction.rank(prominence)
+  if (identical(scope, "listed")) {
+    listed.keys <- if (is.data.frame(result$table)) {
+      as.character(result$table$key)
+    } else {
+      character()
+    }
+    keep <- as.character(table$key) %in% listed.keys
+    table <- table[keep, , drop = FALSE]
+    extremum.value <- extremum.value[keep]
+    support <- support[keep]
+    mass <- mass[keep]
+    prominence <- prominence[keep]
+    extremum.value.rank <- extremum.value.rank[keep]
+    support.rank <- support.rank[keep]
+    mass.rank <- mass.rank[keep]
+    prominence.rank <- prominence.rank[keep]
+  } else if (identical(scope, "selected")) {
+    keep <- as.character(table$key) %in% as.character(selected_keys)
+    table <- table[keep, , drop = FALSE]
+    extremum.value <- extremum.value[keep]
+    support <- support[keep]
+    mass <- mass[keep]
+    prominence <- prominence[keep]
+    extremum.value.rank <- extremum.value.rank[keep]
+    support.rank <- support.rank[keep]
+    mass.rank <- mass.rank[keep]
+    prominence.rank <- prominence.rank[keep]
   }
   if (type %in% c("max", "min")) {
-    table <- table[as.character(table$type) == type, , drop = FALSE]
+    keep <- as.character(table$type) == type
+    table <- table[keep, , drop = FALSE]
+    extremum.value <- extremum.value[keep]
+    support <- support[keep]
+    mass <- mass[keep]
+    prominence <- prominence[keep]
+    extremum.value.rank <- extremum.value.rank[keep]
+    support.rank <- support.rank[keep]
+    mass.rank <- mass.rank[keep]
+    prominence.rank <- prominence.rank[keep]
   }
   data.frame(
     key = as.character(table$key),
     type = as.character(table$type),
     label = as.character(table$display.label),
-    support = suppressWarnings(as.integer(table$primary.support.size)),
-    mass = suppressWarnings(as.numeric(table$primary.support.mass)),
-    extremum_value = suppressWarnings(as.numeric(table$extremum.value)),
-    prominence = suppressWarnings(as.numeric(table$prominence)),
+    support = support,
+    mass = mass,
+    extremum_value = extremum.value,
+    prominence = prominence,
+    extremum_value_rank = extremum.value.rank,
+    support_rank = support.rank,
+    mass_rank = mass.rank,
+    prominence_rank = prominence.rank,
     stringsAsFactors = FALSE
   )
 }
