@@ -9460,6 +9460,8 @@ app_server <- function(input, output, session) {
     glyph.id <- paste0("basin_plot_glyph_", card.id)
     size.id <- paste0("basin_plot_point_size_", card.id)
     opacity.id <- paste0("basin_plot_point_opacity_", card.id)
+    labels.id <- paste0("basin_plot_labels_", card.id)
+    label.k.id <- paste0("basin_plot_label_k_", card.id)
     x.scale.id <- paste0("basin_plot_x_scale_", card.id)
     y.scale.id <- paste0("basin_plot_y_scale_", card.id)
     default.x.scale <- "log10"
@@ -9488,6 +9490,8 @@ app_server <- function(input, output, session) {
       card.glyph.id <- glyph.id
       card.size.id <- size.id
       card.opacity.id <- opacity.id
+      card.labels.id <- labels.id
+      card.label.k.id <- label.k.id
       card.x.scale.id <- x.scale.id
       card.y.scale.id <- y.scale.id
       card.default.x.scale <- default.x.scale
@@ -9535,6 +9539,11 @@ app_server <- function(input, output, session) {
           point_size =
             input[[card.size.id]] %||% card.default.point.size,
           point_opacity = input[[card.opacity.id]] %||% 0.75,
+          label_top_k = if (isTRUE(input[[card.labels.id]])) {
+            input[[card.label.k.id]] %||% 6L
+          } else {
+            0L
+          },
           x_scale = input[[card.x.scale.id]] %||% card.default.x.scale,
           y_scale = input[[card.y.scale.id]] %||% card.default.y.scale
         )
@@ -9752,6 +9761,25 @@ app_server <- function(input, output, session) {
                 basin_plot_input_value(opacity.id, 0.75)
               ))
             )
+          } else NULL,
+          if (!is.histogram && !is.matrix) {
+            shiny::checkboxInput(
+              labels.id,
+              "Label top-ranked basins",
+              value = isTRUE(basin_plot_input_value(labels.id, FALSE))
+            )
+          } else NULL,
+          if (!is.histogram && !is.matrix) {
+            shiny::numericInput(
+              label.k.id,
+              "Labels per extremum type (K)",
+              value = suppressWarnings(as.integer(
+                basin_plot_input_value(label.k.id, 6L)
+              )),
+              min = 1L,
+              max = 50L,
+              step = 1L
+            )
           } else NULL
         )
       ),
@@ -9838,7 +9866,7 @@ app_server <- function(input, output, session) {
           shiny::actionButton(
             "basin_plot_add_histograms",
             "Add histograms",
-            class = "btn-primary btn-sm"
+            class = "btn-light btn-sm"
           ),
           shiny::actionButton(
             "basin_plot_add_pairs",
