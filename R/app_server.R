@@ -93,7 +93,7 @@ app_server <- function(input, output, session) {
     minima_scope = "none",
     top_k_max = 6L,
     top_k_min = 6L,
-    rank_by = "auto",
+    rank_by = "primary.support.mass",
     display_mode = "both",
     opacity = 0.85,
     unselected_color = "#D1D5DB",
@@ -235,7 +235,7 @@ app_server <- function(input, output, session) {
         basin_display_settings$top_k_min %||% 6L
       )),
       rank_by = as.character(
-        basin_display_settings$rank_by %||% "auto"
+        basin_display_settings$rank_by %||% "primary.support.mass"
       ),
       display_mode = as.character(
         basin_display_settings$display_mode %||% "both"
@@ -8786,7 +8786,9 @@ app_server <- function(input, output, session) {
     ))
     if (!is.finite(top.max) || top.max < 0L) top.max <- 6L
     if (!is.finite(top.min) || top.min < 0L) top.min <- 6L
-    rank.by <- as.character(basin_display_settings$rank_by %||% "auto")
+    rank.by <- as.character(
+      basin_display_settings$rank_by %||% "primary.support.mass"
+    )
     summary <- summary(
       result$basin,
       rank.by = rank.by,
@@ -8847,6 +8849,7 @@ app_server <- function(input, output, session) {
       labels <- c(
         "primary.support.mass" = "Mass",
         "primary.support.size" = "Support",
+        "extremum.value" = "Peak value",
         "raw.allocated.mass" = "Allocated mass",
         "raw.support.mass" = "Raw mass",
         "raw.support.size" = "Raw support",
@@ -8890,6 +8893,16 @@ app_server <- function(input, output, session) {
         ),
         max.ranking,
         min.ranking
+      )
+    }
+    if (identical(max.ranking, "Peak value") &&
+        identical(min.ranking, "Peak value")) {
+      ranking.description <- paste(
+        ranking.description,
+        paste(
+          "Peak value ranks maxima from highest to lowest and minima",
+          "from lowest to highest."
+        )
       )
     }
     show.extremum.vertex <- isTRUE(
@@ -9128,11 +9141,12 @@ app_server <- function(input, output, session) {
           "basin_rank_by",
           "Ranking measure",
           choices = c(
-            "Auto" = "auto",
             "Mass" = "primary.support.mass",
-            "Support" = "primary.support.size"
+            "Support" = "primary.support.size",
+            "Peak value" = "extremum.value"
           ),
-          selected = basin_display_settings$rank_by %||% "auto",
+          selected = basin_display_settings$rank_by %||%
+            "primary.support.mass",
           width = "170px"
         ),
         shiny::selectInput(
@@ -9793,6 +9807,15 @@ app_server <- function(input, output, session) {
           selected = selected.features,
           inline = TRUE
         ),
+        shiny::p(
+          class = "gf-basin-plot-rank-note",
+          paste(
+            "Ranks are computed separately within maxima and minima over the",
+            "full basin complex. Rank 1 is largest for support, mass, and",
+            "prominence; extremum-value rank is highest-first for maxima and",
+            "lowest-first for minima."
+          )
+        ),
         shiny::selectInput(
           "basin_plot_builder_scope",
           "Initial data scope",
@@ -9966,7 +9989,9 @@ app_server <- function(input, output, session) {
     {
       top.max <- suppressWarnings(as.integer(input$basin_top_k_max))
       top.min <- suppressWarnings(as.integer(input$basin_top_k_min))
-      rank.by <- as.character(input$basin_rank_by %||% "auto")
+      rank.by <- as.character(
+        input$basin_rank_by %||% "primary.support.mass"
+      )
       if (length(top.max) == 1L && is.finite(top.max) && top.max >= 0L) {
         basin_display_settings$top_k_max <- top.max
       }
@@ -9974,9 +9999,9 @@ app_server <- function(input, output, session) {
         basin_display_settings$top_k_min <- top.min
       }
       if (rank.by %in% c(
-          "auto",
           "primary.support.mass",
-          "primary.support.size"
+          "primary.support.size",
+          "extremum.value"
       )) {
         basin_display_settings$rank_by <- rank.by
       }
@@ -9989,8 +10014,10 @@ app_server <- function(input, output, session) {
           suppressWarnings(as.integer(result$top_k_min)),
           suppressWarnings(as.integer(basin_display_settings$top_k_min))
         ) || !identical(
-          as.character(result$rank_by %||% "auto"),
-          as.character(basin_display_settings$rank_by %||% "auto")
+          as.character(result$rank_by %||% "primary.support.mass"),
+          as.character(
+            basin_display_settings$rank_by %||% "primary.support.mass"
+          )
         )
         if (!isTRUE(needs.update)) {
           return()
@@ -10079,7 +10106,19 @@ app_server <- function(input, output, session) {
     ))
     if (!is.finite(top.max) || top.max < 0L) top.max <- 6L
     if (!is.finite(top.min) || top.min < 0L) top.min <- 6L
-    rank.by <- as.character(basin_display_settings$rank_by %||% "auto")
+    rank.by <- as.character(
+      basin_display_settings$rank_by %||% "primary.support.mass"
+    )
+    if (!isTRUE(request$is_occupation) &&
+        identical(rank.by, "primary.support.mass")) {
+      rank.by <- "primary.support.size"
+      basin_display_settings$rank_by <- rank.by
+      shiny::updateSelectInput(
+        session,
+        "basin_rank_by",
+        selected = rank.by
+      )
+    }
     result <- tryCatch(
       gflowui_estimate_basin_overlay(
         adj_list = source$graph$adj_list,

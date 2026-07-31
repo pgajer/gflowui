@@ -1046,7 +1046,8 @@ gflowui_estimate_basin_overlay <- function(
     raw.support.mass = "raw coverage mass",
     primary.support.size = "primary support size",
     retained.support.size = "retained support size",
-    raw.support.size = "raw support size"
+    raw.support.size = "raw support size",
+    extremum.value = "extremum value"
   )
   ranking <- unname(ranking_labels[[resolved]] %||% resolved)
 

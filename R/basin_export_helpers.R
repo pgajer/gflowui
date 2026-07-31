@@ -246,7 +246,9 @@ gflowui_basin_export_provenance <- function(
       )
     ),
     ranking = list(
-      requested = as.character(result$rank_by %||% "auto"),
+      requested = as.character(
+        result$rank_by %||% "primary.support.mass"
+      ),
       maximum = as.character(ranking[["max"]] %||% ""),
       minimum = as.character(ranking[["min"]] %||% "")
     ),
