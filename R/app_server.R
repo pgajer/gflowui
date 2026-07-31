@@ -9800,12 +9800,15 @@ app_server <- function(input, output, session) {
       ),
       shiny::div(
         class = "gf-basin-plot-builder",
-        shiny::checkboxGroupInput(
-          "basin_plot_features",
-          "Characteristics",
-          choices = feature.choices,
-          selected = selected.features,
-          inline = TRUE
+        shiny::div(
+          class = "gf-basin-plot-characteristics",
+          shiny::checkboxGroupInput(
+            "basin_plot_features",
+            "Characteristics",
+            choices = feature.choices,
+            selected = selected.features,
+            inline = FALSE
+          )
         ),
         shiny::p(
           class = "gf-basin-plot-rank-note",
