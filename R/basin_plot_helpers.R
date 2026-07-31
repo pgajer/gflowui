@@ -106,6 +106,7 @@ gflowui_basin_plot_data <- function(
       key = character(),
       type = character(),
       label = character(),
+      rank = integer(),
       support = integer(),
       mass = numeric(),
       extremum_value = numeric(),
@@ -202,6 +203,7 @@ gflowui_basin_plot_data <- function(
     key = as.character(table$key),
     type = as.character(table$type),
     label = as.character(table$display.label),
+    rank = suppressWarnings(as.integer(table$rank)),
     support = support,
     mass = mass,
     extremum_value = extremum.value,
@@ -211,6 +213,27 @@ gflowui_basin_plot_data <- function(
     mass_rank = mass.rank,
     prominence_rank = prominence.rank,
     stringsAsFactors = FALSE
+  )
+}
+
+gflowui_basin_plot_label_rows <- function(data, label_top_k = 0L) {
+  label_top_k <- suppressWarnings(as.integer(label_top_k))
+  if (!is.data.frame(data) ||
+      nrow(data) < 1L ||
+      !all(c("rank", "label") %in% names(data)) ||
+      length(label_top_k) != 1L ||
+      !is.finite(label_top_k) ||
+      label_top_k < 1L) {
+    return(integer())
+  }
+  rank <- suppressWarnings(as.integer(data$rank))
+  label <- as.character(data$label)
+  which(
+    is.finite(rank) &
+      rank >= 1L &
+      rank <= label_top_k &
+      !is.na(label) &
+      nzchar(label)
   )
 }
 
@@ -369,6 +392,7 @@ gflowui_draw_basin_plot <- function(
     point_glyph = 19L,
     point_size = 1.1,
     point_opacity = 0.75,
+    label_top_k = 0L,
     x_scale = "raw",
     y_scale = "raw") {
   features <- as.character(spec$features)
@@ -453,6 +477,20 @@ gflowui_draw_basin_plot <- function(
       ),
       main = sprintf("%s (n=%d)", gflowui_basin_plot_title(spec), nrow(data))
     )
+    label.rows <- gflowui_basin_plot_label_rows(data, label_top_k)
+    if (length(label.rows) > 0L) {
+      graphics::text(
+        data[[x.feature]][label.rows],
+        data[[y.feature]][label.rows],
+        labels = data$label[label.rows],
+        pos = 3,
+        offset = 0.35,
+        cex = 0.78,
+        font = 2,
+        col = "#111827",
+        xpd = NA
+      )
+    }
     if (show.type.legend) {
       graphics::legend(
         "topright",

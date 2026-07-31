@@ -459,6 +459,7 @@ test_that("basin plot helpers preserve all, listed, and selected scopes", {
     key = c("max|a", "max|b", "min|c"),
     type = c("max", "max", "min"),
     display.label = c("M1", "M2", "m1"),
+    rank = c(1L, 2L, 1L),
     primary.support.size = c(8L, 5L, 7L),
     primary.support.mass = c(0.4, 0.2, 0.3),
     extremum.value = c(1.2, 1.0, 0.1),
@@ -509,6 +510,7 @@ test_that("basin plot helpers preserve all, listed, and selected scopes", {
     key = c("max|a", "max|b", "min|c", "min|d"),
     type = c("max", "max", "min", "min"),
     display.label = c("M1", "M2", "m1", "m2"),
+    rank = c(1L, 2L, 1L, 2L),
     primary.support.size = c(5L, 8L, 4L, 7L),
     primary.support.mass = c(0.2, 0.4, 0.1, 0.3),
     extremum.value = c(1.0, 1.2, -0.5, -0.2),
@@ -524,6 +526,19 @@ test_that("basin plot helpers preserve all, listed, and selected scopes", {
   expect_equal(ranked.plot.data$support_rank, c(2L, 1L, 2L, 1L))
   expect_equal(ranked.plot.data$mass_rank, c(2L, 1L, 2L, 1L))
   expect_equal(ranked.plot.data$prominence_rank, c(2L, 1L, 2L, 1L))
+  expect_equal(ranked.plot.data$rank, c(1L, 2L, 1L, 2L))
+  expect_equal(
+    gflowui:::gflowui_basin_plot_label_rows(ranked.plot.data, 1L),
+    c(1L, 3L)
+  )
+  expect_length(
+    gflowui:::gflowui_basin_plot_label_rows(ranked.plot.data, 0L),
+    0L
+  )
+  expect_length(
+    gflowui:::gflowui_basin_plot_label_rows(ranked.plot.data, integer()),
+    0L
+  )
 
   histograms <- gflowui:::gflowui_basin_new_plot_specs(
     c("support", "mass", "prominence"),

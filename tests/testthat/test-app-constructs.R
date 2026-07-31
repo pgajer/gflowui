@@ -855,6 +855,11 @@ test_that("basin server invalidates changed fields and graph identities", {
     expect_match(plot.workspace, "Add histograms", fixed = TRUE)
     expect_match(plot.workspace, "Add pair plots", fixed = TRUE)
     expect_match(plot.workspace, "Add matrix", fixed = TRUE)
+    expect_false(grepl(
+      'id="basin_plot_add_histograms"[^>]*btn-primary',
+      plot.workspace,
+      perl = TRUE
+    ))
     expect_match(
       plot.workspace,
       '<option value="max" selected>Maximum only</option>',
@@ -929,6 +934,28 @@ test_that("basin server invalidates changed fields and graph identities", {
     )$html
     expect_match(plot.workspace.with.pairs, "X-axis scale", fixed = TRUE)
     expect_match(plot.workspace.with.pairs, "Y-axis scale", fixed = TRUE)
+    expect_equal(
+      lengths(regmatches(
+        plot.workspace.with.pairs,
+        gregexpr(
+          "Label top-ranked basins",
+          plot.workspace.with.pairs,
+          fixed = TRUE
+        )
+      )),
+      3L
+    )
+    expect_equal(
+      lengths(regmatches(
+        plot.workspace.with.pairs,
+        gregexpr(
+          "Labels per extremum type (K)",
+          plot.workspace.with.pairs,
+          fixed = TRUE
+        )
+      )),
+      3L
+    )
     expect_equal(
       lengths(regmatches(
         plot.workspace.with.pairs,
