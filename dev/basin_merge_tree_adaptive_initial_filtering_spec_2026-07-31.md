@@ -2,7 +2,8 @@
 
 ## Status
 
-Revision 2, prepared after the 2026-07-31 specification audit.
+Revision 3, prepared after the 2026-07-31 specification audit and first
+re-audit.
 
 This document specifies a deterministic initial display policy for maximum
 basin merge trees in `gflowui`. It does not alter basin construction, basin
@@ -78,8 +79,9 @@ must not replace trajectory-flow mass in the version 1 proposal.
 
 ### Required mapping
 
-For the selected direction and component, `gflowui` maps each trajectory-flow
-basin to one canonical merge-tree branch by:
+Across the complete selected direction, before automatic component selection,
+`gflowui` maps each trajectory-flow basin to one canonical merge-tree branch
+by:
 
 ```text
 (direction, extremum.vertex)
@@ -113,11 +115,33 @@ The UI reports:
 - the selected component ID; and
 - the maximum-basin count in that component.
 
-When several components exist, the component selector is visible. The initial
-component is the component with the greatest validated trajectory-flow
-positive mass; ties use the stable canonical component ID. Changing direction
-or component invalidates the proposal. A user may instead choose a component
-explicitly.
+When several components exist, the component selector is visible. Component
+selection follows a whole-direction pre-pass:
+
+1. enumerate components in stable canonical component-ID order;
+2. validate the whole-direction trajectory-flow-to-canonical mapping;
+3. validate the complete declared trajectory-flow mass vector across all
+   maximum branches;
+4. when the mapping and vector are valid and at least one component has
+   positive mass, select the component with greatest positive-mass total,
+   breaking ties by stable component ID;
+5. when the mapping and vector are valid but all component totals are zero,
+   select the smallest stable component ID and record
+   `smallest_component_mass_unavailable`; and
+6. when the mapping is invalid, select the smallest stable component ID for
+   deterministic error presentation, record
+   `smallest_component_mapping_invalid`, and expose `mapping_invalid`;
+7. when any mass is missing, negative, or nonfinite, disable mass-based
+   component selection, select the smallest stable component ID, and record
+   `smallest_component_mass_invalid`.
+
+The all-zero fallback exposes `mass_unavailable`; the invalid-mass fallback
+exposes `mass_invalid`. Neither attempts a mass proposal. The user may choose
+another component explicitly, but the mass status remains in force.
+
+The proposal records all valid component totals or records that totals were
+unavailable, the component-selection rule, selected component, tie-break, and
+fallback reason. Changing direction or component invalidates the proposal.
 
 ## Source and Mass Validation
 
@@ -130,8 +154,9 @@ Source validation precedes adaptive filtering:
 A missing or nonfinite source-field value produces `source_invalid`. Filtering
 must not drop vertices or construct a partial graph.
 
-The declared trajectory-flow mass vector is then validated for the selected
-component:
+The declared trajectory-flow mass vector is first validated across the whole
+maximum direction, before automatic component selection, and then summarized
+for the selected component:
 
 - missing, negative, or nonfinite mass produces `mass_invalid`;
 - exact zero is valid, excluded from logarithms, and counted separately;
@@ -139,12 +164,46 @@ component:
 - zero total positive mass produces `mass_unavailable`;
 - normalization occurs only after the complete declared vector validates.
 
-`mass_invalid` and `mass_unavailable` disable Auto, Cumulative Mass, and
-Minimum Mass. A valid canonical tree may still use None/Show All.
+`mass_invalid` and `mass_unavailable` disable Auto, Cumulative Mass, Minimum
+Mass, and mass-ranked Top K. A valid canonical tree may still use None/Show
+All.
 
 Both mass-core coverage and final displayed-set coverage use the same declared
 positive-mass denominator. The denominator, positive count, and exact-zero
 count are recorded; it is never silently changed.
+
+## Parameter Validation
+
+The pure proposal helper and Shiny controls use the same strict domains:
+
+| Parameter | Valid domain |
+|---|---|
+| `filter.mode` | one of Auto, Cumulative Mass, Minimum Mass, Top K, None |
+| `coverage.target` | finite scalar with `0 < value <= 1` |
+| `strong.gap.decades` | finite nonnegative scalar |
+| `minimum.core.branches` | positive whole-number scalar |
+| `core.branch.budget` | positive whole-number scalar and not less than `minimum.core.branches` |
+| `final.render.budget` | positive whole-number scalar |
+| `sentinel.top.n` | nonnegative whole-number scalar |
+| `important.label.n` | nonnegative whole-number scalar |
+| `top.k` | positive whole-number scalar not exceeding selected-component branch count |
+| `minimum.mass` | finite nonnegative scalar |
+| sentinel toggles | nonmissing logical scalars |
+
+There is no required ordering between `core.branch.budget` and
+`final.render.budget`. A smaller final budget is valid and may produce
+`core_overflow`.
+
+Sentinel and label counts mean “up to N.” When a component contains fewer than
+N branches, all available branches are considered; this is the declared
+meaning of the parameter, not clamping. A valid Minimum Mass threshold that
+matches no branch returns the core status `threshold_empty`.
+
+Invalid, missing, nonfinite, fractional whole-number, or out-of-domain settings
+return `settings_invalid` with field-specific messages. The pure helper does
+not coerce or clamp them. The UI retains and continues displaying the last
+valid proposal, marks it as retained rather than current, shows the invalid
+input, and does not recompute until all settings validate.
 
 ## Diagnostic
 
@@ -247,7 +306,10 @@ tie-group boundary and canonical branch IDs.
   `tie_overflow` when K is straddled.
 - None/Show All uses every branch in the selected component.
 
-No mode splits a mass tie.
+The Auto and Cumulative Mass modes use `core.branch.budget`. Minimum Mass,
+Top K, and None preserve the explicitly requested core even when it exceeds
+that automatic-selection budget. Every mode is evaluated against
+`final.render.budget`; no mode splits a mass tie or silently truncates a core.
 
 ## Mandatory Sentinels
 
@@ -282,10 +344,20 @@ initial static tree.
 
 Mandatory branches are never silently discarded.
 
-- If a complete core tie group alone exceeds the final budget, return
-  `tie_overflow`.
-- If the pre-closure sentinel union exceeds it, return `sentinel_overflow`.
-- If ancestor closure causes the excess, return `closure_overflow`.
+Core status and final render status are independent. Final status uses this
+cause-based precedence:
+
+1. if the complete core exceeds the final budget, return `core_overflow`;
+2. otherwise, if the pre-closure sentinel union exceeds it, return
+   `sentinel_overflow`;
+3. otherwise, if ancestor closure causes the excess, return
+   `closure_overflow`; and
+4. otherwise return `renderable`.
+
+A core can therefore have core status `tie_overflow` and final status
+`core_overflow`; the tie status remains recorded as the core reason. The same
+`core_overflow` rule applies to Auto, Cumulative Mass, Minimum Mass, Top K, and
+None/Show All.
 
 In any overflow state, the panel initially shows the diagnostic, exact counts,
 coverage, warnings, and a concise overflow explanation instead of compressing
@@ -293,6 +365,10 @@ hundreds of branches into a static tree. `Open complete interactive tree`
 opens the canonical component in a zoomable, scrollable view with important
 labels only by default. Show All remains available. The Plot Workspace still
 uses all component basins.
+
+None/Show All routes directly to the complete interactive presentation when
+its complete-component core exceeds the final budget. It never attempts to
+compress that core into the initial static tree.
 
 The proposal stores and reports these non-overlapping counts:
 
@@ -355,14 +431,24 @@ selects the complete component. The accessor returns, without drawing:
 - crossing-free leaf order and branch/event coordinates; and
 - validation status.
 
+Canonical vertical values and display-layout horizontal values are distinct:
+
+- branch births, branch deaths, merge levels, persistence, parent identity,
+  and survivor identity are exact canonical values;
+- the selected leaf order is the complete canonical crossing-free leaf order
+  restricted to the selected canonical IDs; and
+- filtered leaf/trunk x coordinates are deterministically compressed and
+  reindexed for that restricted order.
+
 It rejects unknown IDs, mixed directions, mixed components, missing roots, and
 non-closed selections. With `close.ancestors = TRUE`, it adds and reports
 canonical ancestors instead of rejecting only the non-closure.
 
 `plot.basin.merge.tree()` must consume this same accessor and expose matching
 `basin.ids` and `close.ancestors` arguments. Static and interactive renderers
-must therefore use identical selected branches, events, closure, and
-coordinates.
+of the same filtered selection must therefore use identical selected branches,
+events, closure, restricted order, and filtered coordinates. Filtered x
+coordinates are not required to equal positions in the complete layout.
 
 ## Versioned Proposal Record
 
@@ -374,11 +460,13 @@ Every proposal is serializable as
 - graph, topology, vertex, field, estimate, source, trajectory-flow
   construction, and canonical-tree fingerprints;
 - direction and selected component;
+- component-selection rule, valid component totals, tie-break, and fallback
+  reason;
 - whole-direction and component basin counts;
 - exact measure names and owning construction identities;
 - source and mapping validation results;
 - stable ordered mass tie groups;
-- all parameter values;
+- all parameter values and settings-validation result;
 - core status, warnings, boundary, gap, and informational cutoff;
 - core canonical IDs;
 - sentinel IDs, all inclusion reasons, and primary reasons;
@@ -503,10 +591,12 @@ coverage
 single_positive
 coverage_capped
 tie_overflow
+threshold_empty
 mass_invalid
 mass_unavailable
 mapping_invalid
 source_invalid
+settings_invalid
 stale
 ```
 
@@ -514,12 +604,17 @@ Final rendering adds:
 
 ```text
 renderable
+core_overflow
 sentinel_overflow
 closure_overflow
-tie_overflow
+unavailable
 ```
 
-Warnings are additive, so a tie overflow may also report coverage capped.
+Warnings are additive, so a core `tie_overflow` may also report
+`coverage_capped` while final rendering reports `core_overflow`.
+Final status `unavailable` means source, mapping, or settings validation
+prevented construction of a current branch set; a retained last-valid view is
+not relabeled as current.
 
 ## Required Validation
 
@@ -533,49 +628,64 @@ Warnings are additive, so a tie overflow may also report coverage capped.
 4. Proposal serialization round-trips without changing ordered IDs or groups.
 5. Stale graph, field, source, construction, direction, or component identity
    is rejected by every coordinated panel.
+6. Whole-direction mapping and mass validation precede deterministic component
+   selection; positive, all-zero, invalid-mapping, and invalid-mass cases
+   record the specified rule, totals or their unavailability, and fallback.
 
 ### Algorithm
 
-6. Results are deterministic under row permutation.
-7. Tests cover a strong gap, several comparable gaps, smooth heavy tail,
+7. Results are deterministic under row permutation.
+8. Tests cover a strong gap, several comparable gaps, smooth heavy tail,
    extreme last-value gap, all-equal masses, coverage-boundary ties, and
    budget-boundary ties.
-8. The extreme late-gap example selects a bounded core, never rank 199.
-9. Tests cover negative, missing, nonfinite, all-zero, one-positive, and
+9. The extreme late-gap example selects a bounded core, never rank 199.
+10. Tests cover negative, missing, nonfinite, all-zero, one-positive, and
    two-positive mass vectors with exact typed statuses.
-10. Exact zeros never enter log calculations and remain available to Show All,
+11. Exact zeros never enter log calculations and remain available to Show All,
     sentinels, and closure.
-11. Core and final coverage use the same recorded denominator.
+12. Core and final coverage use the same recorded denominator.
+13. Pure helpers and UI inputs reject every invalid parameter boundary with
+    `settings_invalid`, retain the last valid proposal, and never coerce.
 
 ### Topology and components
 
-12. Complete-tree identity is unchanged by every filter.
-13. Unknown, mixed, or nonclosed selections fail in the public `gflow`
+14. Complete-tree identity is unchanged by every filter.
+15. Unknown, mixed, or nonclosed selections fail in the public `gflow`
     accessor unless ancestor closure is explicitly requested.
-14. Filtered public layouts preserve exact complete-tree births, deaths,
-    parents, events, survivor, and coordinates for the same selected IDs.
-15. Multiple components have per-component roots, proposals, counts, and
+16. Filtered public layouts preserve exact canonical IDs, parents, events,
+    births, deaths, merge levels, persistence, and survivor identity.
+17. Filtered leaf order is the complete canonical order restricted to selected
+    IDs; filtered x coordinates are deterministic under row permutation.
+18. Static and interactive renderers of the same selection use identical
+    filtered coordinates; no test equates them to complete-layout x positions.
+19. Multiple components have per-component roots, proposals, counts, and
     invalidation.
-16. Every final branch exists in the canonical tree; every label refers to a
+20. Every final branch exists in the canonical tree; every label refers to a
     final branch.
 
 ### Overflow and interaction
 
-17. Sentinel reasons and non-overlapping counts are exact.
-18. Deep, disjoint sentinel ancestry exercises `sentinel_overflow` and
+21. Sentinel reasons and non-overlapping counts are exact.
+22. Non-tied Auto, Minimum Mass, Top K, and None/Show All cores exercise
+    `core_overflow`.
+23. A tie-overflow core exceeding the final budget retains core status
+    `tie_overflow` and final status `core_overflow`.
+24. Deep, disjoint sentinel ancestry exercises `sentinel_overflow` and
     `closure_overflow`.
-19. Mandatory branches are never silently discarded.
-20. Desktop and narrow viewports remain usable in ordinary and overflow
+25. Mandatory branches are never silently discarded.
+26. Desktop and narrow viewports remain usable in ordinary and overflow
     states.
-21. Cross-panel selection highlights one canonical basin without
+27. Cross-panel selection highlights one canonical basin without
     reconstruction or Inspector-setting changes.
 
 ### Portable Subject 15 regression
 
-22. A clean checkout validates all 352 fixture mappings and canonical parents.
-23. The bounded algorithm returns the rank-17 strong-gap core and exact
+28. A clean checkout validates all 352 fixture mappings and canonical parents.
+29. The bounded algorithm returns the rank-17 strong-gap core and exact
     recorded coverage.
-24. Show All exposes all 352 fixture branches when the full canonical object
+30. The reference regression asserts exact tie groups, eligible boundaries,
+    first qualifying boundary, canonical core/final IDs, and `strong_gap`.
+31. Show All exposes all 352 fixture branches when the full canonical object
     is available.
 
 ## Implementation Order
