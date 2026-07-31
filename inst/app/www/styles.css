@@ -1319,6 +1319,35 @@ body.gf-general-inspector-resizing {
   margin-bottom: 0;
 }
 
+.gf-basin-plot-characteristics {
+  flex: 0 0 100%;
+  min-width: 0;
+}
+
+.gf-basin-plot-characteristics .shiny-options-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.28rem;
+}
+
+.gf-basin-plot-characteristics .checkbox {
+  display: block;
+  margin: 0;
+}
+
+.gf-basin-plot-characteristics .checkbox label {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: 0.45rem;
+  padding-left: 0;
+}
+
+.gf-basin-plot-characteristics .checkbox input[type="checkbox"] {
+  position: static;
+  margin: 0;
+}
+
 .gf-basin-plot-builder-actions {
   display: flex;
   flex-wrap: wrap;

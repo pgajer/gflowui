@@ -837,6 +837,12 @@ test_that("basin server invalidates changed fields and graph identities", {
     )$html
     expect_match(plot.workspace, "Basin Plot Workspace", fixed = TRUE)
     expect_match(plot.workspace, "Characteristics", fixed = TRUE)
+    expect_match(
+      plot.workspace,
+      "gf-basin-plot-characteristics",
+      fixed = TRUE
+    )
+    expect_false(grepl("checkbox-inline", plot.workspace, fixed = TRUE))
     expect_match(plot.workspace, "Extremum value rank", fixed = TRUE)
     expect_match(plot.workspace, "Support rank", fixed = TRUE)
     expect_match(plot.workspace, "Mass rank", fixed = TRUE)
