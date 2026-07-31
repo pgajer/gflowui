@@ -949,6 +949,17 @@ test_that("basin server invalidates changed fields and graph identities", {
       lengths(regmatches(
         plot.workspace.with.pairs,
         gregexpr(
+          'id="basin_plot_labels_[0-9]+"[^>]*checked',
+          plot.workspace.with.pairs,
+          perl = TRUE
+        )
+      )),
+      3L
+    )
+    expect_equal(
+      lengths(regmatches(
+        plot.workspace.with.pairs,
+        gregexpr(
           "Labels per extremum type (K)",
           plot.workspace.with.pairs,
           fixed = TRUE
