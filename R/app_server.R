@@ -8321,7 +8321,7 @@ app_server <- function(input, output, session) {
           occupation_density$colorbar_title %||% "EOD mass"
         ),
         color_transform = if (identical(occupation_type, "numeric")) {
-          "density_log10"
+          "density_asinh"
         } else {
           "identity"
         },
@@ -11241,7 +11241,7 @@ app_server <- function(input, output, session) {
         }
         density_palette <- if (identical(
           as.character(src$color_transform %||% "identity"),
-          "density_log10"
+          "density_asinh"
         )) {
           gflowui_density_palette(
             low = density_display_settings$low %||% "yellow",
@@ -12605,7 +12605,7 @@ app_server <- function(input, output, session) {
             transform = src$color_transform %||% "identity",
             title = src$colorbar_title %||% src$label
           )
-          if (identical(as.character(src$color_transform %||% "identity"), "density_log10")) {
+          if (identical(as.character(src$color_transform %||% "identity"), "density_asinh")) {
             density_colors <- numeric_arm_colors(
               color_encoding$mapped_values,
               palette = "Viridis",
