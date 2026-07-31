@@ -2,8 +2,8 @@
 
 ## Change Summary
 
-Revision 2 of the adaptive initial filtering specification resolves the
-blocking findings in the 2026-07-31 audit. No `gflow` or `gflowui` application
+Revision 3 of the adaptive initial filtering specification responds to the
+2026-07-31 audit and first re-audit. No `gflow` or `gflowui` application
 behavior has been implemented in this specification pass.
 
 The revised specification now defines:
@@ -17,8 +17,12 @@ The revised specification now defines:
 - typed sentinel and ancestor-closure overflow presentation;
 - a required public pure filtered-layout contract in `gflow`;
 - a versioned proposal record and construction-scoped settings;
-- a portable, provenance-pinned Subject 15 fixture; and
-- expanded algorithm, topology, serialization, and viewport tests.
+- a portable, provenance-pinned Subject 15 fixture;
+- expanded algorithm, topology, serialization, and viewport tests;
+- a generic `core_overflow` final-render state for every filter mode;
+- deterministic component fallback for invalid or unavailable mass;
+- separate canonical vertical values and compressed filtered x-layout; and
+- strict parameter domains with noncoercing invalid-setting behavior.
 
 The handoff no longer prescribes audit questions, acceptance criteria, or
 verdict wording.
@@ -31,14 +35,16 @@ Repository:
 
 `/Users/pgajer/current_projects/gflowui`
 
-Baseline before this revision:
+Baseline before revision 3:
 
-`925ed84bb6d4ab70efc0b7ebf5bc21979ee0c670`
+`51998e3776c2ee0e74a747f9b14089d0e36a9da9`
 
 Revised assets:
 
 - `dev/basin_merge_tree_adaptive_initial_filtering_spec_2026-07-31.md`
 - `dev/audits/basin_merge_tree_adaptive_initial_filtering_spec_audit_response_2026-07-31.md`
+- `dev/audits/basin_merge_tree_adaptive_initial_filtering_spec_audit_response_reaudit_2026-07-31.md`
+- `dev/audits/basin_merge_tree_adaptive_initial_filtering_spec_audit_response_reaudit_response_2026-07-31.md`
 - `dev/fixtures/derive_subject15_basin_merge_tree_adaptive_fixture.R`
 - `tests/testthat/fixtures/basin_merge_tree_subject15_maxima.csv`
 - `tests/testthat/fixtures/basin_merge_tree_subject15_maxima_provenance.csv`
@@ -86,6 +92,14 @@ Audit response:
 
 `/Users/pgajer/current_projects/gflowui/dev/audits/basin_merge_tree_adaptive_initial_filtering_spec_audit_response_2026-07-31.md`
 
+First re-audit:
+
+`/Users/pgajer/current_projects/gflowui/dev/audits/basin_merge_tree_adaptive_initial_filtering_spec_audit_response_reaudit_2026-07-31.md`
+
+First re-audit response:
+
+`/Users/pgajer/current_projects/gflowui/dev/audits/basin_merge_tree_adaptive_initial_filtering_spec_audit_response_reaudit_response_2026-07-31.md`
+
 ## Portable Fixture
 
 The clean-checkout fixture contains all 352 Subject 15 maximum branches and
@@ -112,9 +126,10 @@ afb7863d761932e31f4f1816f95b496db16fc58028663f26cb036ec6aa1af000
 ```
 
 The fixture records trajectory-flow mass/support separately from canonical
-tree parentage/prominence. Its tests reproduce the 352-branch mapping,
-rank-17 numerical evidence, raw retained mass, and denominator-normalized
-coverage without the upstream ZIP.
+tree parentage/prominence. Its tests reproduce the 352-branch mapping and raw
+rank-17 evidence, then execute the revision-3 bounded reference rule through
+tie groups, eligible boundaries, sentinels, closure, and final IDs without the
+upstream ZIP.
 
 ## Supporting Visual Evidence
 

@@ -3,9 +3,14 @@
 ## Disposition
 
 All eight blocking findings and both nonblocking findings were incorporated
-into revision 2 of:
+into the specification. Revision 3 also incorporates the residual findings
+from the first re-audit:
 
 `dev/basin_merge_tree_adaptive_initial_filtering_spec_2026-07-31.md`
+
+The first re-audit response is:
+
+`dev/audits/basin_merge_tree_adaptive_initial_filtering_spec_audit_response_reaudit_response_2026-07-31.md`
 
 This response records changes only. It does not claim audit acceptance or
 implementation completion.
@@ -142,8 +147,13 @@ prescribe questions, acceptance criteria, or verdicts.
 - The portable fixture was regenerated from those pinned inputs.
 - The one-to-one 352-branch trajectory/canonical mapping and canonical
   parentage were validated during derivation.
-- The fixture regression reproduces the Subject 15 rank-17 mass gap evidence
-  and distinguishes raw retained mass from denominator-normalized coverage.
+- Fixture-integrity assertions reproduce the raw Subject 15 mass and gap
+  values and distinguish raw retained mass from denominator-normalized
+  coverage.
+- A separate clean-checkout reference test executes the bounded rule and
+  asserts exact tie groups, `j.coverage`, `j.minimum`, eligible boundaries,
+  the first qualifying boundary, canonical core/final IDs, and
+  `strong_gap`.
 
 Implementation-level synthetic, public-API, serialization, Shiny, and viewport
 tests remain future work because the feature itself has not been implemented.
