@@ -9766,7 +9766,7 @@ app_server <- function(input, output, session) {
             shiny::checkboxInput(
               labels.id,
               "Label top-ranked basins",
-              value = isTRUE(basin_plot_input_value(labels.id, FALSE))
+              value = isTRUE(basin_plot_input_value(labels.id, TRUE))
             )
           } else NULL,
           if (!is.histogram && !is.matrix) {
