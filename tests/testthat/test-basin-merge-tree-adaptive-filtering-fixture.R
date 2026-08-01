@@ -445,7 +445,204 @@ reference_sha256 <- function(x) {
   )
 }
 
+reference_context_names <- c(
+  "schema",
+  "project_identity",
+  "subject_identity",
+  "graph_identity",
+  "topology_fingerprint",
+  "vertex_map_fingerprint",
+  "selected_field_identity",
+  "selected_field_fingerprint",
+  "selected_source_identity",
+  "selected_source_fingerprint",
+  "estimate_identity",
+  "trajectory_flow_construction_identity",
+  "trajectory_flow_construction_fingerprint",
+  "canonical_tree_construction_identity",
+  "canonical_tree_construction_fingerprint",
+  "direction",
+  "component"
+)
+
+reference_input_names <- c(
+  "filter_mode",
+  "coverage_target",
+  "strong_gap_decades",
+  "minimum_core_branches",
+  "core_branch_budget",
+  "final_render_budget",
+  "sentinel_top_n",
+  "important_label_n",
+  "top_k",
+  "minimum_mass",
+  "include_peak_sentinel",
+  "include_prominence_sentinel",
+  "include_support_sentinel",
+  "label_mode"
+)
+
+reference_context <- function(
+    component = 1L,
+    trajectory_fingerprint = "trajectory-1") {
+  list(
+    schema = "gflowui_basin_merge_tree_context/1",
+    project_identity = "project-1",
+    subject_identity = "subject-15",
+    graph_identity = "k03",
+    topology_fingerprint = "topology-1",
+    vertex_map_fingerprint = "vertices-1",
+    selected_field_identity = "occupation",
+    selected_field_fingerprint = "field-1",
+    selected_source_identity = "density",
+    selected_source_fingerprint = "source-1",
+    estimate_identity = "graph_heat",
+    trajectory_flow_construction_identity = "trajectory_flow",
+    trajectory_flow_construction_fingerprint = trajectory_fingerprint,
+    canonical_tree_construction_identity = "superlevel_merge_tree",
+    canonical_tree_construction_fingerprint = "canonical-1",
+    direction = "max",
+    component = as.integer(component)
+  )
+}
+
+reference_inputs <- function(
+    filter_mode = "none",
+    top_k = 10L,
+    minimum_mass = 0,
+    label_mode = "important") {
+  list(
+    filter_mode = filter_mode,
+    coverage_target = 0.99,
+    strong_gap_decades = 3,
+    minimum_core_branches = 3L,
+    core_branch_budget = 50L,
+    final_render_budget = 80L,
+    sentinel_top_n = 10L,
+    important_label_n = 6L,
+    top_k = top_k,
+    minimum_mass = minimum_mass,
+    include_peak_sentinel = TRUE,
+    include_prominence_sentinel = TRUE,
+    include_support_sentinel = TRUE,
+    label_mode = label_mode
+  )
+}
+
+reference_has_exact_names <- function(x, expected) {
+  is.list(x) &&
+    !is.null(names(x)) &&
+    identical(sort(names(x), method = "radix"), sort(expected, method = "radix"))
+}
+
+reference_is_string <- function(x) {
+  is.character(x) && length(x) == 1L && !is.na(x)
+}
+
+reference_is_integer <- function(x, nonnegative = FALSE, positive = FALSE) {
+  valid <- is.numeric(x) &&
+    length(x) == 1L &&
+    !is.na(x) &&
+    is.finite(x) &&
+    x == floor(x)
+  if (nonnegative) valid <- valid && x >= 0
+  if (positive) valid <- valid && x > 0
+  valid
+}
+
+reference_is_number <- function(x, nonnegative = FALSE) {
+  valid <- is.numeric(x) &&
+    length(x) == 1L &&
+    !is.na(x) &&
+    is.finite(x)
+  if (nonnegative) valid <- valid && x >= 0
+  valid
+}
+
+reference_is_logical <- function(x) {
+  is.logical(x) && length(x) == 1L && !is.na(x)
+}
+
+reference_is_id_array <- function(x) {
+  is.character(x) &&
+    !anyNA(x) &&
+    identical(x, sort(unique(x), method = "radix"))
+}
+
+reference_validate_context_structure <- function(context) {
+  valid <- reference_has_exact_names(context, reference_context_names) &&
+    identical(context$schema, "gflowui_basin_merge_tree_context/1") &&
+    all(vapply(
+      context[setdiff(
+        reference_context_names,
+        c("component")
+      )],
+      reference_is_string,
+      logical(1)
+    )) &&
+    identical(context$direction, "max") &&
+    reference_is_integer(context$component, positive = TRUE)
+  if (!valid) stop("schema_invalid")
+  TRUE
+}
+
+reference_validate_input_structure <- function(input_values) {
+  valid <- reference_has_exact_names(input_values, reference_input_names) &&
+    input_values$filter_mode %in% c(
+      "auto",
+      "cumulative_mass",
+      "minimum_mass",
+      "top_k",
+      "none"
+    ) &&
+    input_values$label_mode %in% c(
+      "important",
+      "selected",
+      "displayed",
+      "none",
+      "all"
+    ) &&
+    all(vapply(
+      input_values[c(
+        "include_peak_sentinel",
+        "include_prominence_sentinel",
+        "include_support_sentinel"
+      )],
+      reference_is_logical,
+      logical(1)
+    ))
+  if (!valid) stop("schema_invalid")
+  TRUE
+}
+
+reference_validate_parameter_domains <- function(parameters) {
+  reference_validate_input_structure(parameters)
+  valid <- reference_is_number(parameters$coverage_target) &&
+    parameters$coverage_target > 0 &&
+    parameters$coverage_target <= 1 &&
+    reference_is_number(
+      parameters$strong_gap_decades,
+      nonnegative = TRUE
+    ) &&
+    reference_is_integer(
+      parameters$minimum_core_branches,
+      positive = TRUE
+    ) &&
+    reference_is_integer(parameters$core_branch_budget, positive = TRUE) &&
+    reference_is_integer(parameters$final_render_budget, positive = TRUE) &&
+    reference_is_integer(parameters$sentinel_top_n, nonnegative = TRUE) &&
+    reference_is_integer(
+      parameters$important_label_n,
+      nonnegative = TRUE
+    ) &&
+    reference_is_integer(parameters$top_k, positive = TRUE) &&
+    reference_is_number(parameters$minimum_mass, nonnegative = TRUE)
+  if (!valid) stop("schema_invalid")
+  TRUE
+}
+
 reference_context_fingerprint <- function(context) {
+  reference_validate_context_structure(context)
   reference_sha256(list(
     schema = "gflowui_basin_merge_tree_context/1",
     context = context
@@ -453,6 +650,7 @@ reference_context_fingerprint <- function(context) {
 }
 
 reference_attempt_fingerprint <- function(context_fingerprint, input_values) {
+  reference_validate_input_structure(input_values)
   reference_sha256(list(
     schema = "gflowui_basin_merge_tree_active_attempt/1",
     context_fingerprint = context_fingerprint,
@@ -467,6 +665,15 @@ reference_proposal_fingerprint <- function(proposal) {
   reference_sha256(list(
     schema = "gflowui_basin_merge_tree_display_proposal_content/1",
     proposal = content
+  ))
+}
+
+reference_view_state_fingerprint <- function(state) {
+  content <- state
+  content$view_state_fingerprint <- NULL
+  reference_sha256(list(
+    schema = "gflowui_basin_merge_tree_view_state_content/1",
+    view_state = content
   ))
 }
 
@@ -494,7 +701,11 @@ reference_mass_derived <- function(
       available = FALSE,
       unavailable_reason = "mass_unavailable",
       positive_groups = list(),
-      all_mass_groups = list(list(mass = 0, ids = branch_ids)),
+      all_mass_groups = list(list(
+        mass = 0,
+        ids = branch_ids,
+        endpoint = length(branch_ids)
+      )),
       denominator = 0,
       positive_count = 0L,
       zero_count = length(branch_ids),
@@ -513,20 +724,34 @@ reference_mass_derived <- function(
   grouped <- split(branch_ids, mass[branch_ids])
   group_values <- as.numeric(names(grouped))
   group_order <- order(-group_values)
+  cumulative_endpoint <- 0L
+  cumulative_mass <- 0
+  denominator <- sum(mass[mass > 0])
   all_groups <- lapply(
     group_order,
     function(index) {
+      ids <- sort(grouped[[index]])
+      cumulative_endpoint <<- cumulative_endpoint + length(ids)
       list(
         mass = group_values[[index]],
-        ids = sort(grouped[[index]])
+        ids = ids,
+        endpoint = cumulative_endpoint
       )
     }
   )
-  positive_groups <- Filter(
-    function(group) group$mass > 0,
-    all_groups
+  positive_groups <- lapply(
+    Filter(function(group) group$mass > 0, all_groups),
+    function(group) {
+      cumulative_mass <<-
+        cumulative_mass + group$mass * length(group$ids)
+      list(
+        mass = group$mass,
+        ids = group$ids,
+        endpoint = group$endpoint,
+        cumulative_coverage = cumulative_mass / denominator
+      )
+    }
   )
-  denominator <- sum(mass[mass > 0])
   list(
     available = TRUE,
     unavailable_reason = NULL,
@@ -549,6 +774,8 @@ reference_view_proposal <- function(
     mass = NULL,
     creation_time = "2026-08-01T12:00:00-04:00") {
   mass_state <- match.arg(mass_state)
+  reference_validate_context_structure(context)
+  reference_validate_input_structure(input_values)
   final_ids <- sort(final_ids)
   if (mass_state == "valid" && is.null(mass)) {
     mass <- rep(1 / length(final_ids), length(final_ids))
@@ -570,15 +797,77 @@ reference_view_proposal <- function(
     component_survivor = final_ids[[1L]],
     selected_or_pinned = character()
   )
+  component_total <- if (mass_state == "mass_invalid") {
+    NULL
+  } else {
+    list(list(
+      component = context$component,
+      mass_total = if (mass_state == "mass_unavailable") 0 else sum(mass)
+    ))
+  }
+  component_rule <- if (mass_state == "valid") {
+    "greatest_positive_mass_total"
+  } else {
+    paste0("smallest_component_", mass_state)
+  }
+  survivor_id <- final_ids[[1L]]
+  category_counts <- list(
+    mass_core = length(final_ids),
+    selected_or_pinned_only = 0L,
+    survivor_only = 0L,
+    peak_only = 0L,
+    prominence_only = 0L,
+    support_only = 0L,
+    ancestor_only = 0L,
+    final_union = length(final_ids)
+  )
+  core_outcome <- if (
+    identical(input_values$filter_mode, "none")
+  ) {
+    "complete"
+  } else {
+    "top_k"
+  }
   proposal <- list(
     schema = "gflowui_basin_merge_tree_display_proposal/3",
+    context = context,
     context_fingerprint = reference_context_fingerprint(context),
     proposal_fingerprint = NULL,
     creation_time = creation_time,
-    context_fields = context,
-    algorithm = "adaptive_initial_filtering",
-    algorithm_version = 6L,
-    input_values = input_values,
+    algorithm = list(
+      name = "adaptive_initial_filtering",
+      version = 7L
+    ),
+    component_selection = list(
+      rule = component_rule,
+      component_totals = component_total,
+      tie_break = "stable_component_id",
+      fallback_reason = if (mass_state == "valid") NULL else mass_state,
+      direction_basin_count = length(final_ids),
+      graph_component_count = 1L,
+      selected_component_basin_count = length(final_ids)
+    ),
+    measures = list(
+      trajectory_flow_mass = list(
+        name = "primary.support.mass",
+        owner_identity =
+          context$trajectory_flow_construction_identity
+      ),
+      trajectory_flow_support = list(
+        name = "primary.support.size",
+        owner_identity =
+          context$trajectory_flow_construction_identity
+      ),
+      source_peak = list(
+        name = "selected field value at extremum",
+        owner_identity = context$selected_source_identity
+      ),
+      canonical_prominence = list(
+        name = "persistence",
+        owner_identity =
+          context$canonical_tree_construction_identity
+      )
+    ),
     validation = list(
       identity = "current",
       source = "valid",
@@ -591,39 +880,549 @@ reference_view_proposal <- function(
       ),
       settings = "valid"
     ),
+    mapping = list(
+      cardinality = length(final_ids),
+      direction = context$direction,
+      component = context$component
+    ),
+    accepted_parameters = input_values,
     mass_derived = mass_derived,
-    label_contributions = label_contributions,
-    label_omission_reasons = if (mass_derived$available) {
-      character()
-    } else {
-      paste0("trajectory_flow_mass:", mass_state)
-    },
-    core_outcome = if (
-      identical(input_values$filter_mode, "none")
-    ) {
-      "complete"
-    } else {
-      "top_k"
-    },
-    core_ids = final_ids,
-    final_ids = final_ids,
-    label_ids = sort(unique(unlist(
-      label_contributions,
-      use.names = FALSE
-    ))),
-    render_outcome = render_outcome
+    core = list(
+      outcome = core_outcome,
+      warnings = character(),
+      boundary = if (core_outcome == "top_k") {
+        length(final_ids)
+      } else {
+        NULL
+      },
+      gap_decades = NULL,
+      informational_cutoff = NULL,
+      ids = final_ids
+    ),
+    sentinels = list(
+      ids = survivor_id,
+      inclusion_reasons = setNames(
+        list("component_survivor"),
+        survivor_id
+      ),
+      primary_reasons = setNames(
+        list("component_survivor"),
+        survivor_id
+      ),
+      counts = category_counts
+    ),
+    ancestor_only_ids = character(),
+    final = list(
+      ids = final_ids,
+      label_ids = sort(unique(unlist(
+        label_contributions,
+        use.names = FALSE
+      ))),
+      label_contributions = label_contributions,
+      label_omission_reasons = if (mass_derived$available) {
+        character()
+      } else {
+        paste0("trajectory_flow_mass:", mass_state)
+      },
+      category_counts = category_counts,
+      render_outcome = render_outcome
+    )
   )
   proposal$proposal_fingerprint <-
     reference_proposal_fingerprint(proposal)
   proposal
 }
 
+reference_category_count_names <- c(
+  "mass_core",
+  "selected_or_pinned_only",
+  "survivor_only",
+  "peak_only",
+  "prominence_only",
+  "support_only",
+  "ancestor_only",
+  "final_union"
+)
+
+reference_label_contribution_names <- c(
+  "trajectory_flow_mass",
+  "source_peak",
+  "canonical_prominence",
+  "trajectory_flow_support",
+  "component_survivor",
+  "selected_or_pinned"
+)
+
+reference_validate_mass_group <- function(group, positive) {
+  expected <- if (positive) {
+    c("mass", "ids", "endpoint", "cumulative_coverage")
+  } else {
+    c("mass", "ids", "endpoint")
+  }
+  valid <- reference_has_exact_names(group, expected) &&
+    reference_is_number(group$mass, nonnegative = TRUE) &&
+    (!positive || group$mass > 0) &&
+    reference_is_id_array(group$ids) &&
+    length(group$ids) > 0L &&
+    reference_is_integer(group$endpoint, positive = TRUE)
+  if (positive) {
+    valid <- valid &&
+      reference_is_number(group$cumulative_coverage) &&
+      group$cumulative_coverage > 0 &&
+      group$cumulative_coverage <= 1
+  }
+  if (!valid) stop("schema_invalid")
+  TRUE
+}
+
+reference_validate_proposal_structure <- function(proposal) {
+  top_names <- c(
+    "schema",
+    "context",
+    "context_fingerprint",
+    "proposal_fingerprint",
+    "creation_time",
+    "algorithm",
+    "component_selection",
+    "measures",
+    "validation",
+    "mapping",
+    "accepted_parameters",
+    "mass_derived",
+    "core",
+    "sentinels",
+    "ancestor_only_ids",
+    "final"
+  )
+  valid <- reference_has_exact_names(proposal, top_names) &&
+    identical(
+      proposal$schema,
+      "gflowui_basin_merge_tree_display_proposal/3"
+    ) &&
+    reference_is_string(proposal$context_fingerprint) &&
+    grepl("^[0-9a-f]{64}$", proposal$context_fingerprint) &&
+    reference_is_string(proposal$proposal_fingerprint) &&
+    grepl("^[0-9a-f]{64}$", proposal$proposal_fingerprint) &&
+    reference_is_string(proposal$creation_time) &&
+    grepl(
+      "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[+-][0-9]{2}:[0-9]{2}$",
+      proposal$creation_time
+    ) &&
+    reference_has_exact_names(
+      proposal$algorithm,
+      c("name", "version")
+    ) &&
+    reference_is_string(proposal$algorithm$name) &&
+    reference_is_integer(proposal$algorithm$version, positive = TRUE)
+  if (!valid) stop("schema_invalid")
+
+  reference_validate_context_structure(proposal$context)
+  reference_validate_parameter_domains(proposal$accepted_parameters)
+
+  component <- proposal$component_selection
+  valid <- reference_has_exact_names(component, c(
+    "rule",
+    "component_totals",
+    "tie_break",
+    "fallback_reason",
+    "direction_basin_count",
+    "graph_component_count",
+    "selected_component_basin_count"
+  )) &&
+    reference_is_string(component$rule) &&
+    reference_is_string(component$tie_break) &&
+    (is.null(component$fallback_reason) ||
+      reference_is_string(component$fallback_reason)) &&
+    reference_is_integer(
+      component$direction_basin_count,
+      nonnegative = TRUE
+    ) &&
+    reference_is_integer(component$graph_component_count, positive = TRUE) &&
+    reference_is_integer(
+      component$selected_component_basin_count,
+      nonnegative = TRUE
+    )
+  if (!valid) stop("schema_invalid")
+  if (!is.null(component$component_totals)) {
+    if (!is.list(component$component_totals)) stop("schema_invalid")
+    for (entry in component$component_totals) {
+      valid <- reference_has_exact_names(
+        entry,
+        c("component", "mass_total")
+      ) &&
+        reference_is_integer(entry$component, positive = TRUE) &&
+        reference_is_number(entry$mass_total, nonnegative = TRUE)
+      if (!valid) stop("schema_invalid")
+    }
+    component_ids <- vapply(
+      component$component_totals,
+      function(entry) entry$component,
+      numeric(1)
+    )
+    if (!identical(component_ids, sort(unique(component_ids)))) {
+      stop("schema_invalid")
+    }
+  }
+
+  valid <- reference_has_exact_names(proposal$measures, c(
+    "trajectory_flow_mass",
+    "trajectory_flow_support",
+    "source_peak",
+    "canonical_prominence"
+  ))
+  if (!valid) stop("schema_invalid")
+  for (measure in proposal$measures) {
+    valid <- reference_has_exact_names(
+      measure,
+      c("name", "owner_identity")
+    ) &&
+      reference_is_string(measure$name) &&
+      reference_is_string(measure$owner_identity)
+    if (!valid) stop("schema_invalid")
+  }
+
+  validation <- proposal$validation
+  valid <- reference_has_exact_names(validation, c(
+    "identity",
+    "source",
+    "mapping",
+    "ranking_measure",
+    "settings"
+  )) &&
+    identical(validation$identity, "current") &&
+    identical(validation$source, "valid") &&
+    identical(validation$mapping, "valid") &&
+    identical(validation$settings, "valid") &&
+    reference_has_exact_names(validation$ranking_measure, c(
+      "trajectory_flow_mass",
+      "trajectory_flow_support",
+      "source_peak",
+      "canonical_prominence"
+    )) &&
+    validation$ranking_measure$trajectory_flow_mass %in%
+      c("valid", "mass_invalid", "mass_unavailable") &&
+    all(unlist(
+      validation$ranking_measure[c(
+        "trajectory_flow_support",
+        "source_peak",
+        "canonical_prominence"
+      )],
+      use.names = FALSE
+    ) == "valid")
+  if (!valid) stop("schema_invalid")
+
+  valid <- reference_has_exact_names(
+    proposal$mapping,
+    c("cardinality", "direction", "component")
+  ) &&
+    reference_is_integer(
+      proposal$mapping$cardinality,
+      nonnegative = TRUE
+    ) &&
+    identical(proposal$mapping$direction, "max") &&
+    reference_is_integer(proposal$mapping$component, positive = TRUE) &&
+    identical(
+      proposal$mapping$direction,
+      proposal$context$direction
+    ) &&
+    identical(
+      proposal$mapping$component,
+      proposal$context$component
+    )
+  if (!valid) stop("schema_invalid")
+
+  mass <- proposal$mass_derived
+  valid <- reference_has_exact_names(mass, c(
+    "available",
+    "unavailable_reason",
+    "positive_groups",
+    "all_mass_groups",
+    "denominator",
+    "positive_count",
+    "zero_count",
+    "core_coverage",
+    "final_coverage"
+  )) &&
+    reference_is_logical(mass$available)
+  if (!valid) stop("schema_invalid")
+  if (!is.null(mass$positive_groups)) {
+    if (!is.list(mass$positive_groups)) stop("schema_invalid")
+    lapply(
+      mass$positive_groups,
+      reference_validate_mass_group,
+      positive = TRUE
+    )
+    if (length(mass$positive_groups)) {
+      positive_masses <- vapply(
+        mass$positive_groups,
+        function(group) group$mass,
+        numeric(1)
+      )
+      positive_endpoints <- vapply(
+        mass$positive_groups,
+        function(group) group$endpoint,
+        numeric(1)
+      )
+      positive_coverage <- vapply(
+        mass$positive_groups,
+        function(group) group$cumulative_coverage,
+        numeric(1)
+      )
+      if (
+        is.unsorted(-positive_masses, strictly = FALSE) ||
+          is.unsorted(positive_endpoints, strictly = TRUE) ||
+          is.unsorted(positive_coverage, strictly = FALSE)
+      ) {
+        stop("schema_invalid")
+      }
+    }
+  }
+  if (!is.null(mass$all_mass_groups)) {
+    if (!is.list(mass$all_mass_groups)) stop("schema_invalid")
+    lapply(
+      mass$all_mass_groups,
+      reference_validate_mass_group,
+      positive = FALSE
+    )
+    if (length(mass$all_mass_groups)) {
+      all_masses <- vapply(
+        mass$all_mass_groups,
+        function(group) group$mass,
+        numeric(1)
+      )
+      all_endpoints <- vapply(
+        mass$all_mass_groups,
+        function(group) group$endpoint,
+        numeric(1)
+      )
+      if (
+        is.unsorted(-all_masses, strictly = FALSE) ||
+          is.unsorted(all_endpoints, strictly = TRUE)
+      ) {
+        stop("schema_invalid")
+      }
+    }
+  }
+  for (field in c("denominator", "core_coverage", "final_coverage")) {
+    if (
+      !is.null(mass[[field]]) &&
+        !reference_is_number(mass[[field]], nonnegative = TRUE)
+    ) {
+      stop("schema_invalid")
+    }
+  }
+  for (field in c("positive_count", "zero_count")) {
+    if (
+      !is.null(mass[[field]]) &&
+        !reference_is_integer(mass[[field]], nonnegative = TRUE)
+    ) {
+      stop("schema_invalid")
+    }
+  }
+
+  core <- proposal$core
+  valid <- reference_has_exact_names(core, c(
+    "outcome",
+    "warnings",
+    "boundary",
+    "gap_decades",
+    "informational_cutoff",
+    "ids"
+  )) &&
+    core$outcome %in% c(
+      "strong_gap",
+      "coverage",
+      "single_positive",
+      "coverage_capped",
+      "minimum_mass",
+      "threshold_empty",
+      "top_k",
+      "complete"
+    ) &&
+    is.character(core$warnings) &&
+    all(core$warnings %in% "tie_overflow") &&
+    reference_is_id_array(core$ids)
+  if (!valid) stop("schema_invalid")
+  if (
+    !is.null(core$boundary) &&
+      !reference_is_integer(core$boundary, nonnegative = TRUE)
+  ) {
+    stop("schema_invalid")
+  }
+  for (field in c("gap_decades", "informational_cutoff")) {
+    if (
+      !is.null(core[[field]]) &&
+        !reference_is_number(core[[field]], nonnegative = TRUE)
+    ) {
+      stop("schema_invalid")
+    }
+  }
+
+  valid <- reference_has_exact_names(proposal$sentinels, c(
+    "ids",
+    "inclusion_reasons",
+    "primary_reasons",
+    "counts"
+  )) &&
+    reference_is_id_array(proposal$sentinels$ids) &&
+    reference_has_exact_names(
+      proposal$sentinels$counts,
+      reference_category_count_names
+    ) &&
+    all(vapply(
+      proposal$sentinels$counts,
+      reference_is_integer,
+      logical(1),
+      nonnegative = TRUE
+    )) &&
+    reference_is_id_array(proposal$ancestor_only_ids)
+  if (!valid) stop("schema_invalid")
+  allowed_reasons <- c(
+    "selected_or_pinned",
+    "component_survivor",
+    "peak",
+    "prominence",
+    "support"
+  )
+  inclusion <- proposal$sentinels$inclusion_reasons
+  primary <- proposal$sentinels$primary_reasons
+  valid <- is.list(inclusion) &&
+    is.list(primary) &&
+    identical(names(inclusion), sort(names(inclusion), method = "radix")) &&
+    identical(names(primary), sort(names(primary), method = "radix")) &&
+    all(vapply(
+      inclusion,
+      function(value) {
+        is.character(value) &&
+          length(value) > 0L &&
+          all(value %in% allowed_reasons)
+      },
+      logical(1)
+    )) &&
+    all(vapply(
+      primary,
+      function(value) {
+        is.character(value) &&
+          length(value) == 1L &&
+          value %in% allowed_reasons
+      },
+      logical(1)
+    ))
+  if (!valid) stop("schema_invalid")
+
+  if (
+    !setequal(names(inclusion), proposal$sentinels$ids) ||
+      !setequal(names(primary), proposal$sentinels$ids)
+  ) {
+    stop("schema_invalid")
+  }
+
+  final <- proposal$final
+  valid <- reference_has_exact_names(final, c(
+    "ids",
+    "label_ids",
+    "label_contributions",
+    "label_omission_reasons",
+    "category_counts",
+    "render_outcome"
+  )) &&
+    reference_is_id_array(final$ids) &&
+    reference_is_id_array(final$label_ids) &&
+    reference_has_exact_names(
+      final$label_contributions,
+      reference_label_contribution_names
+    ) &&
+    all(vapply(
+      final$label_contributions,
+      reference_is_id_array,
+      logical(1)
+    )) &&
+    is.character(final$label_omission_reasons) &&
+    reference_has_exact_names(
+      final$category_counts,
+      reference_category_count_names
+    ) &&
+    all(vapply(
+      final$category_counts,
+      reference_is_integer,
+      logical(1),
+      nonnegative = TRUE
+    )) &&
+    final$render_outcome %in% c(
+      "renderable",
+      "core_overflow",
+      "sentinel_overflow",
+      "closure_overflow"
+    )
+  if (!valid) stop("schema_invalid")
+
+  valid <- all(core$ids %in% final$ids) &&
+    all(proposal$sentinels$ids %in% final$ids) &&
+    all(proposal$ancestor_only_ids %in% final$ids) &&
+    all(final$label_ids %in% final$ids) &&
+    identical(
+      final$category_counts$mass_core,
+      length(core$ids)
+    ) &&
+    identical(
+      final$category_counts$final_union,
+      length(final$ids)
+    ) &&
+    identical(
+      proposal$mapping$cardinality,
+      component$selected_component_basin_count
+    )
+  if (!valid) stop("schema_invalid")
+
+  mass_state <- validation$ranking_measure$trajectory_flow_mass
+  if (mass_state == "valid") {
+    valid <- mass$available &&
+      is.null(mass$unavailable_reason) &&
+      is.list(mass$positive_groups) &&
+      is.list(mass$all_mass_groups) &&
+      reference_is_number(mass$denominator) &&
+      mass$denominator > 0 &&
+      reference_is_integer(mass$positive_count, nonnegative = TRUE) &&
+      reference_is_integer(mass$zero_count, nonnegative = TRUE) &&
+      reference_is_number(mass$core_coverage) &&
+      reference_is_number(mass$final_coverage)
+  } else if (mass_state == "mass_unavailable") {
+    valid <- !mass$available &&
+      identical(mass$unavailable_reason, "mass_unavailable") &&
+      identical(mass$positive_groups, list()) &&
+      length(mass$all_mass_groups) == 1L &&
+      identical(mass$denominator, 0) &&
+      identical(mass$positive_count, 0L) &&
+      identical(
+        mass$zero_count,
+        component$selected_component_basin_count
+      ) &&
+      identical(mass$all_mass_groups[[1L]]$mass, 0) &&
+      identical(mass$all_mass_groups[[1L]]$ids, final$ids) &&
+      is.null(mass$core_coverage) &&
+      is.null(mass$final_coverage)
+  } else {
+    valid <- !mass$available &&
+      identical(mass$unavailable_reason, "mass_invalid") &&
+      is.null(mass$positive_groups) &&
+      is.null(mass$all_mass_groups) &&
+      is.null(mass$denominator) &&
+      is.null(mass$positive_count) &&
+      is.null(mass$zero_count) &&
+      is.null(mass$core_coverage) &&
+      is.null(mass$final_coverage)
+  }
+  if (!valid) stop("schema_invalid")
+  TRUE
+}
+
 reference_validate_proposal <- function(
     proposal,
     expected_context_fingerprint = NULL) {
+  reference_validate_proposal_structure(proposal)
   valid <- identical(
     proposal$context_fingerprint,
-    reference_context_fingerprint(proposal$context_fields)
+    reference_context_fingerprint(proposal$context)
   ) &&
     identical(
       proposal$proposal_fingerprint,
@@ -743,8 +1542,9 @@ reference_view_transition <- function(
     display_proposal <- NULL
   }
 
-  list(
+  view <- list(
     schema = "gflowui_basin_merge_tree_view_state/1",
+    view_state_fingerprint = NULL,
     context_fingerprint = context_fingerprint,
     active_attempt = active_attempt,
     display_source = display_source,
@@ -755,32 +1555,185 @@ reference_view_transition <- function(
     },
     display_proposal = display_proposal
   )
+  view$view_state_fingerprint <- reference_view_state_fingerprint(view)
+  view
 }
 
 reference_validate_view_state <- function(state) {
+  if (!reference_has_exact_names(state, c(
+    "schema",
+    "view_state_fingerprint",
+    "context_fingerprint",
+    "active_attempt",
+    "display_source",
+    "display_proposal_fingerprint",
+    "display_proposal"
+  ))) {
+    stop("schema_invalid")
+  }
+  if (
+    !identical(state$schema, "gflowui_basin_merge_tree_view_state/1") ||
+      !reference_has_exact_names(state$active_attempt, c(
+        "fingerprint",
+        "input_values",
+        "validation",
+        "outcome",
+        "render_outcome"
+      ))
+  ) {
+    stop("schema_invalid")
+  }
+  reference_validate_input_structure(state$active_attempt$input_values)
+  validation <- state$active_attempt$validation
+  valid <- reference_is_string(state$view_state_fingerprint) &&
+    grepl("^[0-9a-f]{64}$", state$view_state_fingerprint) &&
+    reference_is_string(state$context_fingerprint) &&
+    grepl("^[0-9a-f]{64}$", state$context_fingerprint) &&
+    state$display_source %in% c(
+      "current",
+      "retained_last_valid",
+      "none"
+    ) &&
+    state$active_attempt$outcome %in% c(
+      "proposal_created",
+      "blocked",
+      "stale"
+    ) &&
+    (
+      is.null(state$active_attempt$render_outcome) ||
+        state$active_attempt$render_outcome %in% c("unavailable", "stale")
+    ) &&
+    reference_has_exact_names(validation, c(
+      "identity",
+      "source",
+      "mapping",
+      "ranking_measure",
+      "settings"
+    )) &&
+    validation$identity %in% c("current", "stale") &&
+    validation$source %in% c("valid", "source_invalid") &&
+    validation$mapping %in% c("valid", "mapping_invalid") &&
+    validation$settings %in% c("valid", "settings_invalid") &&
+    reference_has_exact_names(validation$ranking_measure, c(
+      "trajectory_flow_mass",
+      "trajectory_flow_support",
+      "source_peak",
+      "canonical_prominence"
+    )) &&
+    validation$ranking_measure$trajectory_flow_mass %in%
+      c("valid", "mass_invalid", "mass_unavailable") &&
+    validation$ranking_measure$trajectory_flow_support %in%
+      c("valid", "support_invalid") &&
+    validation$ranking_measure$source_peak %in%
+      c("valid", "peak_invalid") &&
+    validation$ranking_measure$canonical_prominence %in%
+      c("valid", "prominence_invalid")
+  if (!valid) stop("schema_invalid")
   valid <- identical(
+    state$view_state_fingerprint,
+    reference_view_state_fingerprint(state)
+  ) &&
+    identical(
     state$active_attempt$fingerprint,
     reference_attempt_fingerprint(
       state$context_fingerprint,
       state$active_attempt$input_values
     )
   )
-  if (!is.null(state$display_proposal)) {
-    valid <- valid &&
-      identical(
-        state$display_proposal_fingerprint,
-        state$display_proposal$proposal_fingerprint
-      )
-    if (valid) {
-      valid <- isTRUE(reference_validate_proposal(
-        state$display_proposal,
-        state$context_fingerprint
-      ))
-    }
-  } else {
-    valid <- valid && is.null(state$display_proposal_fingerprint)
-  }
   if (!valid) stop("fingerprint_invalid")
+  if (!is.null(state$display_proposal)) {
+    valid <- identical(
+      state$display_proposal_fingerprint,
+      state$display_proposal$proposal_fingerprint
+    )
+    if (!valid) stop("fingerprint_invalid")
+    reference_validate_proposal(
+      state$display_proposal,
+      state$context_fingerprint
+    )
+  } else {
+    valid <- is.null(state$display_proposal_fingerprint)
+    if (!valid) stop("view_state_invalid")
+  }
+
+  attempt <- state$active_attempt
+  if (!reference_has_exact_names(validation, c(
+    "identity",
+    "source",
+    "mapping",
+    "ranking_measure",
+    "settings"
+  ))) {
+    stop("schema_invalid")
+  }
+  filter_mode <- attempt$input_values$filter_mode
+  mass_only_none <- identical(filter_mode, "none") &&
+    validation$ranking_measure$trajectory_flow_mass %in%
+      c("mass_invalid", "mass_unavailable") &&
+    identical(validation$identity, "current") &&
+    identical(validation$source, "valid") &&
+    identical(validation$mapping, "valid") &&
+    identical(validation$settings, "valid") &&
+    all(unlist(
+      validation$ranking_measure[c(
+        "trajectory_flow_support",
+        "source_peak",
+        "canonical_prominence"
+      )],
+      use.names = FALSE
+    ) == "valid")
+  all_valid <- identical(validation$identity, "current") &&
+    identical(validation$source, "valid") &&
+    identical(validation$mapping, "valid") &&
+    identical(validation$settings, "valid") &&
+    all(unlist(validation$ranking_measure, use.names = FALSE) == "valid")
+  expected_outcome <- if (identical(validation$identity, "stale")) {
+    "stale"
+  } else if (all_valid || mass_only_none) {
+    "proposal_created"
+  } else {
+    "blocked"
+  }
+  expected_render <- switch(
+    expected_outcome,
+    proposal_created = NULL,
+    blocked = "unavailable",
+    stale = "stale"
+  )
+  semantic_valid <- identical(attempt$outcome, expected_outcome) &&
+    identical(attempt$render_outcome, expected_render)
+
+  if (expected_outcome == "proposal_created") {
+    semantic_valid <- semantic_valid &&
+      identical(state$display_source, "current") &&
+      !is.null(state$display_proposal) &&
+      identical(
+        state$display_proposal$accepted_parameters,
+        attempt$input_values
+      ) &&
+      identical(state$display_proposal$validation, validation)
+  } else if (expected_outcome == "stale") {
+    semantic_valid <- semantic_valid &&
+      identical(state$display_source, "none") &&
+      is.null(state$display_proposal)
+  } else if (identical(state$display_source, "retained_last_valid")) {
+    nonsetting_valid <- identical(validation$identity, "current") &&
+      identical(validation$source, "valid") &&
+      identical(validation$mapping, "valid") &&
+      all(unlist(
+        validation$ranking_measure,
+        use.names = FALSE
+      ) == "valid")
+    semantic_valid <- semantic_valid &&
+      identical(validation$settings, "settings_invalid") &&
+      nonsetting_valid &&
+      !is.null(state$display_proposal)
+  } else {
+    semantic_valid <- semantic_valid &&
+      identical(state$display_source, "none") &&
+      is.null(state$display_proposal)
+  }
+  if (!semantic_valid) stop("view_state_invalid")
   TRUE
 }
 
@@ -801,16 +1754,16 @@ reference_complete_tree_action <- function(
   state$recomputed <- TRUE
   state$active_attempt_fingerprint <- reference_attempt_fingerprint(
     state$context_fingerprint,
-    complete_proposal$input_values
+    complete_proposal$accepted_parameters
   )
-  state$active_input_values <- complete_proposal$input_values
+  state$active_input_values <- complete_proposal$accepted_parameters
   state$active_attempt_outcome <- "proposal_created"
   state$active_attempt_render_outcome <- NULL
   state$display_source <- "current"
   state$display_proposal_fingerprint <-
     complete_proposal$proposal_fingerprint
   state$display_proposal <- complete_proposal
-  state$core_outcome <- complete_proposal$core_outcome
+  state$core_outcome <- complete_proposal$core$outcome
   state
 }
 
@@ -1160,24 +2113,9 @@ test_that("all ranking measures have exact validation domains", {
 })
 
 test_that("view state keeps invalid attempts separate from retained proposals", {
-  context <- list(
-    project = "project-1",
-    subject = "subject-15",
-    graph = "k03",
-    topology_fingerprint = "topology-1",
-    vertex_map_fingerprint = "vertices-1",
-    selected_field = "occupation",
-    selected_field_fingerprint = "field-1",
-    selected_source = "density",
-    selected_source_fingerprint = "source-1",
-    estimate = "graph_heat",
-    trajectory_construction_fingerprint = "trajectory-1",
-    canonical_construction_fingerprint = "canonical-1",
-    direction = "max",
-    component = 1L
-  )
+  context <- reference_context()
   context_fingerprint <- reference_context_fingerprint(context)
-  inputs_one <- list(filter_mode = "top_k", top_k = 3L)
+  inputs_one <- reference_inputs("top_k", top_k = 3L)
   proposal_one <- reference_view_proposal(
     context,
     inputs_one,
@@ -1189,7 +2127,7 @@ test_that("view state keeps invalid attempts separate from retained proposals", 
       context_fingerprint,
       inputs_one
     ),
-    input_values = proposal_one$input_values,
+    input_values = proposal_one$accepted_parameters,
     validation = "valid",
     proposal = proposal_one
   )
@@ -1203,7 +2141,7 @@ test_that("view state keeps invalid attempts separate from retained proposals", 
   expect_identical(current$display_proposal, proposal_one)
   expect_true(reference_validate_view_state(current))
 
-  invalid_inputs <- list(filter_mode = "top_k", top_k = 2.5)
+  invalid_inputs <- reference_inputs("top_k", top_k = 2.5)
   retained <- reference_view_transition(
     current,
     context_fingerprint = context_fingerprint,
@@ -1230,7 +2168,7 @@ test_that("view state keeps invalid attempts separate from retained proposals", 
   ))
   expect_identical(retained$display_proposal, proposal_one)
   expect_identical(
-    retained$display_proposal$input_values$top_k,
+    retained$display_proposal$accepted_parameters$top_k,
     3L
   )
   expect_identical(
@@ -1239,7 +2177,7 @@ test_that("view state keeps invalid attempts separate from retained proposals", 
   )
   expect_true(reference_validate_view_state(retained))
 
-  inputs_two <- list(filter_mode = "top_k", top_k = 2L)
+  inputs_two <- reference_inputs("top_k", top_k = 2L)
   proposal_two <- reference_view_proposal(
     context,
     inputs_two,
@@ -1253,7 +2191,7 @@ test_that("view state keeps invalid attempts separate from retained proposals", 
       context_fingerprint,
       inputs_two
     ),
-    input_values = proposal_two$input_values,
+    input_values = proposal_two$accepted_parameters,
     validation = "valid",
     proposal = proposal_two
   )
@@ -1288,7 +2226,7 @@ test_that("view state keeps invalid attempts separate from retained proposals", 
     "prominence_invalid",
     "stale"
   )) {
-    blocking_inputs <- proposal_two$input_values
+    blocking_inputs <- proposal_two$accepted_parameters
     cleared <- reference_view_transition(
       recovered,
       context_fingerprint = context_fingerprint,
@@ -1345,25 +2283,10 @@ test_that("view state keeps invalid attempts separate from retained proposals", 
 })
 
 test_that("Filter None installs typed mass-failure proposals end to end", {
-  context <- list(
-    project = "project-1",
-    subject = "subject-15",
-    graph = "k03",
-    topology_fingerprint = "topology-1",
-    vertex_map_fingerprint = "vertices-1",
-    selected_field = "occupation",
-    selected_field_fingerprint = "field-1",
-    selected_source = "density",
-    selected_source_fingerprint = "source-1",
-    estimate = "graph_heat",
-    trajectory_construction_fingerprint = "trajectory-1",
-    canonical_construction_fingerprint = "canonical-1",
-    direction = "max",
-    component = 1L
-  )
+  context <- reference_context()
   context_fingerprint <- reference_context_fingerprint(context)
   branch_ids <- c("b1", "b2", "b3", "b4")
-  inputs <- list(filter_mode = "none")
+  inputs <- reference_inputs("none")
 
   for (mass_state in c("mass_invalid", "mass_unavailable")) {
     proposal <- reference_view_proposal(
@@ -1389,17 +2312,17 @@ test_that("Filter None installs typed mass-failure proposals end to end", {
       proposal$mass_derived$unavailable_reason,
       mass_state
     )
-    expect_identical(proposal$core_outcome, "complete")
-    expect_identical(proposal$core_ids, sort(branch_ids))
-    expect_identical(proposal$final_ids, sort(branch_ids))
-    expect_identical(proposal$render_outcome, "core_overflow")
+    expect_identical(proposal$core$outcome, "complete")
+    expect_identical(proposal$core$ids, sort(branch_ids))
+    expect_identical(proposal$final$ids, sort(branch_ids))
+    expect_identical(proposal$final$render_outcome, "core_overflow")
     expect_identical(
-      proposal$label_contributions$trajectory_flow_mass,
+      proposal$final$label_contributions$trajectory_flow_mass,
       character()
     )
-    expect_true(length(proposal$label_ids) > 0L)
+    expect_true(length(proposal$final$label_ids) > 0L)
     expect_identical(
-      proposal$label_omission_reasons,
+      proposal$final$label_omission_reasons,
       paste0("trajectory_flow_mass:", mass_state)
     )
     expect_null(proposal$mass_derived$core_coverage)
@@ -1442,7 +2365,7 @@ test_that("Filter None installs typed mass-failure proposals end to end", {
     expect_true(reference_validate_view_state(round_trip))
   }
 
-  mass_mode_inputs <- list(filter_mode = "top_k", top_k = 2L)
+  mass_mode_inputs <- reference_inputs("top_k", top_k = 2L)
   blocked <- reference_view_transition(
     context_fingerprint = context_fingerprint,
     attempt_fingerprint = reference_attempt_fingerprint(
@@ -1456,10 +2379,11 @@ test_that("Filter None installs typed mass-failure proposals end to end", {
   expect_identical(blocked$display_source, "none")
   expect_null(blocked$display_proposal)
 
-  old_context <- context
-  old_context$trajectory_construction_fingerprint <- "trajectory-old"
+  old_context <- reference_context(
+    trajectory_fingerprint = "trajectory-old"
+  )
   old_context_fingerprint <- reference_context_fingerprint(old_context)
-  old_inputs <- list(filter_mode = "top_k", top_k = 2L)
+  old_inputs <- reference_inputs("top_k", top_k = 2L)
   old_proposal <- reference_view_proposal(
     old_context,
     old_inputs,
@@ -1507,29 +2431,14 @@ test_that("Filter None installs typed mass-failure proposals end to end", {
 })
 
 test_that("fingerprints are deterministic and reject inconsistent state", {
-  context <- list(
-    project = "project-1",
-    subject = "subject-15",
-    graph = "k03",
-    topology_fingerprint = "topology-1",
-    vertex_map_fingerprint = "vertices-1",
-    selected_field = "occupation",
-    selected_field_fingerprint = "field-1",
-    selected_source = "density",
-    selected_source_fingerprint = "source-1",
-    estimate = "graph_heat",
-    trajectory_construction_fingerprint = "trajectory-1",
-    canonical_construction_fingerprint = "canonical-1",
-    direction = "max",
-    component = 1L
-  )
+  context <- reference_context()
   reordered_context <- context[rev(names(context))]
   expect_identical(
     reference_context_fingerprint(context),
     reference_context_fingerprint(reordered_context)
   )
 
-  inputs <- list(filter_mode = "none", labels = "important")
+  inputs <- reference_inputs("none", label_mode = "important")
   reordered_inputs <- inputs[rev(names(inputs))]
   context_fingerprint <- reference_context_fingerprint(context)
   expect_identical(
@@ -1555,14 +2464,14 @@ test_that("fingerprints are deterministic and reject inconsistent state", {
   expect_true(reference_validate_proposal(proposal, context_fingerprint))
 
   tampered <- proposal
-  tampered$final_ids <- c("b1", "b2")
+  tampered$algorithm$name <- "tampered_algorithm"
   expect_error(
     reference_validate_proposal(tampered, context_fingerprint),
     "fingerprint_invalid"
   )
 
   wrong_context <- proposal
-  wrong_context$context_fields$component <- 2L
+  wrong_context$context$subject_identity <- "subject-other"
   expect_error(
     reference_validate_proposal(wrong_context, context_fingerprint),
     "fingerprint_invalid"
@@ -1613,35 +2522,194 @@ test_that("fingerprints are deterministic and reject inconsistent state", {
   )
 
   corrupted_attempt <- unserialize(serialize(view, NULL))
-  corrupted_attempt$active_attempt$input_values$labels <- "all"
+  corrupted_attempt$active_attempt$input_values$label_mode <- "all"
   expect_error(
     reference_validate_view_state(corrupted_attempt),
     "fingerprint_invalid"
   )
 })
 
-test_that("complete-tree controls have distinct persistent and viewer actions", {
-  context <- list(
-    project = "project-1",
-    subject = "subject-15",
-    graph = "k03",
-    topology_fingerprint = "topology-1",
-    vertex_map_fingerprint = "vertices-1",
-    selected_field = "occupation",
-    selected_field_fingerprint = "field-1",
-    selected_source = "density",
-    selected_source_fingerprint = "source-1",
-    estimate = "graph_heat",
-    trajectory_construction_fingerprint = "trajectory-1",
-    canonical_construction_fingerprint = "canonical-1",
-    direction = "max",
-    component = 1L
+test_that("closed wire schemas reject structural proposal and context drift", {
+  context <- reference_context()
+  inputs <- reference_inputs("none")
+  expected_proposal_names <- c(
+    "schema",
+    "context",
+    "context_fingerprint",
+    "proposal_fingerprint",
+    "creation_time",
+    "algorithm",
+    "component_selection",
+    "measures",
+    "validation",
+    "mapping",
+    "accepted_parameters",
+    "mass_derived",
+    "core",
+    "sentinels",
+    "ancestor_only_ids",
+    "final"
   )
+
+  for (mass_state in c(
+    "valid",
+    "mass_invalid",
+    "mass_unavailable"
+  )) {
+    proposal <- reference_view_proposal(
+      context,
+      inputs,
+      c("b1", "b2", "b3"),
+      mass_state = mass_state
+    )
+    expect_setequal(names(proposal), expected_proposal_names)
+    expect_setequal(names(proposal$context), reference_context_names)
+    expect_true(reference_validate_proposal_structure(proposal))
+    expect_true(reference_validate_proposal(
+      unserialize(serialize(proposal, NULL)),
+      reference_context_fingerprint(context)
+    ))
+  }
+
+  proposal <- reference_view_proposal(
+    context,
+    inputs,
+    c("b1", "b2", "b3")
+  )
+  missing <- proposal
+  missing$mapping <- NULL
+  expect_error(
+    reference_validate_proposal(missing),
+    "schema_invalid"
+  )
+
+  additional <- proposal
+  additional$unexpected <- "not permitted"
+  expect_error(
+    reference_validate_proposal(additional),
+    "schema_invalid"
+  )
+
+  mistyped <- proposal
+  mistyped$core$ids <- c(1, 2, 3)
+  expect_error(
+    reference_validate_proposal(mistyped),
+    "schema_invalid"
+  )
+
+  wrong_version <- proposal
+  wrong_version$schema <-
+    "gflowui_basin_merge_tree_display_proposal/4"
+  expect_error(
+    reference_validate_proposal(wrong_version),
+    "schema_invalid"
+  )
+
+  missing_context_field <- context
+  missing_context_field$trajectory_flow_construction_identity <- NULL
+  expect_error(
+    reference_context_fingerprint(missing_context_field),
+    "schema_invalid"
+  )
+
+  additional_context_field <- context
+  additional_context_field$unexpected <- "not permitted"
+  expect_error(
+    reference_context_fingerprint(additional_context_field),
+    "schema_invalid"
+  )
+
+  wrong_context_version <- context
+  wrong_context_version$schema <- "gflowui_basin_merge_tree_context/2"
+  expect_error(
+    reference_context_fingerprint(wrong_context_version),
+    "schema_invalid"
+  )
+})
+
+test_that("view-state fingerprints and matrix reject envelope corruption", {
+  context <- reference_context()
+  context_fingerprint <- reference_context_fingerprint(context)
+  inputs <- reference_inputs("none")
+  proposal <- reference_view_proposal(
+    context,
+    inputs,
+    c("b1", "b2", "b3")
+  )
+  view <- reference_view_transition(
+    context_fingerprint = context_fingerprint,
+    attempt_fingerprint = reference_attempt_fingerprint(
+      context_fingerprint,
+      inputs
+    ),
+    input_values = inputs,
+    validation = "valid",
+    proposal = proposal
+  )
+  expect_true(reference_validate_view_state(view))
+
+  mutations <- list(
+    display_source = function(x) {
+      x$display_source <- "none"
+      x
+    },
+    attempt_outcome = function(x) {
+      x$active_attempt$outcome <- "blocked"
+      x
+    },
+    attempt_render_outcome = function(x) {
+      x$active_attempt$render_outcome <- "unavailable"
+      x
+    },
+    attempt_validation = function(x) {
+      x$active_attempt$validation$settings <- "settings_invalid"
+      x
+    }
+  )
+  for (mutate in mutations) {
+    corrupted <- mutate(unserialize(serialize(view, NULL)))
+    expect_error(
+      reference_validate_view_state(corrupted),
+      "fingerprint_invalid"
+    )
+
+    corrupted$view_state_fingerprint <-
+      reference_view_state_fingerprint(corrupted)
+    expect_error(
+      reference_validate_view_state(corrupted),
+      "view_state_invalid"
+    )
+  }
+
+  missing <- view
+  missing$display_source <- NULL
+  expect_error(
+    reference_validate_view_state(missing),
+    "schema_invalid"
+  )
+
+  additional <- view
+  additional$unexpected <- TRUE
+  expect_error(
+    reference_validate_view_state(additional),
+    "schema_invalid"
+  )
+
+  wrong_version <- view
+  wrong_version$schema <- "gflowui_basin_merge_tree_view_state/2"
+  expect_error(
+    reference_validate_view_state(wrong_version),
+    "schema_invalid"
+  )
+})
+
+test_that("complete-tree controls have distinct persistent and viewer actions", {
+  context <- reference_context()
   context_fingerprint <- reference_context_fingerprint(context)
   for (render_outcome in c("renderable", "core_overflow")) {
     complete_proposal <- reference_view_proposal(
       context,
-      list(filter_mode = "none"),
+      reference_inputs("none"),
       c("b1", "b2", "b3"),
       render_outcome = render_outcome
     )
@@ -1677,13 +2745,13 @@ test_that("complete-tree controls have distinct persistent and viewer actions", 
     expect_identical(show_all$core_outcome, "complete")
     expect_identical(
       show_all$active_input_values,
-      complete_proposal$input_values
+      complete_proposal$accepted_parameters
     )
     expect_identical(
       show_all$active_attempt_fingerprint,
       reference_attempt_fingerprint(
         context_fingerprint,
-        complete_proposal$input_values
+        complete_proposal$accepted_parameters
       )
     )
     expect_identical(

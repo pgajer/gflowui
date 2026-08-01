@@ -2,8 +2,8 @@
 
 ## Change Summary
 
-Revision 6 of the adaptive initial filtering specification responds to the
-2026-07-31 audit series through the Revision 5 re-audit dated 2026-08-01. No
+Revision 7 of the adaptive initial filtering specification responds to the
+2026-07-31 audit series through the Revision 6 re-audit dated 2026-08-01. No
 `gflow` or `gflowui` application behavior has been implemented in this
 specification pass.
 
@@ -53,7 +53,15 @@ The revised specification now defines:
 - independently validated proposal/view deserialization with no fingerprint
   repair; and
 - exact separation of serialized filter state `none` from core outcome
-  `complete`.
+  `complete`;
+- closed context/1, proposal/3, and view-state/1 wire schemas;
+- exact field, type, cardinality, ordering, nullability, and schema-evolution
+  rules;
+- schema-complete valid, mass-invalid, and mass-unavailable reference
+  proposals;
+- rejection of missing, additional, mistyped, and wrong-version records;
+- a view-state fingerprint covering every deterministic envelope field; and
+- semantic state-matrix validation after fingerprint validation.
 
 The handoff no longer prescribes audit questions, acceptance criteria, or
 verdict wording.
@@ -66,9 +74,9 @@ Repository:
 
 `/Users/pgajer/current_projects/gflowui`
 
-Baseline before revision 6:
+Baseline before revision 7:
 
-`d63f676c2a114daafdb2b2d6800d8449e96dfde8`
+`f9a879027dd359d29b1894d4cf23ea0b850f7784`
 
 Revised assets:
 
@@ -83,6 +91,8 @@ Revised assets:
 - `dev/audits/basin_merge_tree_adaptive_initial_filtering_revision4_reaudit_response_2026-08-01.md`
 - `dev/audits/basin_merge_tree_adaptive_initial_filtering_revision5_reaudit_2026-08-01.md`
 - `dev/audits/basin_merge_tree_adaptive_initial_filtering_revision5_reaudit_response_2026-08-01.md`
+- `dev/audits/basin_merge_tree_adaptive_initial_filtering_revision6_reaudit_2026-08-01.md`
+- `dev/audits/basin_merge_tree_adaptive_initial_filtering_revision6_reaudit_response_2026-08-01.md`
 - `dev/fixtures/derive_subject15_basin_merge_tree_adaptive_fixture.R`
 - `tests/testthat/fixtures/basin_merge_tree_subject15_maxima.csv`
 - `tests/testthat/fixtures/basin_merge_tree_subject15_maxima_provenance.csv`
@@ -166,6 +176,14 @@ Revision 6 response:
 
 `/Users/pgajer/current_projects/gflowui/dev/audits/basin_merge_tree_adaptive_initial_filtering_revision5_reaudit_response_2026-08-01.md`
 
+Revision 6 re-audit:
+
+`/Users/pgajer/current_projects/gflowui/dev/audits/basin_merge_tree_adaptive_initial_filtering_revision6_reaudit_2026-08-01.md`
+
+Revision 7 response:
+
+`/Users/pgajer/current_projects/gflowui/dev/audits/basin_merge_tree_adaptive_initial_filtering_revision6_reaudit_response_2026-08-01.md`
+
 ## Portable Fixture
 
 The clean-checkout fixture contains all 352 Subject 15 maximum branches and
@@ -201,7 +219,11 @@ proposal/view-state transitions, recovery and context invalidation, and
 complete-tree control semantics. Revision 6 adds full canonical-only
 mass-failure proposal/view round-trips, typed mass fields, non-mass label
 retention, deterministic SHA-256 recomputation, tamper rejection, and exact
-None/complete control-state separation.
+None/complete control-state separation. Revision 7 replaces the abbreviated
+reference record with the complete closed proposal/3 shape, adds strict
+context/proposal/view structural validation, fingerprints the complete view
+envelope, and rejects both isolated and consistently re-fingerprinted
+state-matrix corruption.
 
 ## Supporting Visual Evidence
 
@@ -232,10 +254,10 @@ Rscript -e 'testthat::test_file("tests/testthat/test-basin-merge-tree-adaptive-f
 
 The first command intentionally requires the pinned upstream source assets and
 fails on a digest mismatch. The second command uses only committed fixture
-assets. At Revision 6 it reports:
+assets. At Revision 7 it reports:
 
 ```text
-PASS 393
+PASS 424
 FAIL 0
 WARN 0
 SKIP 0
