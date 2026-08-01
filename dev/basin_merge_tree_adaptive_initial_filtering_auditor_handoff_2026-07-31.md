@@ -2,8 +2,8 @@
 
 ## Change Summary
 
-Revision 7 of the adaptive initial filtering specification responds to the
-2026-07-31 audit series through the Revision 6 re-audit dated 2026-08-01. No
+Revision 8 of the adaptive initial filtering specification responds to the
+2026-07-31 audit series through the Revision 7 re-audit dated 2026-08-01. No
 `gflow` or `gflowui` application behavior has been implemented in this
 specification pass.
 
@@ -60,8 +60,17 @@ The revised specification now defines:
 - schema-complete valid, mass-invalid, and mass-unavailable reference
   proposals;
 - rejection of missing, additional, mistyped, and wrong-version records;
-- a view-state fingerprint covering every deterministic envelope field; and
-- semantic state-matrix validation after fingerprint validation.
+- a view-state fingerprint covering every deterministic envelope field;
+- semantic state-matrix validation after fingerprint validation;
+- separation of the complete raw ActiveInput snapshot from mode-projected
+  accepted proposal parameters;
+- a closed tagged union for parsed, missing, nonfinite, and unparsable numeric
+  control inputs;
+- schema-directed signed-64 integer and binary64 number serialization with
+  fixed digest vectors;
+- an explicit mapped selected-component canonical ID universe; and
+- relational recomputation of mass groups, endpoints, counts, denominator,
+  cumulative coverage, and core/final coverage after fingerprint validation.
 
 The handoff no longer prescribes audit questions, acceptance criteria, or
 verdict wording.
@@ -74,9 +83,9 @@ Repository:
 
 `/Users/pgajer/current_projects/gflowui`
 
-Baseline before revision 7:
+Baseline before revision 8:
 
-`f9a879027dd359d29b1894d4cf23ea0b850f7784`
+`3486504425cd79dd715b6286c4d0de2a5191cb55`
 
 Revised assets:
 
@@ -93,6 +102,8 @@ Revised assets:
 - `dev/audits/basin_merge_tree_adaptive_initial_filtering_revision5_reaudit_response_2026-08-01.md`
 - `dev/audits/basin_merge_tree_adaptive_initial_filtering_revision6_reaudit_2026-08-01.md`
 - `dev/audits/basin_merge_tree_adaptive_initial_filtering_revision6_reaudit_response_2026-08-01.md`
+- `dev/audits/basin_merge_tree_adaptive_initial_filtering_revision7_reaudit_2026-08-01.md`
+- `dev/audits/basin_merge_tree_adaptive_initial_filtering_revision7_reaudit_response_2026-08-01.md`
 - `dev/fixtures/derive_subject15_basin_merge_tree_adaptive_fixture.R`
 - `tests/testthat/fixtures/basin_merge_tree_subject15_maxima.csv`
 - `tests/testthat/fixtures/basin_merge_tree_subject15_maxima_provenance.csv`
@@ -184,6 +195,14 @@ Revision 7 response:
 
 `/Users/pgajer/current_projects/gflowui/dev/audits/basin_merge_tree_adaptive_initial_filtering_revision6_reaudit_response_2026-08-01.md`
 
+Revision 7 re-audit:
+
+`/Users/pgajer/current_projects/gflowui/dev/audits/basin_merge_tree_adaptive_initial_filtering_revision7_reaudit_2026-08-01.md`
+
+Revision 8 response:
+
+`/Users/pgajer/current_projects/gflowui/dev/audits/basin_merge_tree_adaptive_initial_filtering_revision7_reaudit_response_2026-08-01.md`
+
 ## Portable Fixture
 
 The clean-checkout fixture contains all 352 Subject 15 maximum branches and
@@ -223,7 +242,10 @@ None/complete control-state separation. Revision 7 replaces the abbreviated
 reference record with the complete closed proposal/3 shape, adds strict
 context/proposal/view structural validation, fingerprints the complete view
 envelope, and rejects both isolated and consistently re-fingerprinted
-state-matrix corruption.
+state-matrix corruption. Revision 8 separates raw and accepted parameter
+state, closes numeric-input tokens, makes scalar serialization
+schema-directed, declares the selected-component ID universe, and rejects
+consistently re-fingerprinted false mass relationships.
 
 ## Supporting Visual Evidence
 
@@ -254,10 +276,10 @@ Rscript -e 'testthat::test_file("tests/testthat/test-basin-merge-tree-adaptive-f
 
 The first command intentionally requires the pinned upstream source assets and
 fails on a digest mismatch. The second command uses only committed fixture
-assets. At Revision 7 it reports:
+assets. At Revision 8 it reports:
 
 ```text
-PASS 424
+PASS 811
 FAIL 0
 WARN 0
 SKIP 0
@@ -268,8 +290,10 @@ SKIP 0
 - The adaptive proposal and UI are not implemented.
 - The required public `gflow` filtered-layout API is specified but not
   implemented.
-- The Subject 15 fixture validates one empirical component; adversarial
-  synthetic tests remain an implementation requirement.
+- The Subject 15 fixture validates one empirical component. The reference
+  suite now includes adversarial schema, scalar, inactive-input, fingerprint,
+  state-matrix, and mass-relational tests; application-level equivalents
+  remain an implementation requirement.
 - Minima/sublevel defaults are outside version 1.
 - No scientific acceptance of adaptive filtering or EOD interpretation is
   claimed.
