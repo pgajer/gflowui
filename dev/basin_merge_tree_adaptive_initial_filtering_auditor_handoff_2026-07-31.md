@@ -2,8 +2,8 @@
 
 ## Change Summary
 
-Revision 5 of the adaptive initial filtering specification responds to the
-2026-07-31 audit series through the Revision 4 re-audit dated 2026-08-01. No
+Revision 6 of the adaptive initial filtering specification responds to the
+2026-07-31 audit series through the Revision 5 re-audit dated 2026-08-01. No
 `gflow` or `gflowui` application behavior has been implemented in this
 specification pass.
 
@@ -42,7 +42,18 @@ The revised specification now defines:
 - deterministic current, retained-last-valid, absent, recovery, and stale
   transitions; and
 - distinct persistent-filter, shortcut, and nonmutating-viewer semantics for
-  complete-tree controls.
+  complete-tree controls;
+- first-use filtration-value and density-value elder-rule terminology;
+- a field-level typed mass-derived contract for canonical-only Filter None
+  proposals under invalid or unavailable mass;
+- preservation of valid non-mass Important-label contributions in those
+  proposals;
+- explicit context, proposal, and active-attempt SHA-256 fingerprint
+  contracts;
+- independently validated proposal/view deserialization with no fingerprint
+  repair; and
+- exact separation of serialized filter state `none` from core outcome
+  `complete`.
 
 The handoff no longer prescribes audit questions, acceptance criteria, or
 verdict wording.
@@ -55,9 +66,9 @@ Repository:
 
 `/Users/pgajer/current_projects/gflowui`
 
-Baseline before revision 5:
+Baseline before revision 6:
 
-`4b7610476a91dfd371a5f494f3c431d421685689`
+`d63f676c2a114daafdb2b2d6800d8449e96dfde8`
 
 Revised assets:
 
@@ -70,6 +81,8 @@ Revised assets:
 - `dev/audits/basin_merge_tree_adaptive_initial_filtering_spec_audit_response_followup_reaudit_response_2026-08-01.md`
 - `dev/audits/basin_merge_tree_adaptive_initial_filtering_revision4_reaudit_2026-08-01.md`
 - `dev/audits/basin_merge_tree_adaptive_initial_filtering_revision4_reaudit_response_2026-08-01.md`
+- `dev/audits/basin_merge_tree_adaptive_initial_filtering_revision5_reaudit_2026-08-01.md`
+- `dev/audits/basin_merge_tree_adaptive_initial_filtering_revision5_reaudit_response_2026-08-01.md`
 - `dev/fixtures/derive_subject15_basin_merge_tree_adaptive_fixture.R`
 - `tests/testthat/fixtures/basin_merge_tree_subject15_maxima.csv`
 - `tests/testthat/fixtures/basin_merge_tree_subject15_maxima_provenance.csv`
@@ -145,6 +158,14 @@ Revision 5 response:
 
 `/Users/pgajer/current_projects/gflowui/dev/audits/basin_merge_tree_adaptive_initial_filtering_revision4_reaudit_response_2026-08-01.md`
 
+Revision 5 re-audit:
+
+`/Users/pgajer/current_projects/gflowui/dev/audits/basin_merge_tree_adaptive_initial_filtering_revision5_reaudit_2026-08-01.md`
+
+Revision 6 response:
+
+`/Users/pgajer/current_projects/gflowui/dev/audits/basin_merge_tree_adaptive_initial_filtering_revision5_reaudit_response_2026-08-01.md`
+
 ## Portable Fixture
 
 The clean-checkout fixture contains all 352 Subject 15 maximum branches and
@@ -172,12 +193,15 @@ afb7863d761932e31f4f1816f95b496db16fc58028663f26cb036ec6aa1af000
 
 The fixture records trajectory-flow mass/support separately from canonical
 tree parentage/prominence. Its tests reproduce the 352-branch mapping and raw
-rank-17 evidence, then execute the revision-5 bounded reference rule through
+rank-17 evidence, then execute the revision-6 bounded reference rule through
 tie groups, eligible boundaries, sentinels, closure, and final IDs without the
-upstream ZIP. Revision 5 retains the exact manual-mode cases and adds
+upstream ZIP. Revision 5 retained the exact manual-mode cases and added
 whole-direction ranking-domain checks, invalid-ranking blocking, immutable
 proposal/view-state transitions, recovery and context invalidation, and
-complete-tree control semantics.
+complete-tree control semantics. Revision 6 adds full canonical-only
+mass-failure proposal/view round-trips, typed mass fields, non-mass label
+retention, deterministic SHA-256 recomputation, tamper rejection, and exact
+None/complete control-state separation.
 
 ## Supporting Visual Evidence
 
@@ -208,7 +232,14 @@ Rscript -e 'testthat::test_file("tests/testthat/test-basin-merge-tree-adaptive-f
 
 The first command intentionally requires the pinned upstream source assets and
 fails on a digest mismatch. The second command uses only committed fixture
-assets.
+assets. At Revision 6 it reports:
+
+```text
+PASS 393
+FAIL 0
+WARN 0
+SKIP 0
+```
 
 ## Known Limits
 
