@@ -47,13 +47,30 @@ hidden branches are spurious.
 `gflowui` must not call a private `gflow` layout helper, copy tree-layout logic,
 construct an induced graph, or recompute a basin complex for display filtering.
 
+### Canonical merge-survivor rule
+
+The canonical tree uses the **filtration-value elder rule**, specialized here
+as the **density-value elder rule**. At a superlevel-set merge, the branch with
+the larger birth-density value survives because it was born earlier in the
+descending filtration. Equal birth-density values use the deterministic
+`gflow` tie-break: the branch with the smaller canonical extremum-vertex index
+survives.
+
+This density-value rule alone determines canonical branch continuation,
+parentage, and survivor identity in version 1. Trajectory-flow mass and support
+rank branches for display but do not alter canonical merge survival. A future
+mass-priority or support-priority rule would be a separately named
+merge-survivor policy with its own noncircular measurement and tie contract,
+not a reinterpretation of the density-value elder rule.
+
 ### Scientific and display invariants
 
 1. `gflow::get.basin.merge.tree()` supplies the complete canonical tree.
 2. Every eligible source field has exactly one finite value per graph vertex.
 3. Filtering changes only initial presentation.
-4. Births, deaths, parents, elder-rule survival, prominence, assignments,
-   mass, support, and graph alignment remain unchanged.
+4. Births, deaths, parents, survival under the density-value elder rule,
+   prominence, assignments, mass, support, and graph alignment remain
+   unchanged.
 5. A displayed branch subset is canonical-ID based and ancestor-closed.
 6. Branch filtering and label filtering are separate.
 7. Every panel validates the same active graph, vertex, field, source,
@@ -85,10 +102,11 @@ No missing value, implicit omission, coercion, rounding, or replacement is
 permitted. Exact zero support and zero prominence are valid.
 
 For a non-surviving maximum branch, canonical prominence is
-`birth.level - death.level`. For the elder-rule survivor of each component,
-death is the component minimum of the selected field and prominence is
-`birth.level - component.minimum`. Thus the survivor also has one finite,
-nonnegative prominence; infinity and `NA` are not survivor conventions.
+`birth.level - death.level`. For the survivor under the density-value elder
+rule in each component, death is the component minimum of the selected field
+and prominence is `birth.level - component.minimum`. Thus the survivor also
+has one finite, nonnegative prominence; infinity and `NA` are not survivor
+conventions.
 
 Tree-native support mass, when shown, must be labeled
 `merge-tree primary support mass`. It must not be called simply `Mass`, and it
@@ -123,7 +141,7 @@ Version 1 applies only to `direction = "max"`.
 
 Every proposal is scoped to one `(direction, graph component)`. Mass ranking,
 sentinels, ancestor closure, coverage, labels, and budgets are computed within
-that component. Its elder-rule survivor is mandatory.
+that component. Its survivor under the density-value elder rule is mandatory.
 
 The UI reports:
 
@@ -406,7 +424,7 @@ Within the selected component, the mandatory union contains:
 
 1. the mass core;
 2. selected or pinned branches;
-3. the component elder-rule survivor;
+3. the component survivor under the density-value elder rule;
 4. the top `sentinel.top.n` branches by descending maximum peak value;
 5. the top `sentinel.top.n` branches by canonical prominence; and
 6. the top `sentinel.top.n` branches by trajectory-flow support.
