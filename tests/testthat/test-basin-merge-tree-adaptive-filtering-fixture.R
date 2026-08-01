@@ -290,6 +290,226 @@ reference_activate_mode <- function(
   )
 }
 
+reference_ranking_gate <- function(
+    mass,
+    support,
+    peak,
+    prominence,
+    mode = c("auto", "complete")) {
+  mode <- match.arg(mode)
+  n <- length(mass)
+  valid_finite <- function(x) {
+    is.numeric(x) && length(x) == n && all(is.finite(x))
+  }
+  mass_status <- if (!valid_finite(mass) || any(mass < 0)) {
+    "mass_invalid"
+  } else if (!any(mass > 0)) {
+    "mass_unavailable"
+  } else {
+    "valid"
+  }
+  support_status <- if (
+    !valid_finite(support) ||
+      any(support < 0) ||
+      any(support != floor(support))
+  ) {
+    "support_invalid"
+  } else {
+    "valid"
+  }
+  peak_status <- if (!valid_finite(peak)) {
+    "peak_invalid"
+  } else {
+    "valid"
+  }
+  prominence_status <- if (
+    !valid_finite(prominence) ||
+      any(prominence < 0)
+  ) {
+    "prominence_invalid"
+  } else {
+    "valid"
+  }
+  validation <- list(
+    trajectory_flow_mass = mass_status,
+    trajectory_flow_support = support_status,
+    source_peak = peak_status,
+    canonical_prominence = prominence_status
+  )
+  nonmass_blocked <- any(c(
+    support_status != "valid",
+    peak_status != "valid",
+    prominence_status != "valid"
+  ))
+  mass_blocked <- mode != "complete" && mass_status != "valid"
+  blocked <- nonmass_blocked || mass_blocked
+  ids <- paste0("b", seq_len(n))
+
+  list(
+    source_validation = if (peak_status == "valid") {
+      "valid"
+    } else {
+      "source_invalid"
+    },
+    ranking_measure_validation = validation,
+    core_outcome = if (blocked) {
+      NULL
+    } else if (mode == "complete") {
+      "complete"
+    } else {
+      "strong_gap"
+    },
+    sentinel_ids = if (blocked) character() else ids,
+    label_ids = if (blocked) character() else ids,
+    final_ids = if (blocked) character() else ids,
+    render_outcome = if (blocked) "unavailable" else "renderable",
+    mass_views_available = mass_status == "valid"
+  )
+}
+
+reference_view_proposal <- function(
+    fingerprint,
+    context_fingerprint,
+    input_values,
+    final_ids,
+    render_outcome = "renderable") {
+  list(
+    schema = "gflowui_basin_merge_tree_display_proposal/3",
+    fingerprint = fingerprint,
+    context_fingerprint = context_fingerprint,
+    input_values = input_values,
+    core_ids = final_ids,
+    final_ids = final_ids,
+    render_outcome = render_outcome
+  )
+}
+
+reference_view_transition <- function(
+    state = NULL,
+    context_fingerprint,
+    attempt_fingerprint,
+    input_values,
+    validation = c(
+      "valid",
+      "settings_invalid",
+      "source_invalid",
+      "mapping_invalid",
+      "mass_invalid",
+      "mass_unavailable",
+      "support_invalid",
+      "peak_invalid",
+      "prominence_invalid",
+      "stale"
+    ),
+    proposal = NULL) {
+  validation <- match.arg(validation)
+  validation_record <- list(
+    identity = "current",
+    source = "valid",
+    mapping = "valid",
+    ranking_measure = list(
+      trajectory_flow_mass = "valid",
+      trajectory_flow_support = "valid",
+      source_peak = "valid",
+      canonical_prominence = "valid"
+    ),
+    settings = "valid"
+  )
+  if (validation == "stale") {
+    validation_record$identity <- "stale"
+  } else if (validation == "source_invalid") {
+    validation_record$source <- "source_invalid"
+  } else if (validation == "mapping_invalid") {
+    validation_record$mapping <- "mapping_invalid"
+  } else if (validation == "mass_invalid") {
+    validation_record$ranking_measure$trajectory_flow_mass <-
+      "mass_invalid"
+  } else if (validation == "mass_unavailable") {
+    validation_record$ranking_measure$trajectory_flow_mass <-
+      "mass_unavailable"
+  } else if (validation == "support_invalid") {
+    validation_record$ranking_measure$trajectory_flow_support <-
+      "support_invalid"
+  } else if (validation == "peak_invalid") {
+    validation_record$source <- "source_invalid"
+    validation_record$ranking_measure$source_peak <- "peak_invalid"
+  } else if (validation == "prominence_invalid") {
+    validation_record$ranking_measure$canonical_prominence <-
+      "prominence_invalid"
+  } else if (validation == "settings_invalid") {
+    validation_record$settings <- "settings_invalid"
+  }
+  same_context <- !is.null(state) &&
+    identical(state$context_fingerprint, context_fingerprint)
+  previous <- if (same_context) state$display_proposal else NULL
+  active_attempt <- list(
+    fingerprint = attempt_fingerprint,
+    input_values = input_values,
+    validation = validation_record,
+    outcome = if (validation == "valid") {
+      "proposal_created"
+    } else if (validation == "stale") {
+      "stale"
+    } else {
+      "blocked"
+    },
+    render_outcome = if (validation == "valid") {
+      NULL
+    } else if (validation == "stale") {
+      "stale"
+    } else {
+      "unavailable"
+    }
+  )
+
+  if (validation == "valid") {
+    stopifnot(
+      !is.null(proposal),
+      identical(proposal$context_fingerprint, context_fingerprint)
+    )
+    display_source <- "current"
+    display_proposal <- proposal
+  } else if (
+    validation == "settings_invalid" &&
+      !is.null(previous)
+  ) {
+    display_source <- "retained_last_valid"
+    display_proposal <- previous
+  } else {
+    display_source <- "none"
+    display_proposal <- NULL
+  }
+
+  list(
+    schema = "gflowui_basin_merge_tree_view_state/1",
+    context_fingerprint = context_fingerprint,
+    active_attempt = active_attempt,
+    display_source = display_source,
+    display_proposal_fingerprint = if (is.null(display_proposal)) {
+      NULL
+    } else {
+      display_proposal$fingerprint
+    },
+    display_proposal = display_proposal
+  )
+}
+
+reference_complete_tree_action <- function(
+    state,
+    action = c("filter_none", "show_all", "open_complete_viewer"),
+    complete_proposal_fingerprint = "proposal-complete") {
+  action <- match.arg(action)
+  if (action == "open_complete_viewer") {
+    state$viewer_open <- TRUE
+    return(state)
+  }
+  state$filter_mode <- "complete"
+  state$recomputed <- TRUE
+  state$display_source <- "current"
+  state$display_proposal_fingerprint <- complete_proposal_fingerprint
+  state
+}
+
 test_that("Subject 15 adaptive-filtering fixture is complete and pinned", {
   fixture <- utils::read.csv(
     test_path("fixtures", "basin_merge_tree_subject15_maxima.csv"),
@@ -314,6 +534,18 @@ test_that("Subject 15 adaptive-filtering fixture is complete and pinned", {
     fixture$canonical_branch_id
   )
   expect_equal(sum(fixture$is_component_survivor), 1L)
+  expect_true(all(is.finite(fixture$peak_value)))
+  expect_true(all(is.finite(fixture$primary_support_size)))
+  expect_true(all(fixture$primary_support_size >= 0))
+  expect_true(all(
+    fixture$primary_support_size ==
+      floor(fixture$primary_support_size)
+  ))
+  expect_true(all(is.finite(fixture$canonical_prominence)))
+  expect_true(all(fixture$canonical_prominence >= 0))
+  expect_true(all(
+    fixture$canonical_prominence[fixture$is_component_survivor] > 0
+  ))
   expect_true(all(
     fixture$parent_canonical_branch_id[
       !fixture$is_component_survivor
@@ -350,7 +582,7 @@ test_that("Subject 15 fixture preserves the raw rank-17 evidence", {
   )
 })
 
-test_that("Subject 15 fixture reproduces the revision-4 bounded proposal", {
+test_that("Subject 15 fixture reproduces the revision-5 bounded proposal", {
   fixture <- utils::read.csv(
     test_path("fixtures", "basin_merge_tree_subject15_maxima.csv"),
     stringsAsFactors = FALSE,
@@ -521,5 +753,275 @@ test_that("proposal state separates validation, mass, core, and rendering", {
     expect_identical(stale$identity_validation, "stale")
     expect_null(stale$core_outcome)
     expect_identical(stale$render_outcome, "stale")
+  }
+})
+
+test_that("all ranking measures have exact validation domains", {
+  mass <- c(0.5, 0.3, 0.2)
+  support <- c(0, 2, 3)
+  peak <- c(3, 2, 1)
+  prominence <- c(0, 0.2, 1)
+
+  valid <- reference_ranking_gate(
+    mass, support, peak, prominence, mode = "auto"
+  )
+  expect_true(all(
+    unlist(valid$ranking_measure_validation, use.names = FALSE) == "valid"
+  ))
+  expect_identical(valid$render_outcome, "renderable")
+  expect_identical(valid$final_ids, c("b1", "b2", "b3"))
+
+  invalid_support <- list(
+    c(0, 2),
+    c(0, NA, 3),
+    c(0, Inf, 3),
+    c(0, -1, 3),
+    c(0, 1.5, 3)
+  )
+  for (value in invalid_support) {
+    result <- reference_ranking_gate(
+      mass, value, peak, prominence, mode = "complete"
+    )
+    expect_identical(
+      result$ranking_measure_validation$trajectory_flow_support,
+      "support_invalid"
+    )
+    expect_null(result$core_outcome)
+    expect_identical(result$sentinel_ids, character())
+    expect_identical(result$label_ids, character())
+    expect_identical(result$final_ids, character())
+    expect_identical(result$render_outcome, "unavailable")
+  }
+
+  invalid_prominence <- list(
+    c(0, 0.2),
+    c(0, NA, 1),
+    c(0, Inf, 1),
+    c(0, -0.1, 1)
+  )
+  for (value in invalid_prominence) {
+    result <- reference_ranking_gate(
+      mass, support, peak, value, mode = "complete"
+    )
+    expect_identical(
+      result$ranking_measure_validation$canonical_prominence,
+      "prominence_invalid"
+    )
+    expect_null(result$core_outcome)
+    expect_identical(result$final_ids, character())
+    expect_identical(result$render_outcome, "unavailable")
+  }
+
+  for (value in list(c(3, 2), c(3, NA, 1), c(3, Inf, 1))) {
+    result <- reference_ranking_gate(
+      mass, support, value, prominence, mode = "complete"
+    )
+    expect_identical(
+      result$ranking_measure_validation$source_peak,
+      "peak_invalid"
+    )
+    expect_identical(result$source_validation, "source_invalid")
+    expect_null(result$core_outcome)
+    expect_identical(result$final_ids, character())
+    expect_identical(result$render_outcome, "unavailable")
+  }
+
+  mass_invalid_none <- reference_ranking_gate(
+    c(0.5, NA, 0.5),
+    support,
+    peak,
+    prominence,
+    mode = "complete"
+  )
+  expect_identical(
+    mass_invalid_none$ranking_measure_validation$trajectory_flow_mass,
+    "mass_invalid"
+  )
+  expect_identical(mass_invalid_none$core_outcome, "complete")
+  expect_false(mass_invalid_none$mass_views_available)
+
+  mass_unavailable_none <- reference_ranking_gate(
+    c(0, 0, 0),
+    support,
+    peak,
+    prominence,
+    mode = "complete"
+  )
+  expect_identical(
+    mass_unavailable_none$ranking_measure_validation$trajectory_flow_mass,
+    "mass_unavailable"
+  )
+  expect_identical(mass_unavailable_none$core_outcome, "complete")
+  expect_false(mass_unavailable_none$mass_views_available)
+})
+
+test_that("view state keeps invalid attempts separate from retained proposals", {
+  proposal_one <- reference_view_proposal(
+    "proposal-1",
+    "context-1",
+    list(filter_mode = "top_k", top_k = 3L),
+    c("b1", "b2", "b3")
+  )
+  current <- reference_view_transition(
+    context_fingerprint = "context-1",
+    attempt_fingerprint = "attempt-1",
+    input_values = proposal_one$input_values,
+    validation = "valid",
+    proposal = proposal_one
+  )
+  expect_identical(current$display_source, "current")
+  expect_identical(current$active_attempt$outcome, "proposal_created")
+  expect_null(current$active_attempt$render_outcome)
+  expect_identical(
+    current$display_proposal_fingerprint,
+    proposal_one$fingerprint
+  )
+  expect_identical(current$display_proposal, proposal_one)
+
+  retained <- reference_view_transition(
+    current,
+    context_fingerprint = "context-1",
+    attempt_fingerprint = "attempt-2",
+    input_values = list(filter_mode = "top_k", top_k = 2.5),
+    validation = "settings_invalid"
+  )
+  expect_identical(retained$display_source, "retained_last_valid")
+  expect_identical(retained$active_attempt$outcome, "blocked")
+  expect_identical(
+    retained$active_attempt$validation$settings,
+    "settings_invalid"
+  )
+  expect_identical(
+    retained$active_attempt$render_outcome,
+    "unavailable"
+  )
+  expect_identical(retained$active_attempt$input_values$top_k, 2.5)
+  expect_false(any(
+    c("core_ids", "final_ids") %in% names(retained$active_attempt)
+  ))
+  expect_identical(retained$display_proposal, proposal_one)
+  expect_identical(
+    retained$display_proposal$input_values$top_k,
+    3L
+  )
+  expect_identical(
+    unserialize(serialize(retained, NULL)),
+    retained
+  )
+
+  proposal_two <- reference_view_proposal(
+    "proposal-2",
+    "context-1",
+    list(filter_mode = "top_k", top_k = 2L),
+    c("b1", "b2"),
+    render_outcome = "core_overflow"
+  )
+  recovered <- reference_view_transition(
+    retained,
+    context_fingerprint = "context-1",
+    attempt_fingerprint = "attempt-3",
+    input_values = proposal_two$input_values,
+    validation = "valid",
+    proposal = proposal_two
+  )
+  expect_identical(recovered$display_source, "current")
+  expect_identical(recovered$display_proposal, proposal_two)
+  expect_identical(
+    recovered$display_proposal_fingerprint,
+    "proposal-2"
+  )
+
+  initial_invalid <- reference_view_transition(
+    context_fingerprint = "context-1",
+    attempt_fingerprint = "attempt-0",
+    input_values = list(top_k = 2.5),
+    validation = "settings_invalid"
+  )
+  expect_identical(initial_invalid$display_source, "none")
+  expect_null(initial_invalid$display_proposal_fingerprint)
+  expect_null(initial_invalid$display_proposal)
+
+  for (blocking in c(
+    "source_invalid",
+    "mapping_invalid",
+    "mass_invalid",
+    "mass_unavailable",
+    "support_invalid",
+    "peak_invalid",
+    "prominence_invalid",
+    "stale"
+  )) {
+    cleared <- reference_view_transition(
+      recovered,
+      context_fingerprint = "context-1",
+      attempt_fingerprint = paste0("attempt-", blocking),
+      input_values = proposal_two$input_values,
+      validation = blocking
+    )
+    expect_identical(
+      cleared$active_attempt$fingerprint,
+      paste0("attempt-", blocking)
+    )
+    expect_true(any(
+      unlist(
+        cleared$active_attempt$validation,
+        use.names = FALSE
+      ) != "valid"
+    ))
+    expect_identical(
+      cleared$active_attempt$render_outcome,
+      if (blocking == "stale") "stale" else "unavailable"
+    )
+    expect_identical(cleared$display_source, "none")
+    expect_null(cleared$display_proposal_fingerprint)
+    expect_null(cleared$display_proposal)
+  }
+
+  changed_context <- reference_view_transition(
+    recovered,
+    context_fingerprint = "context-2",
+    attempt_fingerprint = "attempt-new-context",
+    input_values = list(top_k = 2.5),
+    validation = "settings_invalid"
+  )
+  expect_identical(changed_context$context_fingerprint, "context-2")
+  expect_identical(changed_context$display_source, "none")
+  expect_null(changed_context$display_proposal)
+})
+
+test_that("complete-tree controls have distinct persistent and viewer actions", {
+  for (render_outcome in c("renderable", "core_overflow")) {
+    state <- list(
+      filter_mode = "auto",
+      manual_settings = list(top_k = 3L, minimum_mass = 0.1),
+      selected_ids = c("b2"),
+      active_attempt_fingerprint = "attempt-1",
+      display_source = "retained_last_valid",
+      display_proposal_fingerprint = "proposal-1",
+      render_outcome = render_outcome,
+      viewer_open = FALSE,
+      recomputed = FALSE
+    )
+
+    viewer <- reference_complete_tree_action(
+      state, "open_complete_viewer"
+    )
+    expected_viewer <- state
+    expected_viewer$viewer_open <- TRUE
+    expect_identical(viewer, expected_viewer)
+
+    show_all <- reference_complete_tree_action(state, "show_all")
+    filter_none <- reference_complete_tree_action(state, "filter_none")
+    expect_identical(show_all, filter_none)
+    expect_identical(show_all$filter_mode, "complete")
+    expect_true(show_all$recomputed)
+    expect_identical(show_all$manual_settings, state$manual_settings)
+    expect_identical(show_all$selected_ids, state$selected_ids)
+    expect_identical(show_all$display_source, "current")
+    expect_identical(
+      show_all$display_proposal_fingerprint,
+      "proposal-complete"
+    )
+    expect_false(show_all$viewer_open)
   }
 })
