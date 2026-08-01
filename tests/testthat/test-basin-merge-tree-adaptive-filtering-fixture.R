@@ -111,8 +111,9 @@ reference_subject15_auto_proposal <- function(
   }
 
   list(
-    status = "strong_gap",
-    final_status = if (length(core_ids) > final_render_budget) {
+    core_outcome = "strong_gap",
+    core_warnings = character(),
+    render_outcome = if (length(core_ids) > final_render_budget) {
       "core_overflow"
     } else {
       "renderable"
@@ -132,6 +133,160 @@ reference_subject15_auto_proposal <- function(
     coverage = sum(
       ranked$primary_support_mass[seq_len(boundary)]
     ) / denominator
+  )
+}
+
+reference_manual_core <- function(
+    mass,
+    id,
+    mode = c("minimum_mass", "top_k", "complete"),
+    minimum_mass = NULL,
+    top_k = NULL) {
+  mode <- match.arg(mode)
+  stopifnot(
+    length(mass) == length(id),
+    all(is.finite(mass)),
+    all(mass >= 0)
+  )
+  ranked <- order(-mass, id, method = "radix")
+  ranked_mass <- mass[ranked]
+  ranked_id <- id[ranked]
+  group_number <- cumsum(c(
+    TRUE,
+    ranked_mass[-1L] != ranked_mass[-length(ranked_mass)]
+  ))
+  group_rows <- split(seq_along(ranked_mass), group_number)
+  endpoints <- unname(vapply(group_rows, max, integer(1)))
+
+  if (mode == "complete") {
+    return(list(
+      core_outcome = "complete",
+      core_warnings = character(),
+      core_ids = sort(id)
+    ))
+  }
+  if (mode == "minimum_mass") {
+    stopifnot(
+      length(minimum_mass) == 1L,
+      is.finite(minimum_mass),
+      minimum_mass >= 0
+    )
+    keep <- which(ranked_mass >= minimum_mass)
+    return(list(
+      core_outcome = if (length(keep)) {
+        "minimum_mass"
+      } else {
+        "threshold_empty"
+      },
+      core_warnings = character(),
+      core_ids = sort(ranked_id[keep])
+    ))
+  }
+
+  stopifnot(
+    length(top_k) == 1L,
+    top_k == as.integer(top_k),
+    top_k >= 1L,
+    top_k <= length(ranked_id)
+  )
+  endpoint <- endpoints[which(endpoints >= top_k)[[1L]]]
+  list(
+    core_outcome = "top_k",
+    core_warnings = if (endpoint > top_k) {
+      "tie_overflow"
+    } else {
+      character()
+    },
+    core_ids = sort(ranked_id[seq_len(endpoint)])
+  )
+}
+
+reference_proposal_state <- function(
+    mode = c("auto", "cumulative", "minimum_mass", "top_k", "complete"),
+    identity = "current",
+    source = "valid",
+    mapping = "valid",
+    mass = "valid",
+    settings = "valid") {
+  mode <- match.arg(mode)
+  ordinary_outcome <- c(
+    auto = "strong_gap",
+    cumulative = "coverage",
+    minimum_mass = "minimum_mass",
+    top_k = "top_k",
+    complete = "complete"
+  )[[mode]]
+  result <- function(core_outcome, render_outcome) {
+    list(
+      identity_validation = identity,
+      source_validation = source,
+      mapping_validation = mapping,
+      mass_validation = mass,
+      settings_validation = settings,
+      core_outcome = core_outcome,
+      render_outcome = render_outcome
+    )
+  }
+  if (identity == "stale") {
+    return(result(NULL, "stale"))
+  }
+  if (source != "valid" || mapping != "valid" || settings != "valid") {
+    return(result(NULL, "unavailable"))
+  }
+  if (mode != "complete" && mass != "valid") {
+    return(result(NULL, "unavailable"))
+  }
+  result(ordinary_outcome, "renderable")
+}
+
+reference_activate_mode <- function(
+    state,
+    mode = c("auto", "cumulative", "minimum_mass", "top_k", "complete"),
+    component_branch_count) {
+  mode <- match.arg(mode)
+  stopifnot(
+    length(component_branch_count) == 1L,
+    component_branch_count >= 1L
+  )
+  if (is.null(state$values)) {
+    state$values <- list()
+  }
+  if (is.null(state$activated)) {
+    state$activated <- character()
+  }
+
+  if (mode == "top_k" && !"top_k" %in% state$activated) {
+    state$values$top_k <- min(10L, component_branch_count)
+    state$activated <- union(state$activated, "top_k")
+  }
+  if (mode == "minimum_mass" && !"minimum_mass" %in% state$activated) {
+    state$values$minimum_mass <- 0
+    state$activated <- union(state$activated, "minimum_mass")
+  }
+
+  valid <- TRUE
+  if (mode == "top_k") {
+    value <- state$values$top_k
+    valid <- length(value) == 1L &&
+      is.numeric(value) &&
+      !is.na(value) &&
+      is.finite(value) &&
+      value == as.integer(value) &&
+      value >= 1L &&
+      value <= component_branch_count
+  }
+  if (mode == "minimum_mass") {
+    value <- state$values$minimum_mass
+    valid <- length(value) == 1L &&
+      is.numeric(value) &&
+      !is.na(value) &&
+      is.finite(value) &&
+      value >= 0
+  }
+
+  list(
+    state = state,
+    settings_validation = if (valid) "valid" else "settings_invalid"
   )
 }
 
@@ -195,7 +350,7 @@ test_that("Subject 15 fixture preserves the raw rank-17 evidence", {
   )
 })
 
-test_that("Subject 15 fixture reproduces the revision-3 bounded proposal", {
+test_that("Subject 15 fixture reproduces the revision-4 bounded proposal", {
   fixture <- utils::read.csv(
     test_path("fixtures", "basin_merge_tree_subject15_maxima.csv"),
     stringsAsFactors = FALSE,
@@ -222,8 +377,9 @@ test_that("Subject 15 fixture reproduces the revision-3 bounded proposal", {
     "basin_max_v00001589"
   ))
 
-  expect_identical(proposal$status, "strong_gap")
-  expect_identical(proposal$final_status, "renderable")
+  expect_identical(proposal$core_outcome, "strong_gap")
+  expect_identical(proposal$core_warnings, character())
+  expect_identical(proposal$render_outcome, "renderable")
   expect_equal(length(proposal$tie_groups), 352L)
   expect_true(all(lengths(proposal$tie_groups) == 1L))
   expect_true(all(diff(proposal$group_masses) < 0))
@@ -243,4 +399,127 @@ test_that("Subject 15 fixture reproduces the revision-3 bounded proposal", {
   expect_identical(proposal$ancestor_only_ids, character())
   expect_identical(proposal$final_ids, expected_ids)
   expect_equal(proposal$coverage, 0.99999999999991729)
+})
+
+test_that("manual mass modes preserve raw scale and the complete zero tie", {
+  mass <- c(a = 0.6, b = 0.4, c = 0, d = 0)
+  id <- names(mass)
+
+  top_three <- reference_manual_core(
+    mass, id, mode = "top_k", top_k = 3L
+  )
+  expect_identical(top_three$core_outcome, "top_k")
+  expect_identical(top_three$core_warnings, "tie_overflow")
+  expect_identical(top_three$core_ids, c("a", "b", "c", "d"))
+
+  top_two <- reference_manual_core(
+    mass, id, mode = "top_k", top_k = 2L
+  )
+  expect_identical(top_two$core_outcome, "top_k")
+  expect_identical(top_two$core_warnings, character())
+  expect_identical(top_two$core_ids, c("a", "b"))
+
+  minimum_zero <- reference_manual_core(
+    mass, id, mode = "minimum_mass", minimum_mass = 0
+  )
+  expect_identical(minimum_zero$core_outcome, "minimum_mass")
+  expect_identical(minimum_zero$core_ids, c("a", "b", "c", "d"))
+
+  raw_scale <- reference_manual_core(
+    c(a = 0.4, b = 0.3),
+    c("a", "b"),
+    mode = "minimum_mass",
+    minimum_mass = 0.5
+  )
+  expect_identical(raw_scale$core_outcome, "threshold_empty")
+  expect_identical(raw_scale$core_ids, character())
+
+  complete <- reference_manual_core(mass, id, mode = "complete")
+  expect_identical(complete$core_outcome, "complete")
+  expect_identical(complete$core_ids, c("a", "b", "c", "d"))
+})
+
+test_that("manual settings initialize, retain, and validate only when active", {
+  state <- list()
+  top_first <- reference_activate_mode(state, "top_k", 4L)
+  expect_identical(top_first$settings_validation, "valid")
+  expect_identical(top_first$state$values$top_k, 4L)
+
+  top_first$state$values$top_k <- 3L
+  minimum_first <- reference_activate_mode(
+    top_first$state, "minimum_mass", 4L
+  )
+  expect_identical(minimum_first$settings_validation, "valid")
+  expect_identical(minimum_first$state$values$minimum_mass, 0)
+  expect_identical(minimum_first$state$values$top_k, 3L)
+
+  minimum_first$state$values$minimum_mass <- 0.25
+  top_again <- reference_activate_mode(
+    minimum_first$state, "top_k", 4L
+  )
+  expect_identical(top_again$settings_validation, "valid")
+  expect_identical(top_again$state$values$top_k, 3L)
+  expect_identical(top_again$state$values$minimum_mass, 0.25)
+
+  top_again$state$values$top_k <- 2.5
+  inactive_bad_top <- reference_activate_mode(
+    top_again$state, "minimum_mass", 4L
+  )
+  expect_identical(inactive_bad_top$settings_validation, "valid")
+  active_bad_top <- reference_activate_mode(
+    top_again$state, "top_k", 4L
+  )
+  expect_identical(active_bad_top$settings_validation, "settings_invalid")
+})
+
+test_that("proposal state separates validation, mass, core, and rendering", {
+  mass_modes <- c("auto", "cumulative", "minimum_mass", "top_k")
+  ordinary <- c(
+    auto = "strong_gap",
+    cumulative = "coverage",
+    minimum_mass = "minimum_mass",
+    top_k = "top_k",
+    complete = "complete"
+  )
+
+  for (mode in names(ordinary)) {
+    valid <- reference_proposal_state(mode)
+    expect_identical(valid$core_outcome, ordinary[[mode]])
+    expect_identical(valid$render_outcome, "renderable")
+  }
+
+  for (mass_state in c("mass_invalid", "mass_unavailable")) {
+    for (mode in mass_modes) {
+      blocked <- reference_proposal_state(mode, mass = mass_state)
+      expect_identical(blocked$mass_validation, mass_state)
+      expect_null(blocked$core_outcome)
+      expect_identical(blocked$render_outcome, "unavailable")
+    }
+    complete <- reference_proposal_state("complete", mass = mass_state)
+    expect_identical(complete$mass_validation, mass_state)
+    expect_identical(complete$core_outcome, "complete")
+    expect_identical(complete$render_outcome, "renderable")
+  }
+
+  blocking_states <- list(
+    source = "source_invalid",
+    mapping = "mapping_invalid",
+    settings = "settings_invalid"
+  )
+  for (field in names(blocking_states)) {
+    for (mode in names(ordinary)) {
+      args <- list(mode = mode)
+      args[[field]] <- blocking_states[[field]]
+      blocked <- do.call(reference_proposal_state, args)
+      expect_null(blocked$core_outcome)
+      expect_identical(blocked$render_outcome, "unavailable")
+    }
+  }
+
+  for (mode in names(ordinary)) {
+    stale <- reference_proposal_state(mode, identity = "stale")
+    expect_identical(stale$identity_validation, "stale")
+    expect_null(stale$core_outcome)
+    expect_identical(stale$render_outcome, "stale")
+  }
 })
