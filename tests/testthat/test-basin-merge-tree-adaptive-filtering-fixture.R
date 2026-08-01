@@ -367,21 +367,279 @@ reference_ranking_gate <- function(
   )
 }
 
+reference_canonical_text <- function(x) {
+  scalar_text <- function(value, prefix) {
+    value <- enc2utf8(as.character(value))
+    paste0(prefix, nchar(value, type = "bytes"), ":", value, ";")
+  }
+  if (is.null(x)) {
+    return("N;")
+  }
+  if (is.list(x)) {
+    if (!is.null(names(x))) {
+      ordered_names <- sort(enc2utf8(names(x)), method = "radix")
+      parts <- vapply(
+        ordered_names,
+        function(name) {
+          paste0(
+            scalar_text(name, "K"),
+            reference_canonical_text(x[[name]])
+          )
+        },
+        character(1)
+      )
+      return(paste0(
+        "M",
+        length(parts),
+        "{",
+        paste0(parts, collapse = ""),
+        "}"
+      ))
+    }
+    parts <- vapply(x, reference_canonical_text, character(1))
+    return(paste0(
+      "L",
+      length(parts),
+      "[",
+      paste0(parts, collapse = ""),
+      "]"
+    ))
+  }
+  if (is.character(x)) {
+    parts <- vapply(x, scalar_text, character(1), prefix = "S")
+    return(paste0("C", length(parts), "[", paste0(parts, collapse = ""), "]"))
+  }
+  if (is.logical(x)) {
+    parts <- ifelse(
+      is.na(x),
+      "B:NA;",
+      ifelse(x, "B:1;", "B:0;")
+    )
+    return(paste0("B", length(parts), "[", paste0(parts, collapse = ""), "]"))
+  }
+  if (is.integer(x)) {
+    parts <- ifelse(is.na(x), "I:NA;", paste0("I:", x, ";"))
+    return(paste0("I", length(parts), "[", paste0(parts, collapse = ""), "]"))
+  }
+  if (is.numeric(x)) {
+    encode_double <- function(value) {
+      if (is.na(value) && !is.nan(value)) return("D:NA;")
+      if (is.nan(value)) return("D:NAN;")
+      if (is.infinite(value)) {
+        return(if (value > 0) "D:INF;" else "D:-INF;")
+      }
+      if (value == 0) value <- 0
+      paste0("D:", sprintf("%a", value), ";")
+    }
+    parts <- vapply(x, encode_double, character(1))
+    return(paste0("D", length(parts), "[", paste0(parts, collapse = ""), "]"))
+  }
+  stop("Unsupported reference fingerprint type.")
+}
+
+reference_sha256 <- function(x) {
+  digest::digest(
+    reference_canonical_text(x),
+    algo = "sha256",
+    serialize = FALSE
+  )
+}
+
+reference_context_fingerprint <- function(context) {
+  reference_sha256(list(
+    schema = "gflowui_basin_merge_tree_context/1",
+    context = context
+  ))
+}
+
+reference_attempt_fingerprint <- function(context_fingerprint, input_values) {
+  reference_sha256(list(
+    schema = "gflowui_basin_merge_tree_active_attempt/1",
+    context_fingerprint = context_fingerprint,
+    input_values = input_values
+  ))
+}
+
+reference_proposal_fingerprint <- function(proposal) {
+  content <- proposal
+  content$proposal_fingerprint <- NULL
+  content$creation_time <- NULL
+  reference_sha256(list(
+    schema = "gflowui_basin_merge_tree_display_proposal_content/1",
+    proposal = content
+  ))
+}
+
+reference_mass_derived <- function(
+    mass_state = c("valid", "mass_unavailable", "mass_invalid"),
+    branch_ids,
+    mass = NULL) {
+  mass_state <- match.arg(mass_state)
+  branch_ids <- sort(branch_ids)
+  if (mass_state == "mass_invalid") {
+    return(list(
+      available = FALSE,
+      unavailable_reason = "mass_invalid",
+      positive_groups = NULL,
+      all_mass_groups = NULL,
+      denominator = NULL,
+      positive_count = NULL,
+      zero_count = NULL,
+      core_coverage = NULL,
+      final_coverage = NULL
+    ))
+  }
+  if (mass_state == "mass_unavailable") {
+    return(list(
+      available = FALSE,
+      unavailable_reason = "mass_unavailable",
+      positive_groups = list(),
+      all_mass_groups = list(list(mass = 0, ids = branch_ids)),
+      denominator = 0,
+      positive_count = 0L,
+      zero_count = length(branch_ids),
+      core_coverage = NULL,
+      final_coverage = NULL
+    ))
+  }
+
+  stopifnot(
+    length(mass) == length(branch_ids),
+    all(is.finite(mass)),
+    all(mass >= 0),
+    any(mass > 0)
+  )
+  names(mass) <- branch_ids
+  grouped <- split(branch_ids, mass[branch_ids])
+  group_values <- as.numeric(names(grouped))
+  group_order <- order(-group_values)
+  all_groups <- lapply(
+    group_order,
+    function(index) {
+      list(
+        mass = group_values[[index]],
+        ids = sort(grouped[[index]])
+      )
+    }
+  )
+  positive_groups <- Filter(
+    function(group) group$mass > 0,
+    all_groups
+  )
+  denominator <- sum(mass[mass > 0])
+  list(
+    available = TRUE,
+    unavailable_reason = NULL,
+    positive_groups = positive_groups,
+    all_mass_groups = all_groups,
+    denominator = denominator,
+    positive_count = sum(mass > 0),
+    zero_count = sum(mass == 0),
+    core_coverage = sum(mass) / denominator,
+    final_coverage = sum(mass) / denominator
+  )
+}
+
 reference_view_proposal <- function(
-    fingerprint,
-    context_fingerprint,
+    context,
     input_values,
     final_ids,
-    render_outcome = "renderable") {
-  list(
+    render_outcome = "renderable",
+    mass_state = c("valid", "mass_unavailable", "mass_invalid"),
+    mass = NULL,
+    creation_time = "2026-08-01T12:00:00-04:00") {
+  mass_state <- match.arg(mass_state)
+  final_ids <- sort(final_ids)
+  if (mass_state == "valid" && is.null(mass)) {
+    mass <- rep(1 / length(final_ids), length(final_ids))
+  }
+  mass_derived <- reference_mass_derived(
+    mass_state,
+    final_ids,
+    mass
+  )
+  label_contributions <- list(
+    trajectory_flow_mass = if (mass_derived$available) {
+      final_ids[[1L]]
+    } else {
+      character()
+    },
+    source_peak = final_ids[[1L]],
+    canonical_prominence = final_ids[[min(2L, length(final_ids))]],
+    trajectory_flow_support = final_ids[[min(3L, length(final_ids))]],
+    component_survivor = final_ids[[1L]],
+    selected_or_pinned = character()
+  )
+  proposal <- list(
     schema = "gflowui_basin_merge_tree_display_proposal/3",
-    fingerprint = fingerprint,
-    context_fingerprint = context_fingerprint,
+    context_fingerprint = reference_context_fingerprint(context),
+    proposal_fingerprint = NULL,
+    creation_time = creation_time,
+    context_fields = context,
+    algorithm = "adaptive_initial_filtering",
+    algorithm_version = 6L,
     input_values = input_values,
+    validation = list(
+      identity = "current",
+      source = "valid",
+      mapping = "valid",
+      ranking_measure = list(
+        trajectory_flow_mass = mass_state,
+        trajectory_flow_support = "valid",
+        source_peak = "valid",
+        canonical_prominence = "valid"
+      ),
+      settings = "valid"
+    ),
+    mass_derived = mass_derived,
+    label_contributions = label_contributions,
+    label_omission_reasons = if (mass_derived$available) {
+      character()
+    } else {
+      paste0("trajectory_flow_mass:", mass_state)
+    },
+    core_outcome = if (
+      identical(input_values$filter_mode, "none")
+    ) {
+      "complete"
+    } else {
+      "top_k"
+    },
     core_ids = final_ids,
     final_ids = final_ids,
+    label_ids = sort(unique(unlist(
+      label_contributions,
+      use.names = FALSE
+    ))),
     render_outcome = render_outcome
   )
+  proposal$proposal_fingerprint <-
+    reference_proposal_fingerprint(proposal)
+  proposal
+}
+
+reference_validate_proposal <- function(
+    proposal,
+    expected_context_fingerprint = NULL) {
+  valid <- identical(
+    proposal$context_fingerprint,
+    reference_context_fingerprint(proposal$context_fields)
+  ) &&
+    identical(
+      proposal$proposal_fingerprint,
+      reference_proposal_fingerprint(proposal)
+    )
+  if (
+    !is.null(expected_context_fingerprint) &&
+      !identical(
+        proposal$context_fingerprint,
+        expected_context_fingerprint
+      )
+  ) {
+    valid <- FALSE
+  }
+  if (!valid) stop("fingerprint_invalid")
+  TRUE
 }
 
 reference_view_transition <- function(
@@ -442,18 +700,22 @@ reference_view_transition <- function(
   same_context <- !is.null(state) &&
     identical(state$context_fingerprint, context_fingerprint)
   previous <- if (same_context) state$display_proposal else NULL
+  filter_mode <- input_values$filter_mode
+  mass_only_none <- identical(filter_mode, "none") &&
+    validation %in% c("mass_invalid", "mass_unavailable")
+  proposal_created <- validation == "valid" || mass_only_none
   active_attempt <- list(
     fingerprint = attempt_fingerprint,
     input_values = input_values,
     validation = validation_record,
-    outcome = if (validation == "valid") {
+    outcome = if (proposal_created) {
       "proposal_created"
     } else if (validation == "stale") {
       "stale"
     } else {
       "blocked"
     },
-    render_outcome = if (validation == "valid") {
+    render_outcome = if (proposal_created) {
       NULL
     } else if (validation == "stale") {
       "stale"
@@ -462,11 +724,12 @@ reference_view_transition <- function(
     }
   )
 
-  if (validation == "valid") {
+  if (proposal_created) {
     stopifnot(
       !is.null(proposal),
       identical(proposal$context_fingerprint, context_fingerprint)
     )
+    reference_validate_proposal(proposal, context_fingerprint)
     display_source <- "current"
     display_proposal <- proposal
   } else if (
@@ -488,25 +751,66 @@ reference_view_transition <- function(
     display_proposal_fingerprint = if (is.null(display_proposal)) {
       NULL
     } else {
-      display_proposal$fingerprint
+      display_proposal$proposal_fingerprint
     },
     display_proposal = display_proposal
   )
 }
 
+reference_validate_view_state <- function(state) {
+  valid <- identical(
+    state$active_attempt$fingerprint,
+    reference_attempt_fingerprint(
+      state$context_fingerprint,
+      state$active_attempt$input_values
+    )
+  )
+  if (!is.null(state$display_proposal)) {
+    valid <- valid &&
+      identical(
+        state$display_proposal_fingerprint,
+        state$display_proposal$proposal_fingerprint
+      )
+    if (valid) {
+      valid <- isTRUE(reference_validate_proposal(
+        state$display_proposal,
+        state$context_fingerprint
+      ))
+    }
+  } else {
+    valid <- valid && is.null(state$display_proposal_fingerprint)
+  }
+  if (!valid) stop("fingerprint_invalid")
+  TRUE
+}
+
 reference_complete_tree_action <- function(
     state,
     action = c("filter_none", "show_all", "open_complete_viewer"),
-    complete_proposal_fingerprint = "proposal-complete") {
+    complete_proposal) {
   action <- match.arg(action)
   if (action == "open_complete_viewer") {
     state$viewer_open <- TRUE
     return(state)
   }
-  state$filter_mode <- "complete"
+  reference_validate_proposal(
+    complete_proposal,
+    state$context_fingerprint
+  )
+  state$filter_mode <- "none"
   state$recomputed <- TRUE
+  state$active_attempt_fingerprint <- reference_attempt_fingerprint(
+    state$context_fingerprint,
+    complete_proposal$input_values
+  )
+  state$active_input_values <- complete_proposal$input_values
+  state$active_attempt_outcome <- "proposal_created"
+  state$active_attempt_render_outcome <- NULL
   state$display_source <- "current"
-  state$display_proposal_fingerprint <- complete_proposal_fingerprint
+  state$display_proposal_fingerprint <-
+    complete_proposal$proposal_fingerprint
+  state$display_proposal <- complete_proposal
+  state$core_outcome <- complete_proposal$core_outcome
   state
 }
 
@@ -856,15 +1160,35 @@ test_that("all ranking measures have exact validation domains", {
 })
 
 test_that("view state keeps invalid attempts separate from retained proposals", {
+  context <- list(
+    project = "project-1",
+    subject = "subject-15",
+    graph = "k03",
+    topology_fingerprint = "topology-1",
+    vertex_map_fingerprint = "vertices-1",
+    selected_field = "occupation",
+    selected_field_fingerprint = "field-1",
+    selected_source = "density",
+    selected_source_fingerprint = "source-1",
+    estimate = "graph_heat",
+    trajectory_construction_fingerprint = "trajectory-1",
+    canonical_construction_fingerprint = "canonical-1",
+    direction = "max",
+    component = 1L
+  )
+  context_fingerprint <- reference_context_fingerprint(context)
+  inputs_one <- list(filter_mode = "top_k", top_k = 3L)
   proposal_one <- reference_view_proposal(
-    "proposal-1",
-    "context-1",
-    list(filter_mode = "top_k", top_k = 3L),
+    context,
+    inputs_one,
     c("b1", "b2", "b3")
   )
   current <- reference_view_transition(
-    context_fingerprint = "context-1",
-    attempt_fingerprint = "attempt-1",
+    context_fingerprint = context_fingerprint,
+    attempt_fingerprint = reference_attempt_fingerprint(
+      context_fingerprint,
+      inputs_one
+    ),
     input_values = proposal_one$input_values,
     validation = "valid",
     proposal = proposal_one
@@ -874,15 +1198,20 @@ test_that("view state keeps invalid attempts separate from retained proposals", 
   expect_null(current$active_attempt$render_outcome)
   expect_identical(
     current$display_proposal_fingerprint,
-    proposal_one$fingerprint
+    proposal_one$proposal_fingerprint
   )
   expect_identical(current$display_proposal, proposal_one)
+  expect_true(reference_validate_view_state(current))
 
+  invalid_inputs <- list(filter_mode = "top_k", top_k = 2.5)
   retained <- reference_view_transition(
     current,
-    context_fingerprint = "context-1",
-    attempt_fingerprint = "attempt-2",
-    input_values = list(filter_mode = "top_k", top_k = 2.5),
+    context_fingerprint = context_fingerprint,
+    attempt_fingerprint = reference_attempt_fingerprint(
+      context_fingerprint,
+      invalid_inputs
+    ),
+    input_values = invalid_inputs,
     validation = "settings_invalid"
   )
   expect_identical(retained$display_source, "retained_last_valid")
@@ -908,18 +1237,22 @@ test_that("view state keeps invalid attempts separate from retained proposals", 
     unserialize(serialize(retained, NULL)),
     retained
   )
+  expect_true(reference_validate_view_state(retained))
 
+  inputs_two <- list(filter_mode = "top_k", top_k = 2L)
   proposal_two <- reference_view_proposal(
-    "proposal-2",
-    "context-1",
-    list(filter_mode = "top_k", top_k = 2L),
+    context,
+    inputs_two,
     c("b1", "b2"),
     render_outcome = "core_overflow"
   )
   recovered <- reference_view_transition(
     retained,
-    context_fingerprint = "context-1",
-    attempt_fingerprint = "attempt-3",
+    context_fingerprint = context_fingerprint,
+    attempt_fingerprint = reference_attempt_fingerprint(
+      context_fingerprint,
+      inputs_two
+    ),
     input_values = proposal_two$input_values,
     validation = "valid",
     proposal = proposal_two
@@ -928,13 +1261,17 @@ test_that("view state keeps invalid attempts separate from retained proposals", 
   expect_identical(recovered$display_proposal, proposal_two)
   expect_identical(
     recovered$display_proposal_fingerprint,
-    "proposal-2"
+    proposal_two$proposal_fingerprint
   )
+  expect_true(reference_validate_view_state(recovered))
 
   initial_invalid <- reference_view_transition(
-    context_fingerprint = "context-1",
-    attempt_fingerprint = "attempt-0",
-    input_values = list(top_k = 2.5),
+    context_fingerprint = context_fingerprint,
+    attempt_fingerprint = reference_attempt_fingerprint(
+      context_fingerprint,
+      invalid_inputs
+    ),
+    input_values = invalid_inputs,
     validation = "settings_invalid"
   )
   expect_identical(initial_invalid$display_source, "none")
@@ -951,16 +1288,23 @@ test_that("view state keeps invalid attempts separate from retained proposals", 
     "prominence_invalid",
     "stale"
   )) {
+    blocking_inputs <- proposal_two$input_values
     cleared <- reference_view_transition(
       recovered,
-      context_fingerprint = "context-1",
-      attempt_fingerprint = paste0("attempt-", blocking),
-      input_values = proposal_two$input_values,
+      context_fingerprint = context_fingerprint,
+      attempt_fingerprint = reference_attempt_fingerprint(
+        context_fingerprint,
+        blocking_inputs
+      ),
+      input_values = blocking_inputs,
       validation = blocking
     )
     expect_identical(
       cleared$active_attempt$fingerprint,
-      paste0("attempt-", blocking)
+      reference_attempt_fingerprint(
+        context_fingerprint,
+        blocking_inputs
+      )
     )
     expect_true(any(
       unlist(
@@ -975,53 +1319,387 @@ test_that("view state keeps invalid attempts separate from retained proposals", 
     expect_identical(cleared$display_source, "none")
     expect_null(cleared$display_proposal_fingerprint)
     expect_null(cleared$display_proposal)
+    expect_true(reference_validate_view_state(cleared))
   }
 
+  context_two <- context
+  context_two$component <- 2L
+  context_two_fingerprint <- reference_context_fingerprint(context_two)
   changed_context <- reference_view_transition(
     recovered,
-    context_fingerprint = "context-2",
-    attempt_fingerprint = "attempt-new-context",
-    input_values = list(top_k = 2.5),
+    context_fingerprint = context_two_fingerprint,
+    attempt_fingerprint = reference_attempt_fingerprint(
+      context_two_fingerprint,
+      invalid_inputs
+    ),
+    input_values = invalid_inputs,
     validation = "settings_invalid"
   )
-  expect_identical(changed_context$context_fingerprint, "context-2")
+  expect_identical(
+    changed_context$context_fingerprint,
+    context_two_fingerprint
+  )
   expect_identical(changed_context$display_source, "none")
   expect_null(changed_context$display_proposal)
+  expect_true(reference_validate_view_state(changed_context))
+})
+
+test_that("Filter None installs typed mass-failure proposals end to end", {
+  context <- list(
+    project = "project-1",
+    subject = "subject-15",
+    graph = "k03",
+    topology_fingerprint = "topology-1",
+    vertex_map_fingerprint = "vertices-1",
+    selected_field = "occupation",
+    selected_field_fingerprint = "field-1",
+    selected_source = "density",
+    selected_source_fingerprint = "source-1",
+    estimate = "graph_heat",
+    trajectory_construction_fingerprint = "trajectory-1",
+    canonical_construction_fingerprint = "canonical-1",
+    direction = "max",
+    component = 1L
+  )
+  context_fingerprint <- reference_context_fingerprint(context)
+  branch_ids <- c("b1", "b2", "b3", "b4")
+  inputs <- list(filter_mode = "none")
+
+  for (mass_state in c("mass_invalid", "mass_unavailable")) {
+    proposal <- reference_view_proposal(
+      context,
+      inputs,
+      branch_ids,
+      mass_state = mass_state,
+      render_outcome = "core_overflow"
+    )
+    view <- reference_view_transition(
+      context_fingerprint = context_fingerprint,
+      attempt_fingerprint = reference_attempt_fingerprint(
+        context_fingerprint,
+        inputs
+      ),
+      input_values = inputs,
+      validation = mass_state,
+      proposal = proposal
+    )
+
+    expect_false(proposal$mass_derived$available)
+    expect_identical(
+      proposal$mass_derived$unavailable_reason,
+      mass_state
+    )
+    expect_identical(proposal$core_outcome, "complete")
+    expect_identical(proposal$core_ids, sort(branch_ids))
+    expect_identical(proposal$final_ids, sort(branch_ids))
+    expect_identical(proposal$render_outcome, "core_overflow")
+    expect_identical(
+      proposal$label_contributions$trajectory_flow_mass,
+      character()
+    )
+    expect_true(length(proposal$label_ids) > 0L)
+    expect_identical(
+      proposal$label_omission_reasons,
+      paste0("trajectory_flow_mass:", mass_state)
+    )
+    expect_null(proposal$mass_derived$core_coverage)
+    expect_null(proposal$mass_derived$final_coverage)
+
+    if (mass_state == "mass_invalid") {
+      expect_null(proposal$mass_derived$positive_groups)
+      expect_null(proposal$mass_derived$all_mass_groups)
+      expect_null(proposal$mass_derived$denominator)
+      expect_null(proposal$mass_derived$positive_count)
+      expect_null(proposal$mass_derived$zero_count)
+    } else {
+      expect_identical(
+        proposal$mass_derived$positive_groups,
+        list()
+      )
+      expect_length(proposal$mass_derived$all_mass_groups, 1L)
+      expect_identical(
+        proposal$mass_derived$all_mass_groups[[1L]]$mass,
+        0
+      )
+      expect_identical(
+        proposal$mass_derived$all_mass_groups[[1L]]$ids,
+        sort(branch_ids)
+      )
+      expect_identical(proposal$mass_derived$denominator, 0)
+      expect_identical(proposal$mass_derived$positive_count, 0L)
+      expect_identical(
+        proposal$mass_derived$zero_count,
+        length(branch_ids)
+      )
+    }
+
+    expect_identical(view$active_attempt$outcome, "proposal_created")
+    expect_null(view$active_attempt$render_outcome)
+    expect_identical(view$display_source, "current")
+    expect_identical(view$display_proposal, proposal)
+    round_trip <- unserialize(serialize(view, NULL))
+    expect_identical(round_trip, view)
+    expect_true(reference_validate_view_state(round_trip))
+  }
+
+  mass_mode_inputs <- list(filter_mode = "top_k", top_k = 2L)
+  blocked <- reference_view_transition(
+    context_fingerprint = context_fingerprint,
+    attempt_fingerprint = reference_attempt_fingerprint(
+      context_fingerprint,
+      mass_mode_inputs
+    ),
+    input_values = mass_mode_inputs,
+    validation = "mass_invalid"
+  )
+  expect_identical(blocked$active_attempt$outcome, "blocked")
+  expect_identical(blocked$display_source, "none")
+  expect_null(blocked$display_proposal)
+
+  old_context <- context
+  old_context$trajectory_construction_fingerprint <- "trajectory-old"
+  old_context_fingerprint <- reference_context_fingerprint(old_context)
+  old_inputs <- list(filter_mode = "top_k", top_k = 2L)
+  old_proposal <- reference_view_proposal(
+    old_context,
+    old_inputs,
+    c("b1", "b2")
+  )
+  old_view <- reference_view_transition(
+    context_fingerprint = old_context_fingerprint,
+    attempt_fingerprint = reference_attempt_fingerprint(
+      old_context_fingerprint,
+      old_inputs
+    ),
+    input_values = old_inputs,
+    validation = "valid",
+    proposal = old_proposal
+  )
+  replacement <- reference_view_proposal(
+    context,
+    inputs,
+    branch_ids,
+    mass_state = "mass_invalid"
+  )
+  replaced_after_mass_change <- reference_view_transition(
+    old_view,
+    context_fingerprint = context_fingerprint,
+    attempt_fingerprint = reference_attempt_fingerprint(
+      context_fingerprint,
+      inputs
+    ),
+    input_values = inputs,
+    validation = "mass_invalid",
+    proposal = replacement
+  )
+  expect_identical(
+    replaced_after_mass_change$display_source,
+    "current"
+  )
+  expect_identical(
+    replaced_after_mass_change$display_proposal,
+    replacement
+  )
+  expect_false(identical(
+    replaced_after_mass_change$display_proposal_fingerprint,
+    old_proposal$proposal_fingerprint
+  ))
+})
+
+test_that("fingerprints are deterministic and reject inconsistent state", {
+  context <- list(
+    project = "project-1",
+    subject = "subject-15",
+    graph = "k03",
+    topology_fingerprint = "topology-1",
+    vertex_map_fingerprint = "vertices-1",
+    selected_field = "occupation",
+    selected_field_fingerprint = "field-1",
+    selected_source = "density",
+    selected_source_fingerprint = "source-1",
+    estimate = "graph_heat",
+    trajectory_construction_fingerprint = "trajectory-1",
+    canonical_construction_fingerprint = "canonical-1",
+    direction = "max",
+    component = 1L
+  )
+  reordered_context <- context[rev(names(context))]
+  expect_identical(
+    reference_context_fingerprint(context),
+    reference_context_fingerprint(reordered_context)
+  )
+
+  inputs <- list(filter_mode = "none", labels = "important")
+  reordered_inputs <- inputs[rev(names(inputs))]
+  context_fingerprint <- reference_context_fingerprint(context)
+  expect_identical(
+    reference_attempt_fingerprint(context_fingerprint, inputs),
+    reference_attempt_fingerprint(
+      context_fingerprint,
+      reordered_inputs
+    )
+  )
+
+  proposal <- reference_view_proposal(
+    context,
+    inputs,
+    c("b1", "b2", "b3"),
+    creation_time = "2026-08-01T12:00:00-04:00"
+  )
+  timestamp_only <- proposal
+  timestamp_only$creation_time <- "2026-08-01T13:00:00-04:00"
+  expect_identical(
+    reference_proposal_fingerprint(proposal),
+    reference_proposal_fingerprint(timestamp_only)
+  )
+  expect_true(reference_validate_proposal(proposal, context_fingerprint))
+
+  tampered <- proposal
+  tampered$final_ids <- c("b1", "b2")
+  expect_error(
+    reference_validate_proposal(tampered, context_fingerprint),
+    "fingerprint_invalid"
+  )
+
+  wrong_context <- proposal
+  wrong_context$context_fields$component <- 2L
+  expect_error(
+    reference_validate_proposal(wrong_context, context_fingerprint),
+    "fingerprint_invalid"
+  )
+
+  context_two <- context
+  context_two$component <- 2L
+  internally_valid_wrong_context <- reference_view_proposal(
+    context_two,
+    inputs,
+    c("b1", "b2", "b3")
+  )
+  expect_error(
+    reference_validate_proposal(
+      internally_valid_wrong_context,
+      context_fingerprint
+    ),
+    "fingerprint_invalid"
+  )
+
+  view <- reference_view_transition(
+    context_fingerprint = context_fingerprint,
+    attempt_fingerprint = reference_attempt_fingerprint(
+      context_fingerprint,
+      inputs
+    ),
+    input_values = inputs,
+    validation = "valid",
+    proposal = proposal
+  )
+  expect_true(reference_validate_view_state(view))
+
+  corrupted_view <- unserialize(serialize(view, NULL))
+  corrupted_view$display_proposal_fingerprint <-
+    paste0(
+      if (startsWith(
+        corrupted_view$display_proposal_fingerprint,
+        "0"
+      )) "1" else "0",
+      substring(
+      corrupted_view$display_proposal_fingerprint,
+      2L
+      )
+    )
+  expect_error(
+    reference_validate_view_state(corrupted_view),
+    "fingerprint_invalid"
+  )
+
+  corrupted_attempt <- unserialize(serialize(view, NULL))
+  corrupted_attempt$active_attempt$input_values$labels <- "all"
+  expect_error(
+    reference_validate_view_state(corrupted_attempt),
+    "fingerprint_invalid"
+  )
 })
 
 test_that("complete-tree controls have distinct persistent and viewer actions", {
+  context <- list(
+    project = "project-1",
+    subject = "subject-15",
+    graph = "k03",
+    topology_fingerprint = "topology-1",
+    vertex_map_fingerprint = "vertices-1",
+    selected_field = "occupation",
+    selected_field_fingerprint = "field-1",
+    selected_source = "density",
+    selected_source_fingerprint = "source-1",
+    estimate = "graph_heat",
+    trajectory_construction_fingerprint = "trajectory-1",
+    canonical_construction_fingerprint = "canonical-1",
+    direction = "max",
+    component = 1L
+  )
+  context_fingerprint <- reference_context_fingerprint(context)
   for (render_outcome in c("renderable", "core_overflow")) {
+    complete_proposal <- reference_view_proposal(
+      context,
+      list(filter_mode = "none"),
+      c("b1", "b2", "b3"),
+      render_outcome = render_outcome
+    )
     state <- list(
+      context_fingerprint = context_fingerprint,
       filter_mode = "auto",
       manual_settings = list(top_k = 3L, minimum_mass = 0.1),
       selected_ids = c("b2"),
       active_attempt_fingerprint = "attempt-1",
       display_source = "retained_last_valid",
       display_proposal_fingerprint = "proposal-1",
+      display_proposal = NULL,
       render_outcome = render_outcome,
       viewer_open = FALSE,
       recomputed = FALSE
     )
 
     viewer <- reference_complete_tree_action(
-      state, "open_complete_viewer"
+      state, "open_complete_viewer", complete_proposal
     )
     expected_viewer <- state
     expected_viewer$viewer_open <- TRUE
     expect_identical(viewer, expected_viewer)
 
-    show_all <- reference_complete_tree_action(state, "show_all")
-    filter_none <- reference_complete_tree_action(state, "filter_none")
+    show_all <- reference_complete_tree_action(
+      state, "show_all", complete_proposal
+    )
+    filter_none <- reference_complete_tree_action(
+      state, "filter_none", complete_proposal
+    )
     expect_identical(show_all, filter_none)
-    expect_identical(show_all$filter_mode, "complete")
+    expect_identical(show_all$filter_mode, "none")
+    expect_identical(show_all$core_outcome, "complete")
+    expect_identical(
+      show_all$active_input_values,
+      complete_proposal$input_values
+    )
+    expect_identical(
+      show_all$active_attempt_fingerprint,
+      reference_attempt_fingerprint(
+        context_fingerprint,
+        complete_proposal$input_values
+      )
+    )
+    expect_identical(
+      show_all$active_attempt_outcome,
+      "proposal_created"
+    )
+    expect_null(show_all$active_attempt_render_outcome)
     expect_true(show_all$recomputed)
     expect_identical(show_all$manual_settings, state$manual_settings)
     expect_identical(show_all$selected_ids, state$selected_ids)
     expect_identical(show_all$display_source, "current")
     expect_identical(
       show_all$display_proposal_fingerprint,
-      "proposal-complete"
+      complete_proposal$proposal_fingerprint
     )
+    expect_identical(show_all$display_proposal, complete_proposal)
     expect_false(show_all$viewer_open)
   }
 })

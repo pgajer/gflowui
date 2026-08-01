@@ -2,8 +2,8 @@
 
 ## Status
 
-Revision 5, prepared after the 2026-07-31 specification audit and subsequent
-re-audits through the Revision 4 re-audit dated 2026-08-01.
+Revision 6, prepared after the 2026-07-31 specification audit and subsequent
+re-audits through the Revision 5 re-audit dated 2026-08-01.
 
 This document specifies a deterministic initial display policy for maximum
 basin merge trees in `gflowui`. It does not alter basin construction, basin
@@ -241,13 +241,48 @@ Both mass-core coverage and final displayed-set coverage use the same declared
 positive-mass denominator. The denominator, positive count, and exact-zero
 count are recorded; it is never silently changed.
 
+### Typed mass-derived availability
+
+Every successful proposal records:
+
+```text
+mass.derived.available:
+  true | false
+mass.derived.unavailable.reason:
+  null | mass_unavailable | mass_invalid
+```
+
+These fields govern every mass-derived proposal field. They are not inferred
+from a numeric sentinel. `NaN`, `Inf`, and fabricated zero coverage are
+forbidden. The exact proposal representations are:
+
+| Mass state | Positive groups | All-mass groups | Denominator | Positive count | Zero count | Core/final coverage |
+|---|---|---|---|---|---|---|
+| `valid` | complete ordered list | complete ordered list | finite and positive | exact nonnegative integer | exact nonnegative integer | finite values in `[0, 1]` |
+| `mass_unavailable` | empty list | one complete zero-mass group containing every component branch | exact `0` | exact `0` | component branch count | null with reason `mass_unavailable` |
+| `mass_invalid` | null | null | null | null | null | null with reason `mass_invalid` |
+
+For Filter None with `mass_unavailable` or `mass_invalid`, the complete core
+and final canonical IDs remain available. The mass-ranked Important-label
+contribution is an empty ID list and records omission reason
+`trajectory_flow_mass:<mass state>`. Valid peak, prominence, support,
+component-survivor, and selected-or-pinned label contributions are retained.
+Mass diagnostics, the mass-rank pair plot, and mass coverage are unavailable
+with the same typed reason. Other proposal fields remain present.
+
+A change in the mass vector first invalidates any displayed or retained
+proposal whose context includes the prior mass-source fingerprint. After that
+invalidation, a fresh Filter None attempt may install a new canonical-only
+proposal under the contract above. A mass-based mode remains blocked and
+leaves no displayed proposal.
+
 ## Parameter Validation
 
 The pure proposal helper and Shiny controls use the same strict domains:
 
 | Parameter | Valid domain |
 |---|---|
-| `filter.mode` | one of Auto, Cumulative Mass, Minimum Mass, Top K, None |
+| `filter.mode` | one of Auto, Cumulative Mass, Minimum Mass, Top K, None; serialized as `auto`, `cumulative_mass`, `minimum_mass`, `top_k`, `none` |
 | `coverage.target` | finite scalar with `0 < value <= 1` |
 | `strong.gap.decades` | finite nonnegative scalar |
 | `minimum.core.branches` | positive whole-number scalar |
@@ -513,6 +548,11 @@ count are reported per measure. Label modes are Important, Selected,
 Displayed, None, and All. All is permitted with an explicit crowding warning.
 A label ID must be in the final displayed branch set.
 
+When Filter None is valid except for `mass_invalid` or `mass_unavailable`, the
+trajectory-flow-mass item contributes no labels and records its typed omission
+reason. The other five contributions are evaluated normally. The union is not
+discarded merely because its mass-ranked contribution is unavailable.
+
 ## Required Public `gflow` Layout Contract
 
 Implementation requires a reviewed public pure accessor with behavior
@@ -576,6 +616,8 @@ attempt and display state into the separate view-state envelope below.
 The immutable proposal contains:
 
 - algorithm name and version;
+- `context.fingerprint`;
+- `proposal.fingerprint`;
 - creation time in ISO 8601;
 - graph, topology, vertex, field, estimate, source, trajectory-flow
   construction, and canonical-tree fingerprints;
@@ -589,14 +631,18 @@ The immutable proposal contains:
 - mapping validation `valid`;
 - the complete typed ranking-measure validation map;
 - settings validation `valid`;
-- stable ordered positive-mass and all-mass ranking groups;
+- typed mass-derived availability and unavailability reason;
+- stable ordered positive-mass and all-mass ranking groups, using the exact
+  valid, empty, or null representations declared above;
 - the validated active parameter values;
 - core selection outcome, warnings, boundary, gap, and informational cutoff;
 - core canonical IDs;
 - sentinel IDs, all inclusion reasons, and primary reasons;
 - ancestor-only additions;
-- final canonical IDs and label IDs;
-- positive denominator, zero count, core coverage, and final coverage;
+- final canonical IDs, label IDs, per-measure label contributions, and label
+  omission reasons;
+- positive denominator, positive count, zero count, core coverage, and final
+  coverage, using the exact typed representations declared above;
 - non-overlapping category counts; and
 - final render outcome.
 
@@ -611,6 +657,64 @@ Adjusted settings persist only within the active session and construction
 identity. They reset when graph, field, source, subject, project,
 construction, direction, or component changes. Cross-context reuse requires
 an explicit future opt-in mechanism and is outside version 1.
+
+### Fingerprint contract
+
+The context fingerprint is SHA-256 over
+`gflowui_basin_merge_tree_context/1`. Its fixed fields are:
+
+```text
+project identity
+subject identity
+graph identity
+topology fingerprint
+vertex-map fingerprint
+selected field identity and fingerprint
+selected source identity and fingerprint
+estimate identity
+trajectory-flow construction identity and fingerprint
+canonical-tree construction identity and fingerprint
+direction
+component
+```
+
+The proposal fingerprint is SHA-256 over
+`gflowui_basin_merge_tree_display_proposal_content/1`, containing the context
+fingerprint and every deterministic scientific or display field in
+proposal/3. It excludes only `proposal.fingerprint` itself and the creation
+time. Thus timestamp-only differences do not change proposal content identity.
+
+The active-attempt fingerprint is SHA-256 over
+`gflowui_basin_merge_tree_active_attempt/1`, containing the context
+fingerprint, the exact serialized filter mode, all active input values, and
+every validation-relevant toggle or setting. It excludes computed validation
+results, creation time, and any retained/displayed proposal.
+
+All three hashes use this versioned canonical UTF-8 text serialization:
+
+1. each schema fixes its field set, and named fields/maps are emitted in
+   lexicographic UTF-8 key-byte order;
+2. canonical-ID sets are sorted lexicographically and ordered branch/event
+   tables use their declared canonical order;
+3. strings carry a type token and unsigned decimal UTF-8 byte-length prefix;
+4. integers use a type token and canonical base-10 ASCII representation;
+5. finite numeric values use a type token and lowercase C99 hexadecimal
+   floating-point representation, with negative zero normalized to positive
+   zero;
+6. logical true, logical false, and null use distinct typed tokens;
+7. lists and maps carry an unsigned decimal element count, use distinct type
+   tokens, and preserve the order fixed by rules 1 and 2; and
+8. no optional whitespace is emitted.
+
+Nonfinite numeric values are not hashable proposal content. Invalid active
+input values are represented in the attempt fingerprint by typed raw-input
+tokens for missing, nonfinite, and unparsable values rather than proposal
+numeric fields.
+
+On deserialization, `gflowui` independently recomputes the context, proposal,
+and active-attempt fingerprints. A mismatch between the embedded proposal,
+the envelope, or the active context returns `fingerprint_invalid`, clears the
+display, and does not rewrite or repair any fingerprint.
 
 ### View-state envelope
 
@@ -652,6 +756,7 @@ equal `context.fingerprint`. The valid combinations are:
 | invalid active settings, same context, prior valid proposal | `retained_last_valid` | prior immutable proposal |
 | invalid active settings, same context, no prior proposal | `none` | null |
 | invalid or unavailable mass in an active mass mode | `none` | null |
+| invalid or unavailable mass with Filter None and all other validation valid | `current` | newly constructed canonical-only complete proposal |
 | invalid source, mapping, support, peak, or prominence | `none` | null |
 | stale identity | `none` | null |
 | context changed and recomputation not yet valid | `none` | null |
@@ -659,8 +764,10 @@ equal `context.fingerprint`. The valid combinations are:
 Retention is allowed only for invalid parameter edits within the unchanged
 context fingerprint and while the retained proposal independently revalidates
 against that context. Invalid source data, mapping, mass, support, peak,
-prominence, or identity clears the retained proposal; these are not
-presentation-only input errors.
+prominence, or identity first clears the retained proposal; these are not
+presentation-only input errors. After that clear, mass invalidity or
+unavailability alone may produce a new current Filter None proposal. The same
+mass state in a mass-based mode leaves the display empty.
 
 A later valid recomputation atomically installs the new immutable proposal,
 sets `display.source = current`, and replaces the retained candidate. A change
@@ -718,7 +825,8 @@ Controls:
 
 These three complete-tree controls have distinct semantics:
 
-- **Filter = None** is the persistent filter-state value. It constructs a
+- **Filter = None** is the persistent filter-state value, serialized as
+  `filter.mode = "none"`. It constructs a
   `complete` core for the selected component and remains selected until the
   user chooses another filter.
 - **Show all** is a shortcut that sets Filter to None and recomputes the
@@ -874,6 +982,11 @@ and settings validation. It may return core outcome `complete` and a current
 render outcome despite separately recorded `mass_invalid` or
 `mass_unavailable`; mass-derived views are disabled and disclosed.
 
+In those two Filter None states, the active attempt outcome is
+`proposal_created`, its render outcome is null, `display.source` is `current`,
+and the embedded immutable proposal has the exact mass-derived field
+representations defined above. `complete` is never a filter-state value.
+
 The active-attempt matrix is:
 
 | State | Auto/Cumulative/Minimum/Top K | Filter None |
@@ -914,9 +1027,17 @@ attempt.
 8. Invalid support, peak, or prominence blocks all modes with no sentinel,
    label, final, or layout IDs and render outcome `unavailable`.
 9. Mass-invalid and mass-unavailable behavior retains the declared Filter None
-   exception while disabling and disclosing every mass-derived view.
-10. Immutable proposal serialization round-trips without changing validation,
-    ordered IDs, groups, settings, fingerprints, or render outcome.
+   exception while disabling and disclosing every mass-derived view. Tests
+   assert the complete field-level availability table, retained non-mass label
+   contributions, mass-label omission reason, complete core/final IDs,
+   `proposal_created`, current display source, and render outcome for both
+   states.
+10. Immutable proposal and view-state serialization round-trip both Filter
+    None mass-failure states without changing validation, typed null/empty
+    mass fields, ordered IDs, settings, independently recomputed fingerprints,
+    or render outcome. Fingerprint tests cover reordered named inputs,
+    timestamp-only changes, one-field tampering, wrong-context proposals, and
+    corrupted serialized view state.
 11. Stale graph, field, source, construction, direction, or component identity
    is rejected by every coordinated panel.
 12. Whole-direction mapping and ranking validation precede deterministic
@@ -977,7 +1098,9 @@ attempt.
     component changes clear both active and retained state before recomputation.
 34. View-state serialization round-trips the active-attempt fingerprint,
     active inputs and validation, display source, display fingerprint, and
-    complete immutable display proposal.
+    complete immutable display proposal. Deserialization independently
+    recomputes all fingerprints and rejects, rather than repairs, every
+    mismatch with `fingerprint_invalid`.
 35. Active-input status text describes the invalid attempt while displayed
     status text is derived only from the retained proposal.
 
@@ -1011,9 +1134,10 @@ attempt.
 48. Deep, disjoint sentinel ancestry exercises `sentinel_overflow` and
     `closure_overflow`.
 49. Mandatory branches are never silently discarded.
-50. Filter None persists as filter state; Show all sets Filter to None and
-    recomputes; Open complete interactive tree mutates none of the declared
-    filter, selection, attempt, or display state.
+50. Filter None persists as serialized filter state `none` while its proposal
+    core outcome is `complete`; Show all sets Filter to None and installs the
+    same complete immutable proposal; Open complete interactive tree mutates
+    none of the declared filter, selection, attempt, or display state.
 51. Each of those three UI actions is tested in renderable and overflow states.
 52. Desktop and narrow viewports remain usable in ordinary and overflow
     states.
