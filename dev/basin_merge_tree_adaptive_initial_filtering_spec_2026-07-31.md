@@ -2,8 +2,8 @@
 
 ## Status
 
-Revision 4, prepared after the 2026-07-31 specification audit and subsequent
-re-audits through 2026-08-01.
+Revision 5, prepared after the 2026-07-31 specification audit and subsequent
+re-audits through the Revision 4 re-audit dated 2026-08-01.
 
 This document specifies a deterministic initial display policy for maximum
 basin merge trees in `gflowui`. It does not alter basin construction, basin
@@ -73,6 +73,23 @@ two constructions. Their names and owners must remain visible.
 | Prominence sentinel and labels | persistence/prominence | canonical superlevel merge tree |
 | Birth, death, parent, survivor, events, layout | canonical tree values | canonical superlevel merge tree |
 
+After canonical mapping, every ranking vector has one value per branch in the
+complete selected direction and must satisfy these exact domains:
+
+- trajectory-flow `primary.support.mass`: finite and nonnegative;
+- trajectory-flow `primary.support.size`: finite, nonnegative whole numbers;
+- selected-field peak value: finite;
+- canonical persistence/prominence: finite and nonnegative.
+
+No missing value, implicit omission, coercion, rounding, or replacement is
+permitted. Exact zero support and zero prominence are valid.
+
+For a non-surviving maximum branch, canonical prominence is
+`birth.level - death.level`. For the elder-rule survivor of each component,
+death is the component minimum of the selected field and prominence is
+`birth.level - component.minimum`. Thus the survivor also has one finite,
+nonnegative prominence; infinity and `NA` are not survivor conventions.
+
 Tree-native support mass, when shown, must be labeled
 `merge-tree primary support mass`. It must not be called simply `Mass`, and it
 must not replace trajectory-flow mass in the version 1 proposal.
@@ -120,12 +137,12 @@ selection follows a whole-direction pre-pass:
 
 1. enumerate components in stable canonical component-ID order;
 2. validate the whole-direction trajectory-flow-to-canonical mapping;
-3. validate the complete declared trajectory-flow mass vector across all
-   maximum branches;
-4. when the mapping and vector are valid and at least one component has
+3. validate every declared ranking vector across all maximum branches;
+4. when the mapping and mass vector are valid and at least one component has
    positive mass, select the component with greatest positive-mass total,
-   breaking ties by stable component ID;
-5. when the mapping and vector are valid but all component totals are zero,
+   breaking ties by stable component ID; a separate invalid ranking vector
+   still blocks proposal construction;
+5. when the mapping and mass vector are valid but all component totals are zero,
    select the smallest stable component ID and record
    `smallest_component_mass_unavailable`; and
 6. when the mapping is invalid, select the smallest stable component ID for
@@ -143,7 +160,7 @@ The proposal records all valid component totals or records that totals were
 unavailable, the component-selection rule, selected component, tie-break, and
 fallback reason. Changing direction or component invalidates the proposal.
 
-## Source and Mass Validation
+## Source and Ranking-Measure Validation
 
 Source validation precedes adaptive filtering:
 
@@ -154,19 +171,53 @@ Source validation precedes adaptive filtering:
 A missing or nonfinite source-field value produces `source_invalid`. Filtering
 must not drop vertices or construct a partial graph.
 
-The declared trajectory-flow mass vector is first validated across the whole
-maximum direction, before automatic component selection, and then summarized
-for the selected component:
+After one-to-one mapping, all four ranking vectors are validated across the
+whole maximum direction before automatic component selection. This avoids
+component-dependent acceptance and means component switching does not expose
+previously unchecked values.
+
+The ranking-validation map is:
+
+```text
+trajectory_flow_mass:
+  valid | mass_invalid | mass_unavailable
+trajectory_flow_support:
+  valid | support_invalid
+source_peak:
+  valid | peak_invalid
+canonical_prominence:
+  valid | prominence_invalid
+```
+
+The declared trajectory-flow mass vector is then summarized for the selected
+component:
 
 - missing, negative, or nonfinite mass produces `mass_invalid`;
 - exact zero is valid, excluded from logarithms, and counted separately;
-- zero-mass branches remain eligible for Show All, sentinels, and ancestry;
+- zero-mass branches remain eligible for Filter None, sentinels, and ancestry;
 - zero total positive mass produces `mass_unavailable`;
 - normalization occurs only after the complete declared vector validates.
 
 `mass_invalid` and `mass_unavailable` disable Auto, Cumulative Mass, Minimum
-Mass, and mass-ranked Top K. A valid canonical tree may still use None/Show
-All.
+Mass, and mass-ranked Top K. A valid canonical tree may still use Filter None
+when mass alone is invalid or unavailable. In that canonical-only mode,
+mass-derived annotations, coverage, diagnostics, and the mass-rank pair plot
+are unavailable and explicitly identified as such.
+
+Support-size validation requires one numeric value per mapped branch. Missing,
+nonfinite, negative, or fractional values produce `support_invalid`; zero is
+valid. Peak validation is inherited from the selected source field and
+rechecked after extremum mapping; a missing or nonfinite mapped peak produces
+both `peak_invalid` and `source_invalid`. Canonical prominence requires one
+finite, nonnegative value per mapped branch under the survivor convention
+above; failure produces `prominence_invalid`.
+
+Version 1 does not degrade around invalid support, peak, or prominence. Any of
+`support_invalid`, `peak_invalid`, or `prominence_invalid` blocks the current
+coordinated proposal in every filter mode, regardless of sentinel toggles or
+label mode, because mandatory sentinels, Important labels, and the Plot
+Workspace share those vectors. No sentinel, label, final-ID, or layout subset
+is computed from an invalid ranking vector.
 
 Both mass-core coverage and final displayed-set coverage use the same declared
 positive-mass denominator. The denominator, positive count, and exact-zero
@@ -341,7 +392,7 @@ tie-group boundary and canonical branch IDs.
 - **Top K:** ranks all-mass groups and includes the complete group containing
   rank `top.k`. It returns `top_k`; if the boundary group extends beyond K,
   including when K enters the zero group, it adds warning `tie_overflow`.
-- **None/Show All:** selects every canonical branch in the selected component
+- **Filter None:** selects every canonical branch in the selected component
   and returns `complete`.
 
 The Auto and Cumulative Mass modes use `core.branch.budget`. Minimum Mass,
@@ -396,16 +447,16 @@ core, rendering uses this cause-based precedence:
 
 A core can therefore have outcome `top_k`, warning `tie_overflow`, and render
 outcome `core_overflow`. The same `core_overflow` rule applies to Auto,
-Cumulative Mass, Minimum Mass, Top K, and None/Show All.
+Cumulative Mass, Minimum Mass, Top K, and Filter None.
 
 In any overflow state, the panel initially shows the diagnostic, exact counts,
 coverage, warnings, and a concise overflow explanation instead of compressing
 hundreds of branches into a static tree. `Open complete interactive tree`
 opens the canonical component in a zoomable, scrollable view with important
-labels only by default. Show All remains available. The Plot Workspace still
-uses all component basins.
+labels only by default. The Show all shortcut remains available. The Plot
+Workspace still uses all component basins.
 
-None/Show All routes directly to the complete interactive presentation when
+Filter None routes directly to the complete interactive presentation when
 its complete-component core exceeds the final budget. It never attempts to
 compress that core into the initial static tree.
 
@@ -472,6 +523,12 @@ selects the complete component. The accessor returns, without drawing:
 - crossing-free leaf order and branch/event coordinates; and
 - validation status.
 
+Before returning a layout, the public accessor validates finite branch birth,
+death, and persistence values and nonnegative persistence for the complete
+canonical tree, including component survivors under the finite component-floor
+convention. An invalid canonical prominence is a tree-validation error; it is
+not omitted or repaired by the layout accessor.
+
 Canonical vertical values and display-layout horizontal values are distinct:
 
 - branch births, branch deaths, merge levels, persistence, parent identity,
@@ -493,9 +550,12 @@ coordinates are not required to equal positions in the complete layout.
 
 ## Versioned Proposal Record
 
-Every proposal is serializable as
-`gflowui_basin_merge_tree_display_proposal/2` and contains orthogonal state
-fields:
+Every successfully constructed algorithm proposal is immutable and
+serializable as `gflowui_basin_merge_tree_display_proposal/3`. Revision 3
+supersedes the unimplemented proposal-schema revision 2 by moving transient
+attempt and display state into the separate view-state envelope below.
+
+The immutable proposal contains:
 
 - algorithm name and version;
 - creation time in ISO 8601;
@@ -506,14 +566,13 @@ fields:
   reason;
 - whole-direction and component basin counts;
 - exact measure names and owning construction identities;
-- identity validation: `current` or `stale`;
-- source validation: `valid` or `source_invalid`;
-- mapping validation: `valid` or `mapping_invalid`;
-- mass validation: `valid`, `mass_invalid`, or `mass_unavailable`;
-- settings validation: `valid` or `settings_invalid`;
-- proposal availability: `current`, `retained_last_valid`, or `none`;
+- creation-time identity validation `current`;
+- source validation `valid`;
+- mapping validation `valid`;
+- the complete typed ranking-measure validation map;
+- settings validation `valid`;
 - stable ordered positive-mass and all-mass ranking groups;
-- all active and retained parameter values;
+- the validated active parameter values;
 - core selection outcome, warnings, boundary, gap, and informational cutoff;
 - core canonical IDs;
 - sentinel IDs, all inclusion reasons, and primary reasons;
@@ -523,15 +582,85 @@ fields:
 - non-overlapping category counts; and
 - final render outcome.
 
+An invalid active attempt is not an algorithm proposal and never receives
+canonical core, sentinel, label, final, or layout IDs.
+
 Every coordinated panel validates this identity against its active graph,
 field, source, constructions, direction, and component before use. A mismatch
-sets identity validation and final rendering to `stale`; cached IDs are not
-rendered.
+marks the proposal stale; cached IDs are not rendered.
 
 Adjusted settings persist only within the active session and construction
 identity. They reset when graph, field, source, subject, project,
 construction, direction, or component changes. Cross-context reuse requires
 an explicit future opt-in mechanism and is outside version 1.
+
+### View-state envelope
+
+Transient UI state is serializable separately as
+`gflowui_basin_merge_tree_view_state/1`. It contains:
+
+```text
+context.fingerprint
+active.attempt.fingerprint
+active.attempt.validation
+active.input.values
+active.attempt.outcome:
+  proposal_created | blocked | stale
+active.attempt.render.outcome:
+  null | unavailable | stale
+display.source:
+  current | retained_last_valid | none
+display.proposal.fingerprint
+display.proposal
+```
+
+`active.attempt.validation` includes identity, source, mapping, the complete
+ranking-measure validation map, and settings validation. The active attempt
+describes the current controls and their validation only. It never borrows IDs,
+outcomes, or settings from `display.proposal`.
+
+`active.attempt.render.outcome` is null when a proposal is successfully
+created, `unavailable` when validation blocks construction, and `stale` for an
+identity mismatch. It describes the attempt, not the visible retained
+proposal.
+
+`display.proposal` is either one complete immutable proposal or null. Its
+fingerprint must equal `display.proposal.fingerprint` and its context must
+equal `context.fingerprint`. The valid combinations are:
+
+| Active attempt | Display source | Display proposal |
+|---|---|---|
+| valid and proposal constructed | `current` | newly constructed proposal |
+| invalid active settings, same context, prior valid proposal | `retained_last_valid` | prior immutable proposal |
+| invalid active settings, same context, no prior proposal | `none` | null |
+| invalid or unavailable mass in an active mass mode | `none` | null |
+| invalid source, mapping, support, peak, or prominence | `none` | null |
+| stale identity | `none` | null |
+| context changed and recomputation not yet valid | `none` | null |
+
+Retention is allowed only for invalid parameter edits within the unchanged
+context fingerprint and while the retained proposal independently revalidates
+against that context. Invalid source data, mapping, mass, support, peak,
+prominence, or identity clears the retained proposal; these are not
+presentation-only input errors.
+
+A later valid recomputation atomically installs the new immutable proposal,
+sets `display.source = current`, and replaces the retained candidate. A change
+of graph, vertex map, field, source, subject, project, construction, direction,
+or component first clears both the active attempt and retained proposal, then
+starts a new context. No retained proposal crosses that invalidation edge.
+
+The status presentation has two explicitly labeled parts:
+
+1. **Active inputs** reports the current control values and validation, for
+   example, `Top K must be a whole number; showing the last valid result`.
+2. **Displayed proposal** reports the immutable visible proposal's own
+   algorithm, validated settings, core/final counts, warnings, coverage,
+   render outcome, and fingerprint.
+
+When `display.source = none`, there is no visible merge-tree subset. When it is
+`retained_last_valid`, the displayed proposal's prior render outcome remains
+unchanged and is never relabeled as the active attempt's outcome.
 
 ## User Interface
 
@@ -568,6 +697,23 @@ Controls:
 - Show diagnostic;
 - Open complete interactive tree; and
 - Show all.
+
+These three complete-tree controls have distinct semantics:
+
+- **Filter = None** is the persistent filter-state value. It constructs a
+  `complete` core for the selected component and remains selected until the
+  user chooses another filter.
+- **Show all** is a shortcut that sets Filter to None and recomputes the
+  proposal. It is not a temporary visual override. In an overflow state it
+  therefore produces the declared complete-core overflow presentation.
+- **Open complete interactive tree** is a viewer action. Opening it does not
+  change filter mode, manual settings, selected canonical IDs, active attempt,
+  retained proposal, or static-panel render outcome. The launch itself is
+  nonmutating; later explicit branch selections inside the viewer use the
+  ordinary linked-selection mechanism.
+
+Each action has the same state-transition semantics in renderable and overflow
+states; only the resulting proposal's presentation differs.
 
 The Plot Workspace initially shows, on its existing default log10 rank scales:
 
@@ -633,55 +779,101 @@ integration checks when the complete upstream assets are available.
 
 ## Proposal State Model
 
-Validation, measurement, selection, and rendering are separate:
+Validation, measurement, selection, rendering, and visible-view provenance are
+separate:
 
 ```text
-identity.validation: current | stale
-source.validation:   valid | source_invalid
-mapping.validation:  valid | mapping_invalid
-mass.validation:     valid | mass_invalid | mass_unavailable
-settings.validation: valid | settings_invalid
+active.attempt.validation:
+  identity: current | stale
+  source:   valid | source_invalid
+  mapping:  valid | mapping_invalid
+  ranking.measure:
+    trajectory_flow_mass:
+      valid | mass_invalid | mass_unavailable
+    trajectory_flow_support:
+      valid | support_invalid
+    source_peak:
+      valid | peak_invalid
+    canonical_prominence:
+      valid | prominence_invalid
+  settings: valid | settings_invalid
 
-core.selection.outcome:
+active.attempt.outcome:
+  proposal_created | blocked | stale
+
+active.attempt.render.outcome:
+  null | unavailable | stale
+
+proposal.core.selection.outcome:
   strong_gap | coverage | single_positive | coverage_capped |
-  minimum_mass | threshold_empty | top_k | complete | null
+  minimum_mass | threshold_empty | top_k | complete
 
-core.warnings:
+proposal.core.warnings:
   tie_overflow
 
-render.outcome:
-  renderable | core_overflow | sentinel_overflow | closure_overflow |
-  unavailable | stale
+proposal.render.outcome:
+  renderable | core_overflow | sentinel_overflow | closure_overflow
+
+view.display.source:
+  current | retained_last_valid | none
 ```
 
-`core.selection.outcome` is null when blocking state prevents a current core.
-`tie_overflow` never replaces the mode-specific core outcome.
+The proposal record also preserves its accepted creation-time validation:
 
-Render-state precedence is:
+```text
+identity: current
+source: valid
+mapping: valid
+ranking.measure:
+  trajectory_flow_mass:
+    valid | mass_invalid | mass_unavailable
+  trajectory_flow_support:
+    valid
+  source_peak:
+    valid
+  canonical_prominence:
+    valid
+settings: valid
+```
+
+No proposal exists when blocking state prevents a core. `tie_overflow` never
+replaces the mode-specific proposal core outcome.
+
+Active-attempt blocking precedence is:
 
 1. stale identity returns `stale`;
-2. invalid source, mapping, or active settings returns `unavailable`;
-3. an active mass-based mode with `mass_invalid` or `mass_unavailable` returns
+2. invalid source or mapping returns `unavailable`;
+3. `support_invalid`, `peak_invalid`, or `prominence_invalid` returns
+   `unavailable` for every mode;
+4. invalid active settings returns `unavailable`;
+5. an active mass-based mode with `mass_invalid` or `mass_unavailable` returns
    `unavailable`;
-4. otherwise a current core proceeds through core, sentinel, and closure
+6. otherwise a current core proceeds through core, sentinel, and closure
    budget checks.
 
-None/Show All is canonical-only after identity, source, mapping, and settings
-validation. It may return core outcome `complete` and a current render outcome
-despite separately recorded `mass_invalid` or `mass_unavailable`; mass-derived
-annotations and coverage are shown as unavailable. A retained last-valid view
-is marked `retained_last_valid` and is never relabeled as current.
+Filter None is canonical-only after identity, source, mapping, non-mass ranking,
+and settings validation. It may return core outcome `complete` and a current
+render outcome despite separately recorded `mass_invalid` or
+`mass_unavailable`; mass-derived views are disabled and disclosed.
 
-The required mode/state matrix is:
+The active-attempt matrix is:
 
-| State | Auto/Cumulative/Minimum/Top K | None/Show All |
+| State | Auto/Cumulative/Minimum/Top K | Filter None |
 |---|---|---|
-| all validation valid, mass valid | compute mode-specific core | `complete` |
-| mass invalid or unavailable | null core; render `unavailable` | `complete`; retain mass warning |
+| all validation and measures valid | compute mode-specific core | `complete` |
+| mass invalid or unavailable | null core; render `unavailable` | `complete`; disable mass-derived views |
+| support invalid | null core; render `unavailable` | same |
+| peak invalid/source invalid | null core; render `unavailable` | same |
+| prominence invalid | null core; render `unavailable` | same |
 | source invalid | null core; render `unavailable` | null core; render `unavailable` |
 | mapping invalid | null core; render `unavailable` | null core; render `unavailable` |
-| active settings invalid | null current core; render `unavailable`; retain prior view | same |
+| active settings invalid | null current core; render `unavailable` | same |
 | stale identity | null current core; render `stale` | null current core; render `stale` |
+
+This matrix describes only the active attempt. The view-state envelope
+separately decides whether a same-context prior immutable proposal is displayed
+as `retained_last_valid`. It never copies that proposal's IDs into the blocked
+attempt.
 
 ## Required Validation
 
@@ -692,90 +884,134 @@ The required mode/state matrix is:
    mixed-component cases.
 3. A fixture with different trajectory-flow and merge-tree mass rankings uses
    only the declared trajectory-flow mass.
-4. Proposal serialization round-trips without changing ordered IDs or groups.
-5. Stale graph, field, source, construction, direction, or component identity
+4. All four ranking vectors validate across the whole mapped direction before
+   component selection.
+5. Missing and nonfinite mapped peak values produce `peak_invalid` and
+   `source_invalid`.
+6. Missing, nonfinite, negative, and fractional support sizes each produce
+   `support_invalid`; exact zero and positive whole numbers remain valid.
+7. Missing, nonfinite, and negative canonical prominence each produce
+   `prominence_invalid`; exact zero and the finite survivor convention remain
+   valid.
+8. Invalid support, peak, or prominence blocks all modes with no sentinel,
+   label, final, or layout IDs and render outcome `unavailable`.
+9. Mass-invalid and mass-unavailable behavior retains the declared Filter None
+   exception while disabling and disclosing every mass-derived view.
+10. Immutable proposal serialization round-trips without changing validation,
+    ordered IDs, groups, settings, fingerprints, or render outcome.
+11. Stale graph, field, source, construction, direction, or component identity
    is rejected by every coordinated panel.
-6. Whole-direction mapping and mass validation precede deterministic component
-   selection; positive, all-zero, invalid-mapping, and invalid-mass cases
-   record the specified rule, totals or their unavailability, and fallback.
-7. Proposal-schema round trips preserve each validation field, mass state,
-   proposal availability, core outcome/warnings, and render outcome without
-   collapsing them into one status.
+12. Whole-direction mapping and ranking validation precede deterministic
+    component selection; positive, all-zero, invalid-mapping, invalid-mass,
+    invalid-support, and invalid-prominence cases record the specified
+    validation map, totals or their unavailability, rule, and fallback.
 
 ### Algorithm
 
-8. Results are deterministic under row permutation.
-9. Tests cover a strong gap, several comparable gaps, smooth heavy tail,
+13. Results are deterministic under row permutation.
+14. Tests cover a strong gap, several comparable gaps, smooth heavy tail,
    extreme last-value gap, all-equal masses, coverage-boundary ties, and
    budget-boundary ties.
-10. The extreme late-gap example selects a bounded core, never rank 199.
-11. Tests cover negative, missing, nonfinite, all-zero, one-positive, and
+15. The extreme late-gap example selects a bounded core, never rank 199.
+16. Tests cover negative, missing, nonfinite, all-zero, one-positive, and
    two-positive mass vectors with exact typed statuses.
-12. Exact zeros never enter log calculations and remain available to Show All,
-    sentinels, and closure.
-13. Positive-only and all-mass ranking groups are exact, deterministic, and
+17. Exact zeros never enter log calculations and remain available to Filter
+    None, sentinels, and closure.
+18. Positive-only and all-mass ranking groups are exact, deterministic, and
     separately serialized.
-14. Core and final coverage use the same recorded denominator.
-15. Pure helpers and UI inputs reject every invalid active parameter boundary
+19. Core and final coverage use the same recorded denominator.
+20. Pure helpers and UI inputs reject every invalid active parameter boundary
     with
     `settings_invalid`, retain the last valid proposal, and never coerce.
-16. Inactive mode-specific inputs cannot block recomputation; first activation,
+21. Inactive mode-specific inputs cannot block recomputation; first activation,
     switching, retention, and reactivation follow the declared initialization
     and validation rules.
-17. Minimum Mass uses raw trajectory-flow units: masses `0.4, 0.3` with
+22. Minimum Mass uses raw trajectory-flow units: masses `0.4, 0.3` with
     threshold `0.5` return `threshold_empty`, not a component-normalized
     selection.
-18. Masses `0.6, 0.4, 0, 0` with Minimum Mass zero select all four IDs and
+23. Masses `0.6, 0.4, 0, 0` with Minimum Mass zero select all four IDs and
     return `minimum_mass`.
-19. The same masses with Top K three include the complete zero group, return
+24. The same masses with Top K three include the complete zero group, return
     `top_k`, and record warning `tie_overflow`; a non-tied Top K returns
     `top_k` without that warning.
-20. None/Show All returns `complete`.
-21. The full mode-by-validation-state matrix is tested for valid,
+25. Filter None returns `complete`.
+26. The full mode-by-validation-state matrix is tested for valid,
     mass-invalid, mass-unavailable, source-invalid, mapping-invalid,
-    settings-invalid, and stale states.
+    support-invalid, peak-invalid, prominence-invalid, settings-invalid, and
+    stale states.
+
+### View-state transitions
+
+27. An invalid active attempt has input and validation fields but no canonical
+    IDs or algorithm proposal.
+28. Initial valid computation stores a current immutable proposal and matching
+    display fingerprint.
+29. A same-context invalid setting retains the prior immutable proposal,
+    records `display.source = retained_last_valid`, and keeps the invalid
+    attempt separate.
+30. An invalid setting without a prior proposal records
+    `display.source = none`.
+31. A later valid recomputation atomically replaces the retained proposal and
+    records `display.source = current`.
+32. Source, mapping, ranking-measure, and stale-identity failures clear the
+    retained proposal.
+33. Graph, field, source, subject, project, construction, direction, and
+    component changes clear both active and retained state before recomputation.
+34. View-state serialization round-trips the active-attempt fingerprint,
+    active inputs and validation, display source, display fingerprint, and
+    complete immutable display proposal.
+35. Active-input status text describes the invalid attempt while displayed
+    status text is derived only from the retained proposal.
 
 ### Topology and components
 
-22. Complete-tree identity is unchanged by every filter.
-23. Unknown, mixed, or nonclosed selections fail in the public `gflow`
+36. Complete-tree identity is unchanged by every filter.
+37. Unknown, mixed, or nonclosed selections fail in the public `gflow`
     accessor unless ancestor closure is explicitly requested.
-24. Filtered public layouts preserve exact canonical IDs, parents, events,
+38. The public `gflow` accessor rejects nonfinite branch birth, death, or
+    persistence and negative persistence, including invalid survivor values.
+39. Filtered public layouts preserve exact canonical IDs, parents, events,
     births, deaths, merge levels, persistence, and survivor identity.
-25. Filtered leaf order is the complete canonical order restricted to selected
+40. Filtered leaf order is the complete canonical order restricted to selected
     IDs; filtered x coordinates are deterministic under row permutation.
-26. Static and interactive renderers of the same selection use identical
+41. Static and interactive renderers of the same selection use identical
     filtered coordinates; no test equates them to complete-layout x positions.
-27. Multiple components have per-component roots, proposals, counts, and
+42. Multiple components have per-component roots, proposals, counts, and
     invalidation.
-28. Every final branch exists in the canonical tree; every label refers to a
+43. Every final branch exists in the canonical tree; every label refers to a
     final branch.
 
 ### Overflow and interaction
 
-29. Sentinel reasons and non-overlapping counts are exact.
-30. Every sentinel and Important-label measure tests a nominal Top-N boundary
+44. Sentinel reasons and non-overlapping counts are exact.
+45. Every sentinel and Important-label measure tests a nominal Top-N boundary
     straddled by a tie, including expanded count disclosure.
-31. Non-tied Auto, Minimum Mass, Top K, and None/Show All cores exercise
+46. Non-tied Auto, Minimum Mass, Top K, and Filter None cores exercise
     `core_overflow`.
-32. A tie-expanded Top K exceeding the final budget retains outcome `top_k`,
+47. A tie-expanded Top K exceeding the final budget retains outcome `top_k`,
     warning `tie_overflow`, and render outcome `core_overflow`.
-33. Deep, disjoint sentinel ancestry exercises `sentinel_overflow` and
+48. Deep, disjoint sentinel ancestry exercises `sentinel_overflow` and
     `closure_overflow`.
-34. Mandatory branches are never silently discarded.
-35. Desktop and narrow viewports remain usable in ordinary and overflow
+49. Mandatory branches are never silently discarded.
+50. Filter None persists as filter state; Show all sets Filter to None and
+    recomputes; Open complete interactive tree mutates none of the declared
+    filter, selection, attempt, or display state.
+51. Each of those three UI actions is tested in renderable and overflow states.
+52. Desktop and narrow viewports remain usable in ordinary and overflow
     states.
-36. Cross-panel selection highlights one canonical basin without
+53. Cross-panel selection highlights one canonical basin without
     reconstruction or Inspector-setting changes.
 
 ### Portable Subject 15 regression
 
-37. A clean checkout validates all 352 fixture mappings and canonical parents.
-38. The bounded algorithm returns the rank-17 strong-gap core and exact
+54. A clean checkout validates all 352 fixture mappings and canonical parents.
+55. The fixture validates finite peaks, nonnegative whole-number support sizes,
+    and finite nonnegative canonical prominence, including the survivor.
+56. The bounded algorithm returns the rank-17 strong-gap core and exact
     recorded coverage.
-39. The reference regression asserts exact tie groups, eligible boundaries,
+57. The reference regression asserts exact tie groups, eligible boundaries,
     first qualifying boundary, canonical core/final IDs, and `strong_gap`.
-40. Show All exposes all 352 fixture branches when the full canonical object
+58. Filter None exposes all 352 fixture branches when the full canonical object
     is available.
 
 ## Implementation Order

@@ -2,10 +2,10 @@
 
 ## Change Summary
 
-Revision 4 of the adaptive initial filtering specification responds to the
-2026-07-31 audit series through the 2026-08-01 follow-up re-audit. No `gflow`
-or `gflowui` application behavior has been implemented in this specification
-pass.
+Revision 5 of the adaptive initial filtering specification responds to the
+2026-07-31 audit series through the Revision 4 re-audit dated 2026-08-01. No
+`gflow` or `gflowui` application behavior has been implemented in this
+specification pass.
 
 The revised specification now defines:
 
@@ -24,15 +24,25 @@ The revised specification now defines:
 - deterministic component fallback for invalid or unavailable mass;
 - separate canonical vertical values and compressed filtered x-layout;
 - strict parameter domains with noncoercing invalid-setting behavior;
-- executable Minimum Mass, Top K, and None/Show All contracts;
+- executable Minimum Mass, Top K, and Filter None contracts;
 - distinct positive-mass and all-mass tie groups, including complete zero ties;
 - raw trajectory-flow units for Minimum Mass;
 - mode-aware initialization, validation, retention, and switching;
 - orthogonal identity, source, mapping, mass, settings, core-selection,
   warning, and render state;
-- nominal Top-N boundaries with disclosed tie-expanded counts; and
+- nominal Top-N boundaries with disclosed tie-expanded counts;
 - a public-accessor recommendation that does not imply nonexistent S3
-  dispatch.
+  dispatch;
+- exact whole-direction validity domains for mass, support, peak, and
+  canonical prominence;
+- blocking behavior for invalid mandatory ranking vectors;
+- a finite component-floor prominence convention for elder-rule survivors;
+- immutable successful proposals separated from active-attempt and display
+  state;
+- deterministic current, retained-last-valid, absent, recovery, and stale
+  transitions; and
+- distinct persistent-filter, shortcut, and nonmutating-viewer semantics for
+  complete-tree controls.
 
 The handoff no longer prescribes audit questions, acceptance criteria, or
 verdict wording.
@@ -45,9 +55,9 @@ Repository:
 
 `/Users/pgajer/current_projects/gflowui`
 
-Baseline before revision 4:
+Baseline before revision 5:
 
-`71d6c35e26955023bb48e35a5510c948a2bdce71`
+`4b7610476a91dfd371a5f494f3c431d421685689`
 
 Revised assets:
 
@@ -58,6 +68,8 @@ Revised assets:
 - `dev/audits/basin_merge_tree_adaptive_initial_filtering_spec_second_reaudit_2026-07-31.md`
 - `dev/audits/basin_merge_tree_adaptive_initial_filtering_spec_audit_response_followup_reaudit_2026-08-01.md`
 - `dev/audits/basin_merge_tree_adaptive_initial_filtering_spec_audit_response_followup_reaudit_response_2026-08-01.md`
+- `dev/audits/basin_merge_tree_adaptive_initial_filtering_revision4_reaudit_2026-08-01.md`
+- `dev/audits/basin_merge_tree_adaptive_initial_filtering_revision4_reaudit_response_2026-08-01.md`
 - `dev/fixtures/derive_subject15_basin_merge_tree_adaptive_fixture.R`
 - `tests/testthat/fixtures/basin_merge_tree_subject15_maxima.csv`
 - `tests/testthat/fixtures/basin_merge_tree_subject15_maxima_provenance.csv`
@@ -125,6 +137,14 @@ Revision 4 response:
 
 `/Users/pgajer/current_projects/gflowui/dev/audits/basin_merge_tree_adaptive_initial_filtering_spec_audit_response_followup_reaudit_response_2026-08-01.md`
 
+Revision 4 re-audit:
+
+`/Users/pgajer/current_projects/gflowui/dev/audits/basin_merge_tree_adaptive_initial_filtering_revision4_reaudit_2026-08-01.md`
+
+Revision 5 response:
+
+`/Users/pgajer/current_projects/gflowui/dev/audits/basin_merge_tree_adaptive_initial_filtering_revision4_reaudit_response_2026-08-01.md`
+
 ## Portable Fixture
 
 The clean-checkout fixture contains all 352 Subject 15 maximum branches and
@@ -152,11 +172,12 @@ afb7863d761932e31f4f1816f95b496db16fc58028663f26cb036ec6aa1af000
 
 The fixture records trajectory-flow mass/support separately from canonical
 tree parentage/prominence. Its tests reproduce the 352-branch mapping and raw
-rank-17 evidence, then execute the revision-4 bounded reference rule through
+rank-17 evidence, then execute the revision-5 bounded reference rule through
 tie groups, eligible boundaries, sentinels, closure, and final IDs without the
-upstream ZIP. Revision 4 adds exact manual-mode and proposal-state tests for
-zero ties, raw Minimum Mass units, ordinary non-Auto outcomes, mass-disabled
-modes, canonical-only Show All fallback, and stale identity handling.
+upstream ZIP. Revision 5 retains the exact manual-mode cases and adds
+whole-direction ranking-domain checks, invalid-ranking blocking, immutable
+proposal/view-state transitions, recovery and context invalidation, and
+complete-tree control semantics.
 
 ## Supporting Visual Evidence
 
