@@ -2,8 +2,8 @@
 
 ## Status
 
-Revision 6, prepared after the 2026-07-31 specification audit and subsequent
-re-audits through the Revision 5 re-audit dated 2026-08-01.
+Revision 7, prepared after the 2026-07-31 specification audit and subsequent
+re-audits through the Revision 6 re-audit dated 2026-08-01.
 
 This document specifies a deterministic initial display policy for maximum
 basin merge trees in `gflowui`. It does not alter basin construction, basin
@@ -613,38 +613,121 @@ serializable as `gflowui_basin_merge_tree_display_proposal/3`. Revision 3
 supersedes the unimplemented proposal-schema revision 2 by moving transient
 attempt and display state into the separate view-state envelope below.
 
-The immutable proposal contains:
+### Closed wire-schema rules
 
-- algorithm name and version;
-- `context.fingerprint`;
-- `proposal.fingerprint`;
-- creation time in ISO 8601;
-- graph, topology, vertex, field, estimate, source, trajectory-flow
-  construction, and canonical-tree fingerprints;
-- direction and selected component;
-- component-selection rule, valid component totals, tie-break, and fallback
-  reason;
-- whole-direction and component basin counts;
-- exact measure names and owning construction identities;
-- creation-time identity validation `current`;
-- source validation `valid`;
-- mapping validation `valid`;
-- the complete typed ranking-measure validation map;
-- settings validation `valid`;
-- typed mass-derived availability and unavailability reason;
-- stable ordered positive-mass and all-mass ranking groups, using the exact
-  valid, empty, or null representations declared above;
-- the validated active parameter values;
-- core selection outcome, warnings, boundary, gap, and informational cutoff;
-- core canonical IDs;
-- sentinel IDs, all inclusion reasons, and primary reasons;
-- ancestor-only additions;
-- final canonical IDs, label IDs, per-measure label contributions, and label
-  omission reasons;
-- positive denominator, positive count, zero count, core coverage, and final
-  coverage, using the exact typed representations declared above;
-- non-overlapping category counts; and
-- final render outcome.
+The context, proposal, and view-state schemas below are closed. A conforming
+object has every listed key exactly once and no unlisted key. A deserializer
+rejects a missing key, additional key, wrong scalar/container type, invalid
+cardinality, invalid enum, noncanonical ID order, or disallowed null before
+checking fingerprints. It returns `schema_invalid`; it does not drop,
+default, or reinterpret fields.
+
+The type notation is:
+
+```text
+string       one nonmissing UTF-8 string
+integer      one nonmissing whole number in signed 64-bit range
+number       one finite binary64 value
+logical      one nonmissing Boolean
+array<T>     ordered, possibly empty array of T
+object       closed named object
+nullable<T>  either typed null or T
+enum{...}    one string from the listed values
+id-array     lexicographically sorted unique array<string>
+```
+
+Schema evolution uses a new terminal schema version. Proposal/3 and context/1
+do not admit extension keys from later versions.
+
+### Context/1 schema
+
+`gflowui_basin_merge_tree_context/1` has this exact field set:
+
+| Key | Type |
+|---|---|
+| `schema` | string, exactly `gflowui_basin_merge_tree_context/1` |
+| `project_identity` | string |
+| `subject_identity` | string |
+| `graph_identity` | string |
+| `topology_fingerprint` | string |
+| `vertex_map_fingerprint` | string |
+| `selected_field_identity` | string |
+| `selected_field_fingerprint` | string |
+| `selected_source_identity` | string |
+| `selected_source_fingerprint` | string |
+| `estimate_identity` | string |
+| `trajectory_flow_construction_identity` | string |
+| `trajectory_flow_construction_fingerprint` | string |
+| `canonical_tree_construction_identity` | string |
+| `canonical_tree_construction_fingerprint` | string |
+| `direction` | enum{`max`} |
+| `component` | positive integer |
+
+Both construction identities and both construction fingerprints are required.
+
+### Proposal/3 schema
+
+`gflowui_basin_merge_tree_display_proposal/3` has this exact top-level field
+set:
+
+| Key | Type |
+|---|---|
+| `schema` | string, exactly `gflowui_basin_merge_tree_display_proposal/3` |
+| `context` | context/1 object |
+| `context_fingerprint` | 64-character lowercase hexadecimal string |
+| `proposal_fingerprint` | 64-character lowercase hexadecimal string |
+| `creation_time` | ISO-8601 string with numeric UTC offset |
+| `algorithm` | Algorithm object |
+| `component_selection` | ComponentSelection object |
+| `measures` | Measures object |
+| `validation` | ProposalValidation object |
+| `mapping` | Mapping object |
+| `accepted_parameters` | Parameters object |
+| `mass_derived` | MassDerived object |
+| `core` | Core object |
+| `sentinels` | Sentinels object |
+| `ancestor_only_ids` | id-array |
+| `final` | Final object |
+
+The closed nested objects are:
+
+| Object | Exact keys and types |
+|---|---|
+| Algorithm | `name`: string; `version`: positive integer |
+| ComponentSelection | `rule`: string; `component_totals`: nullable<array<ComponentTotal>>; `tie_break`: string; `fallback_reason`: nullable<string>; `direction_basin_count`: nonnegative integer; `graph_component_count`: positive integer; `selected_component_basin_count`: nonnegative integer |
+| ComponentTotal | `component`: positive integer; `mass_total`: finite nonnegative number; ordered by component |
+| Measures | `trajectory_flow_mass`, `trajectory_flow_support`, `source_peak`, `canonical_prominence`: each a Measure object |
+| Measure | `name`: string; `owner_identity`: string |
+| ProposalValidation | `identity`: enum{`current`}; `source`: enum{`valid`}; `mapping`: enum{`valid`}; `ranking_measure`: RankingValidation object; `settings`: enum{`valid`} |
+| RankingValidation | `trajectory_flow_mass`: enum{`valid`, `mass_invalid`, `mass_unavailable`}; `trajectory_flow_support`, `source_peak`, `canonical_prominence`: each enum{`valid`} |
+| Mapping | `cardinality`: nonnegative integer; `direction`: enum{`max`}; `component`: positive integer |
+| Parameters | `filter_mode`: enum{`auto`, `cumulative_mass`, `minimum_mass`, `top_k`, `none`}; `coverage_target`: number in `(0,1]`; `strong_gap_decades`: nonnegative number; `minimum_core_branches`, `core_branch_budget`, `final_render_budget`, `sentinel_top_n`, `important_label_n`, `top_k`: nonnegative integer, with the mode-specific positive constraints above; `minimum_mass`: nonnegative number; `include_peak_sentinel`, `include_prominence_sentinel`, `include_support_sentinel`: logical; `label_mode`: enum{`important`, `selected`, `displayed`, `none`, `all`} |
+| MassDerived | `available`: logical; `unavailable_reason`: nullable<enum{`mass_unavailable`, `mass_invalid`}>; `positive_groups`: nullable<array<PositiveMassGroup>>; `all_mass_groups`: nullable<array<AllMassGroup>>; `denominator`, `core_coverage`, `final_coverage`: nullable<number>; `positive_count`, `zero_count`: nullable<nonnegative integer> |
+| PositiveMassGroup | `mass`: positive number; `ids`: nonempty id-array; `endpoint`: positive integer; `cumulative_coverage`: number in `(0,1]` |
+| AllMassGroup | `mass`: nonnegative number; `ids`: nonempty id-array; `endpoint`: positive integer |
+| Core | `outcome`: enum{`strong_gap`, `coverage`, `single_positive`, `coverage_capped`, `minimum_mass`, `threshold_empty`, `top_k`, `complete`}; `warnings`: array<enum{`tie_overflow`}>; `boundary`: nullable<nonnegative integer>; `gap_decades`: nullable<nonnegative number>; `informational_cutoff`: nullable<nonnegative number>; `ids`: id-array |
+| Sentinels | `ids`: id-array; `inclusion_reasons`: ReasonMap; `primary_reasons`: PrimaryReasonMap; `counts`: CategoryCounts object |
+| Final | `ids`: id-array; `label_ids`: id-array; `label_contributions`: LabelContributions object; `label_omission_reasons`: array<string>; `category_counts`: CategoryCounts object; `render_outcome`: enum{`renderable`, `core_overflow`, `sentinel_overflow`, `closure_overflow`} |
+
+`ReasonMap` has canonical basin IDs as dynamic keys in lexicographic order;
+each value is a nonempty array of
+`selected_or_pinned`, `component_survivor`, `peak`, `prominence`, or
+`support`. `PrimaryReasonMap` uses the same key domain and one such enum per
+key. These are the only dynamic-key objects in proposal/3.
+
+`CategoryCounts` has exactly `mass_core`, `selected_or_pinned_only`,
+`survivor_only`, `peak_only`, `prominence_only`, `support_only`,
+`ancestor_only`, and `final_union`, each a nonnegative integer.
+`LabelContributions` has exactly `trajectory_flow_mass`, `source_peak`,
+`canonical_prominence`, `trajectory_flow_support`, `component_survivor`, and
+`selected_or_pinned`, each an id-array.
+
+MassDerived obeys the field-level availability table above. Group arrays are
+ordered by descending mass, group IDs are lexicographic, and endpoints are
+strictly increasing cumulative member counts. Positive-group cumulative
+coverage is nondecreasing. IDs in `core`, `sentinels`, ancestors, labels, and
+final records must satisfy the canonical subset and closure rules already
+declared.
 
 An invalid active attempt is not an algorithm proposal and never receives
 canonical core, sentinel, label, final, or layout IDs.
@@ -660,23 +743,8 @@ an explicit future opt-in mechanism and is outside version 1.
 
 ### Fingerprint contract
 
-The context fingerprint is SHA-256 over
-`gflowui_basin_merge_tree_context/1`. Its fixed fields are:
-
-```text
-project identity
-subject identity
-graph identity
-topology fingerprint
-vertex-map fingerprint
-selected field identity and fingerprint
-selected source identity and fingerprint
-estimate identity
-trajectory-flow construction identity and fingerprint
-canonical-tree construction identity and fingerprint
-direction
-component
-```
+The context fingerprint is SHA-256 over the complete closed context/1 object
+above, including its `schema` value.
 
 The proposal fingerprint is SHA-256 over
 `gflowui_basin_merge_tree_display_proposal_content/1`, containing the context
@@ -689,6 +757,12 @@ The active-attempt fingerprint is SHA-256 over
 fingerprint, the exact serialized filter mode, all active input values, and
 every validation-relevant toggle or setting. It excludes computed validation
 results, creation time, and any retained/displayed proposal.
+
+The view-state fingerprint is SHA-256 over
+`gflowui_basin_merge_tree_view_state_content/1`, containing every view-state/1
+field except `view_state_fingerprint` itself. Unlike the attempt fingerprint,
+it therefore covers stored validation, attempt and render outcomes, display
+source, displayed-proposal fingerprint, and the embedded proposal.
 
 All three hashes use this versioned canonical UTF-8 text serialization:
 
@@ -711,30 +785,46 @@ input values are represented in the attempt fingerprint by typed raw-input
 tokens for missing, nonfinite, and unparsable values rather than proposal
 numeric fields.
 
-On deserialization, `gflowui` independently recomputes the context, proposal,
-and active-attempt fingerprints. A mismatch between the embedded proposal,
-the envelope, or the active context returns `fingerprint_invalid`, clears the
-display, and does not rewrite or repair any fingerprint.
+On deserialization, `gflowui` first validates every closed schema, then
+independently recomputes the context, proposal, active-attempt, and view-state
+fingerprints. A mismatch between the embedded proposal, the envelope, or the
+active context returns `fingerprint_invalid`, clears the display, and does not
+rewrite or repair any fingerprint.
 
 ### View-state envelope
 
 Transient UI state is serializable separately as
-`gflowui_basin_merge_tree_view_state/1`. It contains:
+`gflowui_basin_merge_tree_view_state/1`. Its exact closed top-level schema is:
 
-```text
-context.fingerprint
-active.attempt.fingerprint
-active.attempt.validation
-active.input.values
-active.attempt.outcome:
-  proposal_created | blocked | stale
-active.attempt.render.outcome:
-  null | unavailable | stale
-display.source:
-  current | retained_last_valid | none
-display.proposal.fingerprint
-display.proposal
-```
+| Key | Type |
+|---|---|
+| `schema` | string, exactly `gflowui_basin_merge_tree_view_state/1` |
+| `view_state_fingerprint` | 64-character lowercase hexadecimal string |
+| `context_fingerprint` | 64-character lowercase hexadecimal string |
+| `active_attempt` | ActiveAttempt object |
+| `display_source` | enum{`current`, `retained_last_valid`, `none`} |
+| `display_proposal_fingerprint` | nullable<64-character lowercase hexadecimal string> |
+| `display_proposal` | nullable<proposal/3 object> |
+
+ActiveAttempt has exactly:
+
+| Key | Type |
+|---|---|
+| `fingerprint` | 64-character lowercase hexadecimal string |
+| `input_values` | ActiveInput object |
+| `validation` | AttemptValidation object |
+| `outcome` | enum{`proposal_created`, `blocked`, `stale`} |
+| `render_outcome` | nullable<enum{`unavailable`, `stale`}> |
+
+ActiveInput has exactly the same keys as Parameters. Each value preserves the
+typed control input before validation; invalid numeric controls may therefore
+use a number outside the valid proposal domain or a typed raw-input string
+token. Proposal `accepted_parameters` always satisfies the stricter Parameters
+domains.
+
+AttemptValidation has exactly `identity`, `source`, `mapping`,
+`ranking_measure`, and `settings`. Its enums are those in the Proposal State
+Model, including invalid alternatives.
 
 `active.attempt.validation` includes identity, source, mapping, the complete
 ranking-measure validation map, and settings validation. The active attempt
@@ -760,6 +850,26 @@ equal `context.fingerprint`. The valid combinations are:
 | invalid source, mapping, support, peak, or prominence | `none` | null |
 | stale identity | `none` | null |
 | context changed and recomputation not yet valid | `none` | null |
+
+The deserializer enforces this table after fingerprint validation:
+
+- `proposal_created` requires null attempt render outcome,
+  `display_source = current`, and a nonnull conforming proposal whose
+  validation and accepted parameters equal the active attempt;
+- `stale` requires attempt render outcome `stale`, stale identity validation,
+  `display_source = none`, and null display fields;
+- `blocked` requires attempt render outcome `unavailable`;
+- `retained_last_valid` is allowed only for `blocked` with
+  `settings_invalid`, otherwise-valid attempt identity/source/mapping/ranking,
+  and a nonnull independently valid same-context proposal;
+- `none` requires both display fields to be null; and
+- `current` or `retained_last_valid` requires
+  `display_proposal_fingerprint` to equal the embedded proposal fingerprint.
+
+Any disagreement returns `view_state_invalid`; no field is normalized or
+rewritten. The view-state fingerprint detects isolated envelope mutation, and
+the matrix validation rejects a consistently re-fingerprinted but
+semantically impossible combination.
 
 Retention is allowed only for invalid parameter edits within the unchanged
 context fingerprint and while the retained proposal independently revalidates
@@ -994,7 +1104,7 @@ The active-attempt matrix is:
 | all validation and measures valid | compute mode-specific core | `complete` |
 | mass invalid or unavailable | null core; render `unavailable` | `complete`; disable mass-derived views |
 | support invalid | null core; render `unavailable` | same |
-| peak invalid/source invalid | null core; render `unavailable` | same |
+| peak invalid | null core; render `unavailable` | same |
 | prominence invalid | null core; render `unavailable` | same |
 | source invalid | null core; render `unavailable` | null core; render `unavailable` |
 | mapping invalid | null core; render `unavailable` | null core; render `unavailable` |
@@ -1037,7 +1147,10 @@ attempt.
     mass fields, ordered IDs, settings, independently recomputed fingerprints,
     or render outcome. Fingerprint tests cover reordered named inputs,
     timestamp-only changes, one-field tampering, wrong-context proposals, and
-    corrupted serialized view state.
+    corrupted serialized view state. Context/1 and proposal/3 tests assert
+    every exact field set and permitted type for valid, mass-invalid, and
+    mass-unavailable proposals, and reject missing, additional, mistyped, and
+    wrong-version fields with `schema_invalid`.
 11. Stale graph, field, source, construction, direction, or component identity
    is rejected by every coordinated panel.
 12. Whole-direction mapping and ranking validation precede deterministic
@@ -1097,10 +1210,14 @@ attempt.
 33. Graph, field, source, subject, project, construction, direction, and
     component changes clear both active and retained state before recomputation.
 34. View-state serialization round-trips the active-attempt fingerprint,
-    active inputs and validation, display source, display fingerprint, and
-    complete immutable display proposal. Deserialization independently
-    recomputes all fingerprints and rejects, rather than repairs, every
-    mismatch with `fingerprint_invalid`.
+    view-state fingerprint, active inputs and validation, display source,
+    display fingerprint, and complete immutable display proposal.
+    Deserialization independently recomputes all fingerprints and rejects,
+    rather than repairs, every mismatch with `fingerprint_invalid`.
+    Independent mutations of validation, attempt outcome, attempt render
+    outcome, and display source fail that check; even after deliberate
+    re-fingerprinting, every impossible state-matrix combination fails with
+    `view_state_invalid`.
 35. Active-input status text describes the invalid attempt while displayed
     status text is derived only from the retained proposal.
 
