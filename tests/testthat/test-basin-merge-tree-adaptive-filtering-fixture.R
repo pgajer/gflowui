@@ -405,6 +405,9 @@ reference_canonical_text <- function(x) {
       "]"
     ))
   }
+  if (inherits(x, "reference_wire_integer")) {
+    return(paste0("I1[I:", unclass(x), ";]"))
+  }
   if (is.character(x)) {
     parts <- vapply(x, scalar_text, character(1), prefix = "S")
     return(paste0("C", length(parts), "[", paste0(parts, collapse = ""), "]"))
@@ -482,8 +485,51 @@ reference_input_names <- c(
   "label_mode"
 )
 
+reference_wire_integer <- function(x) {
+  if (length(x) != 1L || is.na(x)) stop("schema_invalid")
+  value <- as.character(x)
+  if (!grepl("^(0|-?[1-9][0-9]*)$", value)) stop("schema_invalid")
+  negative <- startsWith(value, "-")
+  digits <- if (negative) substring(value, 2L) else value
+  limit <- if (negative) "9223372036854775808" else "9223372036854775807"
+  if (
+    nchar(digits) > nchar(limit) ||
+      (nchar(digits) == nchar(limit) && digits > limit)
+  ) {
+    stop("schema_invalid")
+  }
+  structure(value, class = c("reference_wire_integer", "character"))
+}
+
+reference_integer_value <- function(x) {
+  if (!inherits(x, "reference_wire_integer")) stop("schema_invalid")
+  as.numeric(unclass(x))
+}
+
+reference_numeric_input_integer <- function(x) {
+  list(
+    state = "parsed_integer",
+    payload = unclass(reference_wire_integer(x))
+  )
+}
+
+reference_numeric_input_number <- function(x) {
+  if (!is.double(x) || length(x) != 1L || !is.finite(x)) {
+    stop("schema_invalid")
+  }
+  if (x == 0) x <- 0
+  list(state = "parsed_number", payload = sprintf("%a", x))
+}
+
+reference_numeric_input_raw <- function(
+    state = c("missing", "nonfinite", "unparsable"),
+    payload = NULL) {
+  state <- match.arg(state)
+  list(state = state, payload = payload)
+}
+
 reference_context <- function(
-    component = 1L,
+    component = "1",
     trajectory_fingerprint = "trajectory-1") {
   list(
     schema = "gflowui_basin_merge_tree_context/1",
@@ -502,26 +548,46 @@ reference_context <- function(
     canonical_tree_construction_identity = "superlevel_merge_tree",
     canonical_tree_construction_fingerprint = "canonical-1",
     direction = "max",
-    component = as.integer(component)
+    component = reference_wire_integer(component)
   )
 }
 
 reference_inputs <- function(
     filter_mode = "none",
-    top_k = 10L,
+    top_k = "10",
     minimum_mass = 0,
     label_mode = "important") {
+  top_k_numeric <- suppressWarnings(as.numeric(top_k))
+  top_k_input <- if (is.list(top_k)) {
+    top_k
+  } else if (
+    length(top_k) == 1L &&
+      is.finite(top_k_numeric) &&
+      top_k_numeric == floor(top_k_numeric)
+  ) {
+    reference_numeric_input_integer(format(top_k_numeric, scientific = FALSE))
+  } else {
+    reference_numeric_input_raw(
+      "unparsable",
+      format(top_k, scientific = FALSE)
+    )
+  }
+  minimum_mass_input <- if (is.list(minimum_mass)) {
+    minimum_mass
+  } else {
+    reference_numeric_input_number(minimum_mass)
+  }
   list(
     filter_mode = filter_mode,
-    coverage_target = 0.99,
-    strong_gap_decades = 3,
-    minimum_core_branches = 3L,
-    core_branch_budget = 50L,
-    final_render_budget = 80L,
-    sentinel_top_n = 10L,
-    important_label_n = 6L,
-    top_k = top_k,
-    minimum_mass = minimum_mass,
+    coverage_target = reference_numeric_input_number(0.99),
+    strong_gap_decades = reference_numeric_input_number(3),
+    minimum_core_branches = reference_numeric_input_integer("3"),
+    core_branch_budget = reference_numeric_input_integer("50"),
+    final_render_budget = reference_numeric_input_integer("80"),
+    sentinel_top_n = reference_numeric_input_integer("10"),
+    important_label_n = reference_numeric_input_integer("6"),
+    top_k = top_k_input,
+    minimum_mass = minimum_mass_input,
     include_peak_sentinel = TRUE,
     include_prominence_sentinel = TRUE,
     include_support_sentinel = TRUE,
@@ -540,18 +606,20 @@ reference_is_string <- function(x) {
 }
 
 reference_is_integer <- function(x, nonnegative = FALSE, positive = FALSE) {
-  valid <- is.numeric(x) &&
+  valid <- inherits(x, "reference_wire_integer") &&
     length(x) == 1L &&
-    !is.na(x) &&
-    is.finite(x) &&
-    x == floor(x)
-  if (nonnegative) valid <- valid && x >= 0
-  if (positive) valid <- valid && x > 0
+    !is.na(x)
+  if (!valid) return(FALSE)
+  value <- unclass(x)
+  negative <- startsWith(value, "-")
+  zero <- identical(value, "0")
+  if (nonnegative) valid <- valid && !negative
+  if (positive) valid <- valid && !negative && !zero
   valid
 }
 
 reference_is_number <- function(x, nonnegative = FALSE) {
-  valid <- is.numeric(x) &&
+  valid <- is.double(x) &&
     length(x) == 1L &&
     !is.na(x) &&
     is.finite(x)
@@ -587,6 +655,52 @@ reference_validate_context_structure <- function(context) {
 }
 
 reference_validate_input_structure <- function(input_values) {
+  integer_fields <- c(
+    "minimum_core_branches",
+    "core_branch_budget",
+    "final_render_budget",
+    "sentinel_top_n",
+    "important_label_n",
+    "top_k"
+  )
+  number_fields <- c(
+    "coverage_target",
+    "strong_gap_decades",
+    "minimum_mass"
+  )
+  validate_numeric_input <- function(value, expected_state) {
+    if (!reference_has_exact_names(value, c("state", "payload"))) {
+      return(FALSE)
+    }
+    if (identical(value$state, expected_state)) {
+      if (!reference_is_string(value$payload)) return(FALSE)
+      if (expected_state == "parsed_integer") {
+        return(tryCatch(
+          {
+            reference_wire_integer(value$payload)
+            TRUE
+          },
+          error = function(e) FALSE
+        ))
+      }
+      parsed <- suppressWarnings(as.numeric(value$payload))
+      return(
+        is.finite(parsed) &&
+          identical(sprintf("%a", if (parsed == 0) 0 else parsed), value$payload)
+      )
+    }
+    if (identical(value$state, "missing")) return(is.null(value$payload))
+    if (identical(value$state, "nonfinite")) {
+      return(
+        reference_is_string(value$payload) &&
+          value$payload %in% c("nan", "+inf", "-inf")
+      )
+    }
+    if (identical(value$state, "unparsable")) {
+      return(reference_is_string(value$payload))
+    }
+    FALSE
+  }
   valid <- reference_has_exact_names(input_values, reference_input_names) &&
     input_values$filter_mode %in% c(
       "auto",
@@ -610,33 +724,171 @@ reference_validate_input_structure <- function(input_values) {
       )],
       reference_is_logical,
       logical(1)
+    )) &&
+    all(vapply(
+      input_values[integer_fields],
+      validate_numeric_input,
+      logical(1),
+      expected_state = "parsed_integer"
+    )) &&
+    all(vapply(
+      input_values[number_fields],
+      validate_numeric_input,
+      logical(1),
+      expected_state = "parsed_number"
     ))
   if (!valid) stop("schema_invalid")
   TRUE
 }
 
-reference_validate_parameter_domains <- function(parameters) {
-  reference_validate_input_structure(parameters)
-  valid <- reference_is_number(parameters$coverage_target) &&
-    parameters$coverage_target > 0 &&
-    parameters$coverage_target <= 1 &&
-    reference_is_number(
-      parameters$strong_gap_decades,
-      nonnegative = TRUE
-    ) &&
-    reference_is_integer(
-      parameters$minimum_core_branches,
-      positive = TRUE
-    ) &&
-    reference_is_integer(parameters$core_branch_budget, positive = TRUE) &&
-    reference_is_integer(parameters$final_render_budget, positive = TRUE) &&
+reference_accepted_parameter_names <- function(mode) {
+  common <- c(
+    "filter_mode",
+    "final_render_budget",
+    "sentinel_top_n",
+    "important_label_n",
+    "include_peak_sentinel",
+    "include_prominence_sentinel",
+    "include_support_sentinel",
+    "label_mode"
+  )
+  mode_names <- switch(
+    mode,
+    auto = c(
+      "coverage_target",
+      "strong_gap_decades",
+      "minimum_core_branches",
+      "core_branch_budget"
+    ),
+    cumulative_mass = c("coverage_target", "core_branch_budget"),
+    minimum_mass = "minimum_mass",
+    top_k = "top_k",
+    none = character(),
+    stop("schema_invalid")
+  )
+  c(common, mode_names)
+}
+
+reference_decode_numeric_input <- function(value, integer) {
+  expected <- if (integer) "parsed_integer" else "parsed_number"
+  if (!identical(value$state, expected)) stop("settings_invalid")
+  if (integer) {
+    reference_wire_integer(value$payload)
+  } else {
+    parsed <- suppressWarnings(as.numeric(value$payload))
+    if (!is.double(parsed) || !is.finite(parsed)) stop("settings_invalid")
+    parsed
+  }
+}
+
+reference_accepted_parameters <- function(input_values, component_count = "3") {
+  reference_validate_input_structure(input_values)
+  mode <- input_values$filter_mode
+  integer_fields <- c(
+    "minimum_core_branches",
+    "core_branch_budget",
+    "final_render_budget",
+    "sentinel_top_n",
+    "important_label_n",
+    "top_k"
+  )
+  fields <- reference_accepted_parameter_names(mode)
+  result <- input_values[fields]
+  numeric_fields <- intersect(
+    fields,
+    c(
+      integer_fields,
+      "coverage_target",
+      "strong_gap_decades",
+      "minimum_mass"
+    )
+  )
+  for (field in numeric_fields) {
+    result[[field]] <- reference_decode_numeric_input(
+      input_values[[field]],
+      integer = field %in% integer_fields
+    )
+  }
+  tryCatch(
+    reference_validate_parameter_domains(result, component_count),
+    error = function(e) stop("settings_invalid")
+  )
+  result
+}
+
+reference_validate_parameter_domains <- function(
+    parameters,
+    component_count = NULL) {
+  if (
+    !is.list(parameters) ||
+      !reference_is_string(parameters$filter_mode) ||
+      !parameters$filter_mode %in% c(
+        "auto",
+        "cumulative_mass",
+        "minimum_mass",
+        "top_k",
+        "none"
+      ) ||
+      !reference_has_exact_names(
+        parameters,
+        reference_accepted_parameter_names(parameters$filter_mode)
+      )
+  ) {
+    stop("schema_invalid")
+  }
+  valid <- reference_is_integer(
+    parameters$final_render_budget,
+    positive = TRUE
+  ) &&
     reference_is_integer(parameters$sentinel_top_n, nonnegative = TRUE) &&
     reference_is_integer(
       parameters$important_label_n,
       nonnegative = TRUE
     ) &&
-    reference_is_integer(parameters$top_k, positive = TRUE) &&
-    reference_is_number(parameters$minimum_mass, nonnegative = TRUE)
+    all(vapply(
+      parameters[c(
+        "include_peak_sentinel",
+        "include_prominence_sentinel",
+        "include_support_sentinel"
+      )],
+      reference_is_logical,
+      logical(1)
+    )) &&
+    parameters$label_mode %in%
+      c("important", "selected", "displayed", "none", "all")
+  if (parameters$filter_mode %in% c("auto", "cumulative_mass")) {
+    valid <- valid &&
+      reference_is_number(parameters$coverage_target) &&
+      parameters$coverage_target > 0 &&
+      parameters$coverage_target <= 1 &&
+      reference_is_integer(parameters$core_branch_budget, positive = TRUE)
+  }
+  if (identical(parameters$filter_mode, "auto")) {
+    valid <- valid &&
+      reference_is_number(
+        parameters$strong_gap_decades,
+        nonnegative = TRUE
+      ) &&
+      reference_is_integer(
+        parameters$minimum_core_branches,
+        positive = TRUE
+      ) &&
+      reference_integer_value(parameters$core_branch_budget) >=
+        reference_integer_value(parameters$minimum_core_branches)
+  }
+  if (identical(parameters$filter_mode, "top_k")) {
+    valid <- valid &&
+      reference_is_integer(parameters$top_k, positive = TRUE)
+    if (!is.null(component_count)) {
+      valid <- valid &&
+        reference_integer_value(parameters$top_k) <=
+          reference_integer_value(reference_wire_integer(component_count))
+    }
+  }
+  if (identical(parameters$filter_mode, "minimum_mass")) {
+    valid <- valid &&
+      reference_is_number(parameters$minimum_mass, nonnegative = TRUE)
+  }
   if (!valid) stop("schema_invalid")
   TRUE
 }
@@ -704,11 +956,11 @@ reference_mass_derived <- function(
       all_mass_groups = list(list(
         mass = 0,
         ids = branch_ids,
-        endpoint = length(branch_ids)
+        endpoint = reference_wire_integer(length(branch_ids))
       )),
       denominator = 0,
-      positive_count = 0L,
-      zero_count = length(branch_ids),
+      positive_count = reference_wire_integer("0"),
+      zero_count = reference_wire_integer(length(branch_ids)),
       core_coverage = NULL,
       final_coverage = NULL
     ))
@@ -726,7 +978,7 @@ reference_mass_derived <- function(
   group_order <- order(-group_values)
   cumulative_endpoint <- 0L
   cumulative_mass <- 0
-  denominator <- sum(mass[mass > 0])
+  denominator <- 0
   all_groups <- lapply(
     group_order,
     function(index) {
@@ -735,21 +987,34 @@ reference_mass_derived <- function(
       list(
         mass = group_values[[index]],
         ids = ids,
-        endpoint = cumulative_endpoint
+        endpoint = reference_wire_integer(cumulative_endpoint)
       )
     }
   )
   positive_groups <- lapply(
     Filter(function(group) group$mass > 0, all_groups),
     function(group) {
-      cumulative_mass <<-
-        cumulative_mass + group$mass * length(group$ids)
       list(
         mass = group$mass,
         ids = group$ids,
         endpoint = group$endpoint,
-        cumulative_coverage = cumulative_mass / denominator
+        cumulative_coverage = 0
       )
+    }
+  )
+  denominator <- sum(vapply(
+    positive_groups,
+    function(group) group$mass * length(group$ids),
+    numeric(1)
+  ))
+  cumulative_mass <- 0
+  positive_groups <- lapply(
+    positive_groups,
+    function(group) {
+      cumulative_mass <<-
+        cumulative_mass + group$mass * length(group$ids)
+      group$cumulative_coverage <- cumulative_mass / denominator
+      group
     }
   )
   list(
@@ -758,10 +1023,10 @@ reference_mass_derived <- function(
     positive_groups = positive_groups,
     all_mass_groups = all_groups,
     denominator = denominator,
-    positive_count = sum(mass > 0),
-    zero_count = sum(mass == 0),
-    core_coverage = sum(mass) / denominator,
-    final_coverage = sum(mass) / denominator
+    positive_count = reference_wire_integer(sum(mass > 0)),
+    zero_count = reference_wire_integer(sum(mass == 0)),
+    core_coverage = denominator / denominator,
+    final_coverage = denominator / denominator
   )
 }
 
@@ -777,6 +1042,10 @@ reference_view_proposal <- function(
   reference_validate_context_structure(context)
   reference_validate_input_structure(input_values)
   final_ids <- sort(final_ids)
+  accepted_parameters <- reference_accepted_parameters(
+    input_values,
+    component_count = length(final_ids)
+  )
   if (mass_state == "valid" && is.null(mass)) {
     mass <- rep(1 / length(final_ids), length(final_ids))
   }
@@ -812,14 +1081,14 @@ reference_view_proposal <- function(
   }
   survivor_id <- final_ids[[1L]]
   category_counts <- list(
-    mass_core = length(final_ids),
-    selected_or_pinned_only = 0L,
-    survivor_only = 0L,
-    peak_only = 0L,
-    prominence_only = 0L,
-    support_only = 0L,
-    ancestor_only = 0L,
-    final_union = length(final_ids)
+    mass_core = reference_wire_integer(length(final_ids)),
+    selected_or_pinned_only = reference_wire_integer("0"),
+    survivor_only = reference_wire_integer("0"),
+    peak_only = reference_wire_integer("0"),
+    prominence_only = reference_wire_integer("0"),
+    support_only = reference_wire_integer("0"),
+    ancestor_only = reference_wire_integer("0"),
+    final_union = reference_wire_integer(length(final_ids))
   )
   core_outcome <- if (
     identical(input_values$filter_mode, "none")
@@ -836,16 +1105,17 @@ reference_view_proposal <- function(
     creation_time = creation_time,
     algorithm = list(
       name = "adaptive_initial_filtering",
-      version = 7L
+      version = reference_wire_integer("8")
     ),
     component_selection = list(
       rule = component_rule,
       component_totals = component_total,
       tie_break = "stable_component_id",
       fallback_reason = if (mass_state == "valid") NULL else mass_state,
-      direction_basin_count = length(final_ids),
-      graph_component_count = 1L,
-      selected_component_basin_count = length(final_ids)
+      direction_basin_count = reference_wire_integer(length(final_ids)),
+      graph_component_count = reference_wire_integer("1"),
+      selected_component_basin_count =
+        reference_wire_integer(length(final_ids))
     ),
     measures = list(
       trajectory_flow_mass = list(
@@ -881,17 +1151,18 @@ reference_view_proposal <- function(
       settings = "valid"
     ),
     mapping = list(
-      cardinality = length(final_ids),
+      cardinality = reference_wire_integer(length(final_ids)),
       direction = context$direction,
-      component = context$component
+      component = context$component,
+      component_ids = final_ids
     ),
-    accepted_parameters = input_values,
+    accepted_parameters = accepted_parameters,
     mass_derived = mass_derived,
     core = list(
       outcome = core_outcome,
       warnings = character(),
       boundary = if (core_outcome == "top_k") {
-        length(final_ids)
+        reference_wire_integer(length(final_ids))
       } else {
         NULL
       },
@@ -1056,13 +1327,18 @@ reference_validate_proposal_structure <- function(proposal) {
     }
     component_ids <- vapply(
       component$component_totals,
-      function(entry) entry$component,
-      numeric(1)
+      function(entry) unclass(entry$component),
+      character(1)
     )
-    if (!identical(component_ids, sort(unique(component_ids)))) {
+    component_values <- as.numeric(component_ids)
+    if (!identical(component_values, sort(unique(component_values)))) {
       stop("schema_invalid")
     }
   }
+  reference_validate_parameter_domains(
+    proposal$accepted_parameters,
+    component$selected_component_basin_count
+  )
 
   valid <- reference_has_exact_names(proposal$measures, c(
     "trajectory_flow_mass",
@@ -1113,7 +1389,7 @@ reference_validate_proposal_structure <- function(proposal) {
 
   valid <- reference_has_exact_names(
     proposal$mapping,
-    c("cardinality", "direction", "component")
+    c("cardinality", "direction", "component", "component_ids")
   ) &&
     reference_is_integer(
       proposal$mapping$cardinality,
@@ -1128,7 +1404,10 @@ reference_validate_proposal_structure <- function(proposal) {
     identical(
       proposal$mapping$component,
       proposal$context$component
-    )
+    ) &&
+    reference_is_id_array(proposal$mapping$component_ids) &&
+    length(proposal$mapping$component_ids) ==
+      reference_integer_value(proposal$mapping$cardinality)
   if (!valid) stop("schema_invalid")
 
   mass <- proposal$mass_derived
@@ -1160,7 +1439,7 @@ reference_validate_proposal_structure <- function(proposal) {
       )
       positive_endpoints <- vapply(
         mass$positive_groups,
-        function(group) group$endpoint,
+        function(group) reference_integer_value(group$endpoint),
         numeric(1)
       )
       positive_coverage <- vapply(
@@ -1192,7 +1471,7 @@ reference_validate_proposal_structure <- function(proposal) {
       )
       all_endpoints <- vapply(
         mass$all_mass_groups,
-        function(group) group$endpoint,
+        function(group) reference_integer_value(group$endpoint),
         numeric(1)
       )
       if (
@@ -1362,11 +1641,11 @@ reference_validate_proposal_structure <- function(proposal) {
     all(final$label_ids %in% final$ids) &&
     identical(
       final$category_counts$mass_core,
-      length(core$ids)
+      reference_wire_integer(length(core$ids))
     ) &&
     identical(
       final$category_counts$final_union,
-      length(final$ids)
+      reference_wire_integer(length(final$ids))
     ) &&
     identical(
       proposal$mapping$cardinality,
@@ -1386,19 +1665,120 @@ reference_validate_proposal_structure <- function(proposal) {
       reference_is_integer(mass$zero_count, nonnegative = TRUE) &&
       reference_is_number(mass$core_coverage) &&
       reference_is_number(mass$final_coverage)
+    if (valid) {
+      all_groups <- mass$all_mass_groups
+      all_ids <- unlist(lapply(all_groups, `[[`, "ids"), use.names = FALSE)
+      group_masses <- vapply(all_groups, `[[`, numeric(1), "mass")
+      expected_endpoints <- cumsum(lengths(lapply(all_groups, `[[`, "ids")))
+      actual_endpoints <- vapply(
+        all_groups,
+        function(group) reference_integer_value(group$endpoint),
+        numeric(1)
+      )
+      valid <- length(all_groups) > 0L &&
+        all(diff(group_masses) < 0) &&
+        identical(actual_endpoints, as.numeric(expected_endpoints)) &&
+        !anyDuplicated(all_ids) &&
+        identical(sort(all_ids), proposal$mapping$component_ids)
+      positive_all <- Filter(function(group) group$mass > 0, all_groups)
+      valid <- valid &&
+        length(positive_all) == length(mass$positive_groups)
+      if (valid && length(positive_all)) {
+        for (index in seq_along(positive_all)) {
+          positive <- mass$positive_groups[[index]]
+          source <- positive_all[[index]]
+          valid <- valid &&
+            identical(positive$mass, source$mass) &&
+            identical(positive$ids, source$ids) &&
+            identical(positive$endpoint, source$endpoint)
+        }
+      }
+      expected_positive_count <- sum(lengths(
+        lapply(positive_all, `[[`, "ids")
+      ))
+      expected_zero_count <- length(all_ids) - expected_positive_count
+      expected_denominator <- 0
+      expected_cumulative <- numeric(length(positive_all))
+      for (index in seq_along(positive_all)) {
+        group <- positive_all[[index]]
+        expected_denominator <- expected_denominator +
+          group$mass * length(group$ids)
+        expected_cumulative[[index]] <- expected_denominator
+      }
+      expected_cumulative <- expected_cumulative / expected_denominator
+      actual_cumulative <- vapply(
+        mass$positive_groups,
+        `[[`,
+        numeric(1),
+        "cumulative_coverage"
+      )
+      expected_core_mass <- sum(vapply(
+        all_groups,
+        function(group) group$mass * sum(group$ids %in% core$ids),
+        numeric(1)
+      ))
+      expected_final_mass <- sum(vapply(
+        all_groups,
+        function(group) group$mass * sum(group$ids %in% final$ids),
+        numeric(1)
+      ))
+      expected_core_coverage <- expected_core_mass / expected_denominator
+      expected_final_coverage <- expected_final_mass / expected_denominator
+      declared_ids <- unique(c(
+        core$ids,
+        proposal$sentinels$ids,
+        proposal$ancestor_only_ids,
+        final$ids,
+        final$label_ids,
+        unlist(final$label_contributions, use.names = FALSE),
+        names(proposal$sentinels$inclusion_reasons),
+        names(proposal$sentinels$primary_reasons)
+      ))
+      valid <- valid &&
+        identical(
+          mass$positive_count,
+          reference_wire_integer(expected_positive_count)
+        ) &&
+        identical(
+          mass$zero_count,
+          reference_wire_integer(expected_zero_count)
+        ) &&
+        identical(mass$denominator, expected_denominator) &&
+        identical(actual_cumulative, expected_cumulative) &&
+        identical(mass$core_coverage, expected_core_coverage) &&
+        identical(mass$final_coverage, expected_final_coverage) &&
+        all(declared_ids %in% proposal$mapping$component_ids)
+    }
   } else if (mass_state == "mass_unavailable") {
     valid <- !mass$available &&
       identical(mass$unavailable_reason, "mass_unavailable") &&
       identical(mass$positive_groups, list()) &&
       length(mass$all_mass_groups) == 1L &&
       identical(mass$denominator, 0) &&
-      identical(mass$positive_count, 0L) &&
+      identical(mass$positive_count, reference_wire_integer("0")) &&
       identical(
         mass$zero_count,
         component$selected_component_basin_count
       ) &&
       identical(mass$all_mass_groups[[1L]]$mass, 0) &&
-      identical(mass$all_mass_groups[[1L]]$ids, final$ids) &&
+      identical(
+        mass$all_mass_groups[[1L]]$endpoint,
+        component$selected_component_basin_count
+      ) &&
+      length(mass$all_mass_groups[[1L]]$ids) ==
+        reference_integer_value(component$selected_component_basin_count) &&
+      identical(
+        mass$all_mass_groups[[1L]]$ids,
+        proposal$mapping$component_ids
+      ) &&
+      all(c(
+        core$ids,
+        proposal$sentinels$ids,
+        proposal$ancestor_only_ids,
+        final$ids,
+        final$label_ids,
+        unlist(final$label_contributions, use.names = FALSE)
+      ) %in% mass$all_mass_groups[[1L]]$ids) &&
       is.null(mass$core_coverage) &&
       is.null(mass$final_coverage)
   } else {
@@ -1413,6 +1793,19 @@ reference_validate_proposal_structure <- function(proposal) {
       is.null(mass$final_coverage)
   }
   if (!valid) stop("schema_invalid")
+  declared_ids <- unique(c(
+    core$ids,
+    proposal$sentinels$ids,
+    proposal$ancestor_only_ids,
+    final$ids,
+    final$label_ids,
+    unlist(final$label_contributions, use.names = FALSE),
+    names(proposal$sentinels$inclusion_reasons),
+    names(proposal$sentinels$primary_reasons)
+  ))
+  if (!all(declared_ids %in% proposal$mapping$component_ids)) {
+    stop("schema_invalid")
+  }
   TRUE
 }
 
@@ -1709,7 +2102,13 @@ reference_validate_view_state <- function(state) {
       !is.null(state$display_proposal) &&
       identical(
         state$display_proposal$accepted_parameters,
-        attempt$input_values
+        tryCatch(
+          reference_accepted_parameters(
+            attempt$input_values,
+            state$display_proposal$mapping$cardinality
+          ),
+          error = function(e) NULL
+        )
       ) &&
       identical(state$display_proposal$validation, validation)
   } else if (expected_outcome == "stale") {
@@ -1750,13 +2149,14 @@ reference_complete_tree_action <- function(
     complete_proposal,
     state$context_fingerprint
   )
+  complete_inputs <- reference_inputs("none")
   state$filter_mode <- "none"
   state$recomputed <- TRUE
   state$active_attempt_fingerprint <- reference_attempt_fingerprint(
     state$context_fingerprint,
-    complete_proposal$accepted_parameters
+    complete_inputs
   )
-  state$active_input_values <- complete_proposal$accepted_parameters
+  state$active_input_values <- complete_inputs
   state$active_attempt_outcome <- "proposal_created"
   state$active_attempt_render_outcome <- NULL
   state$display_source <- "current"
@@ -2127,7 +2527,7 @@ test_that("view state keeps invalid attempts separate from retained proposals", 
       context_fingerprint,
       inputs_one
     ),
-    input_values = proposal_one$accepted_parameters,
+    input_values = inputs_one,
     validation = "valid",
     proposal = proposal_one
   )
@@ -2162,14 +2562,17 @@ test_that("view state keeps invalid attempts separate from retained proposals", 
     retained$active_attempt$render_outcome,
     "unavailable"
   )
-  expect_identical(retained$active_attempt$input_values$top_k, 2.5)
+  expect_identical(
+    retained$active_attempt$input_values$top_k,
+    reference_numeric_input_raw("unparsable", "2.5")
+  )
   expect_false(any(
     c("core_ids", "final_ids") %in% names(retained$active_attempt)
   ))
   expect_identical(retained$display_proposal, proposal_one)
   expect_identical(
     retained$display_proposal$accepted_parameters$top_k,
-    3L
+    reference_wire_integer("3")
   )
   expect_identical(
     unserialize(serialize(retained, NULL)),
@@ -2191,7 +2594,7 @@ test_that("view state keeps invalid attempts separate from retained proposals", 
       context_fingerprint,
       inputs_two
     ),
-    input_values = proposal_two$accepted_parameters,
+    input_values = inputs_two,
     validation = "valid",
     proposal = proposal_two
   )
@@ -2226,7 +2629,7 @@ test_that("view state keeps invalid attempts separate from retained proposals", 
     "prominence_invalid",
     "stale"
   )) {
-    blocking_inputs <- proposal_two$accepted_parameters
+    blocking_inputs <- inputs_two
     cleared <- reference_view_transition(
       recovered,
       context_fingerprint = context_fingerprint,
@@ -2261,7 +2664,7 @@ test_that("view state keeps invalid attempts separate from retained proposals", 
   }
 
   context_two <- context
-  context_two$component <- 2L
+  context_two$component <- reference_wire_integer("2")
   context_two_fingerprint <- reference_context_fingerprint(context_two)
   changed_context <- reference_view_transition(
     recovered,
@@ -2349,10 +2752,13 @@ test_that("Filter None installs typed mass-failure proposals end to end", {
         sort(branch_ids)
       )
       expect_identical(proposal$mass_derived$denominator, 0)
-      expect_identical(proposal$mass_derived$positive_count, 0L)
+      expect_identical(
+        proposal$mass_derived$positive_count,
+        reference_wire_integer("0")
+      )
       expect_identical(
         proposal$mass_derived$zero_count,
-        length(branch_ids)
+        reference_wire_integer(length(branch_ids))
       )
     }
 
@@ -2478,7 +2884,7 @@ test_that("fingerprints are deterministic and reject inconsistent state", {
   )
 
   context_two <- context
-  context_two$component <- 2L
+  context_two$component <- reference_wire_integer("2")
   internally_valid_wrong_context <- reference_view_proposal(
     context_two,
     inputs,
@@ -2703,6 +3109,276 @@ test_that("view-state fingerprints and matrix reject envelope corruption", {
   )
 })
 
+test_that("inactive invalid numeric controls do not enter accepted parameters", {
+  mode_fields <- list(
+    auto = c(
+      "coverage_target",
+      "strong_gap_decades",
+      "minimum_core_branches",
+      "core_branch_budget"
+    ),
+    cumulative_mass = c("coverage_target", "core_branch_budget"),
+    minimum_mass = "minimum_mass",
+    top_k = "top_k",
+    none = character()
+  )
+  activation_mode <- c(
+    coverage_target = "auto",
+    strong_gap_decades = "auto",
+    minimum_core_branches = "auto",
+    core_branch_budget = "cumulative_mass",
+    top_k = "top_k",
+    minimum_mass = "minimum_mass"
+  )
+  invalid_values <- list(
+    missing = function(field) reference_numeric_input_raw("missing"),
+    nonfinite = function(field) {
+      reference_numeric_input_raw("nonfinite", "+inf")
+    },
+    unparsable = function(field) {
+      reference_numeric_input_raw("unparsable", "not a number")
+    },
+    domain_invalid = function(field) {
+      if (field %in% c(
+        "minimum_core_branches",
+        "core_branch_budget",
+        "top_k"
+      )) {
+        reference_numeric_input_integer("0")
+      } else {
+        reference_numeric_input_number(if (field == "coverage_target") 0 else -1)
+      }
+    }
+  )
+  all_mode_fields <- unique(unlist(mode_fields, use.names = FALSE))
+  context <- reference_context()
+  context_fingerprint <- reference_context_fingerprint(context)
+
+  for (mode in names(mode_fields)) {
+    inactive <- setdiff(all_mode_fields, mode_fields[[mode]])
+    for (field in inactive) {
+      for (invalid in invalid_values) {
+        inputs <- reference_inputs(mode, top_k = 3L)
+        inputs[[field]] <- invalid(field)
+        proposal <- reference_view_proposal(
+          context,
+          inputs,
+          c("b1", "b2", "b3")
+        )
+        expect_false(field %in% names(proposal$accepted_parameters))
+        view <- reference_view_transition(
+          context_fingerprint = context_fingerprint,
+          attempt_fingerprint = reference_attempt_fingerprint(
+            context_fingerprint,
+            inputs
+          ),
+          input_values = inputs,
+          validation = "valid",
+          proposal = proposal
+        )
+        expect_identical(view$active_attempt$input_values[[field]], invalid(field))
+        expect_true(reference_validate_view_state(view))
+
+        activated <- inputs
+        activated$filter_mode <- unname(activation_mode[[field]])
+        expect_error(
+          reference_accepted_parameters(activated, "3"),
+          "settings_invalid"
+        )
+      }
+    }
+  }
+})
+
+test_that("ActiveInput numeric tokens form a closed tagged union", {
+  valid <- reference_inputs("none")
+  expect_true(reference_validate_input_structure(valid))
+
+  invalid_inputs <- list(
+    arbitrary_object = list(arbitrary = TRUE),
+    vector = list(
+      state = c("parsed_number", "parsed_number"),
+      payload = c("0x1p+0", "0x1p+0")
+    ),
+    untagged_string = "0x1p+0",
+    untagged_number = 1,
+    unknown_state = list(state = "other", payload = "0x1p+0"),
+    missing_with_payload = list(state = "missing", payload = ""),
+    bad_nonfinite = list(state = "nonfinite", payload = "Inf"),
+    nested_unparsable = list(
+      state = "unparsable",
+      payload = list(raw = "x")
+    ),
+    additional_key = list(
+      state = "parsed_number",
+      payload = "0x1p+0",
+      extra = TRUE
+    ),
+    wrong_control_type = list(
+      state = "parsed_integer",
+      payload = "1"
+    )
+  )
+  for (value in invalid_inputs) {
+    broken <- valid
+    broken$coverage_target <- value
+    expect_error(
+      reference_validate_input_structure(broken),
+      "schema_invalid"
+    )
+  }
+
+  wrong_integer_control <- valid
+  wrong_integer_control$top_k <- list(
+    state = "parsed_number",
+    payload = "0x1p+0"
+  )
+  expect_error(
+    reference_validate_input_structure(wrong_integer_control),
+    "schema_invalid"
+  )
+})
+
+test_that("wire scalars have fixed schema-directed encodings", {
+  vectors <- c(
+    integer_zero = reference_sha256(reference_wire_integer("0")),
+    integer_min = reference_sha256(
+      reference_wire_integer("-9223372036854775808")
+    ),
+    integer_max = reference_sha256(
+      reference_wire_integer("9223372036854775807")
+    ),
+    number_zero = reference_sha256(0),
+    number_negative_zero = reference_sha256(-0),
+    number_one = reference_sha256(1)
+  )
+  expect_identical(
+    vectors,
+    c(
+      integer_zero =
+        "c64686486f24c34d31b3ca1c645672b77a2b775b502742fff5bdae4114202a7f",
+      integer_min =
+        "ce7fc5fe614ddc096ca04eb975b137d3987b2e90b15cd51c7418f5a86f8dd6de",
+      integer_max =
+        "ad3b5ad17994758a80b1faaa3f32f299fa44f0ca4c468d216b9b3912956a84e9",
+      number_zero =
+        "a5998f0ad26a18744a65cc4f00631cb7283935067582533a5a5015525ee8b3dd",
+      number_negative_zero =
+        "a5998f0ad26a18744a65cc4f00631cb7283935067582533a5a5015525ee8b3dd",
+      number_one =
+        "e800b2ead12f71e2e18db06eb6ddd0ae7e131f3ab6dc0aad3f5a1e31517537ed"
+    )
+  )
+
+  for (alternate in list(1L, 1, "1")) {
+    context <- reference_context()
+    context$component <- alternate
+    expect_error(
+      reference_context_fingerprint(context),
+      "schema_invalid"
+    )
+  }
+  for (bad in c(
+    "01",
+    "+1",
+    "-0",
+    "9223372036854775808",
+    "-9223372036854775809"
+  )) {
+    expect_error(reference_wire_integer(bad), "schema_invalid")
+  }
+
+  top_inputs <- reference_inputs("top_k", top_k = 1L)
+  top <- reference_view_proposal(
+    reference_context(),
+    top_inputs,
+    "b1"
+  )
+  top$accepted_parameters$top_k <- 1
+  top$proposal_fingerprint <- reference_proposal_fingerprint(top)
+  expect_error(reference_validate_proposal(top), "schema_invalid")
+
+  mass_inputs <- reference_inputs("minimum_mass", minimum_mass = 1)
+  minimum_mass <- reference_view_proposal(
+    reference_context(),
+    mass_inputs,
+    "b1"
+  )
+  minimum_mass$accepted_parameters$minimum_mass <- 1L
+  minimum_mass$proposal_fingerprint <-
+    reference_proposal_fingerprint(minimum_mass)
+  expect_error(
+    reference_validate_proposal(minimum_mass),
+    "schema_invalid"
+  )
+})
+
+test_that("re-fingerprinted false mass-derived records are rejected", {
+  proposal <- reference_view_proposal(
+    reference_context(),
+    reference_inputs("none"),
+    c("b1", "b2", "b3"),
+    mass = c(0.6, 0.3, 0.1)
+  )
+  expect_true(reference_validate_proposal(proposal))
+
+  mutations <- list(
+    wrong_endpoint = function(x) {
+      x$mass_derived$all_mass_groups[[3L]]$endpoint <-
+        reference_wire_integer("4")
+      x
+    },
+    duplicate_id = function(x) {
+      x$mass_derived$all_mass_groups[[2L]]$ids <- "b1"
+      x
+    },
+    missing_id = function(x) {
+      x$mass_derived$all_mass_groups <- x$mass_derived$all_mass_groups[-3L]
+      x
+    },
+    changed_group_mass = function(x) {
+      x$mass_derived$all_mass_groups[[2L]]$mass <- 0.25
+      x
+    },
+    wrong_denominator = function(x) {
+      x$mass_derived$denominator <- 2
+      x
+    },
+    wrong_positive_count = function(x) {
+      x$mass_derived$positive_count <- reference_wire_integer("2")
+      x
+    },
+    wrong_zero_count = function(x) {
+      x$mass_derived$zero_count <- reference_wire_integer("1")
+      x
+    },
+    wrong_cumulative_coverage = function(x) {
+      x$mass_derived$positive_groups[[1L]]$cumulative_coverage <- 0.5
+      x
+    },
+    wrong_core_coverage = function(x) {
+      x$mass_derived$core_coverage <- 0.9
+      x
+    },
+    wrong_final_coverage = function(x) {
+      x$mass_derived$final_coverage <- 0.9
+      x
+    },
+    wrong_component_universe = function(x) {
+      x$mapping$component_ids <- c("b1", "b2", "bx")
+      x
+    }
+  )
+  for (mutate in mutations) {
+    broken <- mutate(unserialize(serialize(proposal, NULL)))
+    broken$proposal_fingerprint <- reference_proposal_fingerprint(broken)
+    expect_error(
+      reference_validate_proposal(broken),
+      "schema_invalid"
+    )
+  }
+})
+
 test_that("complete-tree controls have distinct persistent and viewer actions", {
   context <- reference_context()
   context_fingerprint <- reference_context_fingerprint(context)
@@ -2745,13 +3421,13 @@ test_that("complete-tree controls have distinct persistent and viewer actions", 
     expect_identical(show_all$core_outcome, "complete")
     expect_identical(
       show_all$active_input_values,
-      complete_proposal$accepted_parameters
+      reference_inputs("none")
     )
     expect_identical(
       show_all$active_attempt_fingerprint,
       reference_attempt_fingerprint(
         context_fingerprint,
-        complete_proposal$accepted_parameters
+        reference_inputs("none")
       )
     )
     expect_identical(

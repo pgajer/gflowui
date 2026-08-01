@@ -2,8 +2,8 @@
 
 ## Status
 
-Revision 7, prepared after the 2026-07-31 specification audit and subsequent
-re-audits through the Revision 6 re-audit dated 2026-08-01.
+Revision 8, prepared after the 2026-07-31 specification audit and subsequent
+re-audits through the Revision 7 re-audit dated 2026-08-01.
 
 This document specifies a deterministic initial display policy for maximum
 basin merge trees in `gflowui`. It does not alter basin construction, basin
@@ -327,6 +327,24 @@ not coerce or clamp them. The UI retains and continues displaying the last
 valid proposal, marks it as retained rather than current, shows the invalid
 input, and does not recompute until all settings validate.
 
+The immutable proposal does not copy this complete raw UI snapshot. Its
+`accepted_parameters` contains only `filter_mode`, the common validated
+settings, and the validated settings used by the active mode:
+
+| Mode | Additional accepted settings |
+|---|---|
+| Auto | `coverage_target`, `strong_gap_decades`, `minimum_core_branches`, `core_branch_budget` |
+| Cumulative Mass | `coverage_target`, `core_branch_budget` |
+| Minimum Mass | `minimum_mass` |
+| Top K | `top_k` |
+| None | none |
+
+The common accepted settings are `final_render_budget`, `sentinel_top_n`,
+`important_label_n`, the three sentinel toggles, and `label_mode`. This
+mode-specific projection is the complete parameter input to proposal
+construction. An inactive raw value remains in the active-attempt snapshot,
+but is absent from the proposal and cannot affect its fingerprint.
+
 ## Diagnostic
 
 The selected component exposes:
@@ -626,8 +644,10 @@ The type notation is:
 
 ```text
 string       one nonmissing UTF-8 string
-integer      one nonmissing whole number in signed 64-bit range
-number       one finite binary64 value
+integer      one signed 64-bit integer, represented in R by canonical decimal
+             character text and serialized with the integer wire token
+number       one finite binary64 value, represented in R by a double and
+             serialized with the number wire token
 logical      one nonmissing Boolean
 array<T>     ordered, possibly empty array of T
 object       closed named object
@@ -635,6 +655,20 @@ nullable<T>  either typed null or T
 enum{...}    one string from the listed values
 id-array     lexicographically sorted unique array<string>
 ```
+
+Canonical integer text is exactly `0`, `[1-9][0-9]*`, or
+`-[1-9][0-9]*`, and its mathematical value must lie in
+`[-9223372036854775808, 9223372036854775807]`. Leading plus signs, leading
+zeros, `-0`, exponent notation, whitespace, and an R integer or double in an
+integer field are schema errors. This decimal-character runtime
+representation is an implementation carrier, not a string wire type: the
+schema-directed encoder emits the integer type token.
+
+A number field accepts only an R double carrying one finite IEEE-754 binary64
+value. An R integer in a number field is a schema error. The schema-directed
+encoder emits the lowercase C99 hexadecimal representation and normalizes
+negative zero to positive zero. These requirements give every accepted scalar
+one canonical encoding and avoid loss of signed-64-bit precision.
 
 Schema evolution uses a new terminal schema version. Proposal/3 and context/1
 do not admit extension keys from later versions.
@@ -682,7 +716,7 @@ set:
 | `measures` | Measures object |
 | `validation` | ProposalValidation object |
 | `mapping` | Mapping object |
-| `accepted_parameters` | Parameters object |
+| `accepted_parameters` | one mode-specific AcceptedParameters object |
 | `mass_derived` | MassDerived object |
 | `core` | Core object |
 | `sentinels` | Sentinels object |
@@ -700,8 +734,13 @@ The closed nested objects are:
 | Measure | `name`: string; `owner_identity`: string |
 | ProposalValidation | `identity`: enum{`current`}; `source`: enum{`valid`}; `mapping`: enum{`valid`}; `ranking_measure`: RankingValidation object; `settings`: enum{`valid`} |
 | RankingValidation | `trajectory_flow_mass`: enum{`valid`, `mass_invalid`, `mass_unavailable`}; `trajectory_flow_support`, `source_peak`, `canonical_prominence`: each enum{`valid`} |
-| Mapping | `cardinality`: nonnegative integer; `direction`: enum{`max`}; `component`: positive integer |
-| Parameters | `filter_mode`: enum{`auto`, `cumulative_mass`, `minimum_mass`, `top_k`, `none`}; `coverage_target`: number in `(0,1]`; `strong_gap_decades`: nonnegative number; `minimum_core_branches`, `core_branch_budget`, `final_render_budget`, `sentinel_top_n`, `important_label_n`, `top_k`: nonnegative integer, with the mode-specific positive constraints above; `minimum_mass`: nonnegative number; `include_peak_sentinel`, `include_prominence_sentinel`, `include_support_sentinel`: logical; `label_mode`: enum{`important`, `selected`, `displayed`, `none`, `all`} |
+| Mapping | `cardinality`: nonnegative integer; `direction`: enum{`max`}; `component`: positive integer; `component_ids`: id-array containing the complete mapped selected-component canonical ID universe |
+| AcceptedCommon | `filter_mode`: enum{`auto`, `cumulative_mass`, `minimum_mass`, `top_k`, `none`}; `final_render_budget`: positive integer; `sentinel_top_n`, `important_label_n`: nonnegative integer; `include_peak_sentinel`, `include_prominence_sentinel`, `include_support_sentinel`: logical; `label_mode`: enum{`important`, `selected`, `displayed`, `none`, `all`} |
+| AcceptedAuto | all AcceptedCommon keys plus `coverage_target`: number in `(0,1]`; `strong_gap_decades`: nonnegative number; `minimum_core_branches`, `core_branch_budget`: positive integer, with core budget not less than minimum core |
+| AcceptedCumulativeMass | all AcceptedCommon keys plus `coverage_target`: number in `(0,1]`; `core_branch_budget`: positive integer |
+| AcceptedMinimumMass | all AcceptedCommon keys plus `minimum_mass`: nonnegative number |
+| AcceptedTopK | all AcceptedCommon keys plus `top_k`: positive integer not exceeding selected-component branch count |
+| AcceptedNone | exactly the AcceptedCommon keys |
 | MassDerived | `available`: logical; `unavailable_reason`: nullable<enum{`mass_unavailable`, `mass_invalid`}>; `positive_groups`: nullable<array<PositiveMassGroup>>; `all_mass_groups`: nullable<array<AllMassGroup>>; `denominator`, `core_coverage`, `final_coverage`: nullable<number>; `positive_count`, `zero_count`: nullable<nonnegative integer> |
 | PositiveMassGroup | `mass`: positive number; `ids`: nonempty id-array; `endpoint`: positive integer; `cumulative_coverage`: number in `(0,1]` |
 | AllMassGroup | `mass`: nonnegative number; `ids`: nonempty id-array; `endpoint`: positive integer |
@@ -722,12 +761,45 @@ key. These are the only dynamic-key objects in proposal/3.
 `canonical_prominence`, `trajectory_flow_support`, `component_survivor`, and
 `selected_or_pinned`, each an id-array.
 
-MassDerived obeys the field-level availability table above. Group arrays are
-ordered by descending mass, group IDs are lexicographic, and endpoints are
-strictly increasing cumulative member counts. Positive-group cumulative
-coverage is nondecreasing. IDs in `core`, `sentinels`, ancestors, labels, and
-final records must satisfy the canonical subset and closure rules already
-declared.
+MassDerived obeys the field-level availability table above. For valid mass,
+the validator reconstructs the mass map from `all_mass_groups` and enforces
+all of the following rather than trusting stored derived fields:
+
+1. `all_mass_groups` is in strictly descending distinct-mass order; each
+   group's IDs are nonempty and lexicographic; group ID sets are pairwise
+   disjoint; and their union is exactly the mapped selected-component ID
+   universe.
+2. Each all-mass endpoint equals the cumulative member count through that
+   group.
+3. `positive_groups` equals the positive-mass restriction of
+   `all_mass_groups`, preserving masses, IDs, order, and all-mass endpoints.
+4. `positive_count` and `zero_count` equal the corresponding reconstructed
+   membership counts.
+5. `denominator` equals the fixed-order sum of `mass * length(ids)` over
+   positive groups. Multiplication and addition use descending group order and
+   lexicographic ID order, as declared above.
+6. Each positive-group `cumulative_coverage` equals its reconstructed
+   cumulative positive mass divided by the reconstructed denominator.
+7. `core_coverage` and `final_coverage` equal the reconstructed mass sums over
+   `core.ids` and `final.ids`, respectively, divided by the same denominator.
+
+Binary64 equalities in items 5--7 are bitwise equality after the declared
+fixed-order computation; a deserializer does not apply a tolerance or repair
+the stored value. In the mass-unavailable all-zero case, the sole all-mass
+group must contain the entire selected-component universe and its endpoint,
+zero count, and denominator are recomputed analogously. In the mass-invalid
+case, group and derived fields are null as specified.
+
+The mapped selected-component ID universe is `mapping.component_ids`. Its
+cardinality must equal `mapping.cardinality` and
+`component_selection.selected_component_basin_count`. Every core, sentinel,
+ancestor, final, label, label-contribution, reason-map, and component-survivor
+ID must belong to that universe. Final IDs must equal the declared canonical
+union and ancestor closure; labels must be a subset of final IDs. When mass is
+valid or unavailable, the disjoint union of `all_mass_groups` must equal this
+same universe. The field remains present when mass is invalid, so membership
+checks do not depend on mass-derived records. A proposal cannot establish its
+own universe merely by listing final IDs.
 
 An invalid active attempt is not an algorithm proposal and never receives
 canonical core, sentinel, label, final, or layout IDs.
@@ -764,15 +836,17 @@ field except `view_state_fingerprint` itself. Unlike the attempt fingerprint,
 it therefore covers stored validation, attempt and render outcomes, display
 source, displayed-proposal fingerprint, and the embedded proposal.
 
-All three hashes use this versioned canonical UTF-8 text serialization:
+All four hashes use this versioned, schema-directed canonical UTF-8 text
+serialization:
 
 1. each schema fixes its field set, and named fields/maps are emitted in
    lexicographic UTF-8 key-byte order;
 2. canonical-ID sets are sorted lexicographically and ordered branch/event
    tables use their declared canonical order;
 3. strings carry a type token and unsigned decimal UTF-8 byte-length prefix;
-4. integers use a type token and canonical base-10 ASCII representation;
-5. finite numeric values use a type token and lowercase C99 hexadecimal
+4. integer fields use an integer type token and the canonical signed-64
+   decimal representation, regardless of the implementation carrier;
+5. number fields use a number type token and lowercase C99 hexadecimal
    floating-point representation, with negative zero normalized to positive
    zero;
 6. logical true, logical false, and null use distinct typed tokens;
@@ -780,10 +854,10 @@ All three hashes use this versioned canonical UTF-8 text serialization:
    tokens, and preserve the order fixed by rules 1 and 2; and
 8. no optional whitespace is emitted.
 
-Nonfinite numeric values are not hashable proposal content. Invalid active
-input values are represented in the attempt fingerprint by typed raw-input
-tokens for missing, nonfinite, and unparsable values rather than proposal
-numeric fields.
+Serialization is directed by the closed schema and field path, never by an
+incidental R storage type. A value with the wrong runtime representation is
+rejected before hashing; it is not serialized under another type token.
+Nonfinite numeric values are not hashable proposal content.
 
 On deserialization, `gflowui` first validates every closed schema, then
 independently recomputes the context, proposal, active-attempt, and view-state
@@ -816,11 +890,38 @@ ActiveAttempt has exactly:
 | `outcome` | enum{`proposal_created`, `blocked`, `stale`} |
 | `render_outcome` | nullable<enum{`unavailable`, `stale`}> |
 
-ActiveInput has exactly the same keys as Parameters. Each value preserves the
-typed control input before validation; invalid numeric controls may therefore
-use a number outside the valid proposal domain or a typed raw-input string
-token. Proposal `accepted_parameters` always satisfies the stricter Parameters
-domains.
+ActiveInput has exactly the complete pre-projection Parameters key set:
+`filter_mode`, `coverage_target`, `strong_gap_decades`,
+`minimum_core_branches`, `core_branch_budget`, `final_render_budget`,
+`sentinel_top_n`, `important_label_n`, `top_k`, `minimum_mass`, the three
+sentinel toggles, and `label_mode`. Enum controls use their declared enum and
+toggle controls use logical. Every numeric control uses one closed
+NumericControlInput object with exactly `state` and `payload`:
+
+| State | Allowed control | Payload |
+|---|---|---|
+| `parsed_integer` | integer-valued controls | canonical signed-64 decimal text |
+| `parsed_number` | binary64 controls | canonical lowercase C99 hexadecimal binary64 text; finite; `-0` forbidden and represented as `0x0p+0` |
+| `missing` | any numeric control | null |
+| `nonfinite` | any numeric control | enum{`nan`, `+inf`, `-inf`} |
+| `unparsable` | any numeric control | one UTF-8 string, preserved byte-for-byte |
+
+An integer control rejects `parsed_number`; a binary64 control rejects
+`parsed_integer`. A fractional value entered for an integer control is
+`unparsable` under that control's declared grammar. Unparsable payloads are
+not trimmed, normalized, interpreted, or escaped ad hoc: the canonical string
+encoder's UTF-8 byte-length prefix is the sole escaping/framing mechanism.
+Empty strings are allowed as unparsable payloads and remain distinct from
+`missing`. Untagged numeric/string values, vectors, lists with additional
+keys, arbitrary nested objects, and wrong state/payload combinations are
+`schema_invalid`.
+
+Domain-invalid but syntactically parsed values, such as Top K `0` or Minimum
+Mass `-1`, retain `parsed_integer` or `parsed_number` state. Validation decodes
+only common controls and the controls active for the selected mode. The
+proposal `accepted_parameters` is the exact normalized active/common
+projection defined in Parameter Validation; inactive NumericControlInput
+objects are preserved only in ActiveInput.
 
 AttemptValidation has exactly `identity`, `source`, `mapping`,
 `ranking_measure`, and `settings`. Its enums are those in the Proposal State
@@ -855,7 +956,8 @@ The deserializer enforces this table after fingerprint validation:
 
 - `proposal_created` requires null attempt render outcome,
   `display_source = current`, and a nonnull conforming proposal whose
-  validation and accepted parameters equal the active attempt;
+  validation equals the active attempt and whose accepted parameters equal
+  the normalized, validated active/common projection of ActiveInput;
 - `stale` requires attempt render outcome `stale`, stale identity validation,
   `display_source = none`, and null display fields;
 - `blocked` requires attempt render outcome `unavailable`;
@@ -1177,7 +1279,11 @@ attempt.
     `settings_invalid`, retain the last valid proposal, and never coerce.
 21. Inactive mode-specific inputs cannot block recomputation; first activation,
     switching, retention, and reactivation follow the declared initialization
-    and validation rules.
+    and validation rules. Integrated tests exercise every mode with missing,
+    nonfinite, unparsable, fractional, and domain-invalid values in each
+    inactive mode-specific control. They assert preserved raw ActiveInput,
+    successful active/common projection, proposal and view fingerprints,
+    mode switching, and `settings_invalid` when the same value becomes active.
 22. Minimum Mass uses raw trajectory-flow units: masses `0.4, 0.3` with
     threshold `0.5` return `threshold_empty`, not a component-normalized
     selection.
@@ -1220,6 +1326,17 @@ attempt.
     `view_state_invalid`.
 35. Active-input status text describes the invalid attempt while displayed
     status text is derived only from the retained proposal.
+35a. ActiveInput schema tests reject arbitrary lists, vectors, untagged
+     strings or numerics, unknown states, additional/missing token keys,
+     control-type/state mismatches, and invalid state/payload combinations.
+35b. Schema-directed fixed digest vectors cover signed-64 integer boundaries,
+     zero, binary64 integer-looking values, and normalized negative zero.
+     Alternate runtime representations are rejected with `schema_invalid`;
+     every accepted representation of one scalar has exactly one digest.
+35c. Independently re-fingerprinted proposal mutations fail relational
+     validation for wrong endpoints, duplicate/missing IDs, altered group
+     mass, denominator, positive/zero counts, cumulative coverage, and
+     core/final coverage.
 
 ### Topology and components
 
