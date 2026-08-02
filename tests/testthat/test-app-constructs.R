@@ -825,6 +825,22 @@ test_that("basin server invalidates changed fields and graph identities", {
     )
     expect_match(
       tree.shell,
+      "Canonical continuation follows the density-value elder rule",
+      fixed = TRUE
+    )
+    expect_match(
+      tree.shell,
+      "greater birth density survives each merge",
+      fixed = TRUE
+    )
+    expect_match(
+      tree.shell,
+      "mass and support are annotations and filtering quantities",
+      fixed = TRUE
+    )
+    expect_match(tree.shell, "do not change tree parentage", fixed = TRUE)
+    expect_match(
+      tree.shell,
       'data-render-outcome="renderable"',
       fixed = TRUE
     )

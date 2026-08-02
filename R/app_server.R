@@ -10474,6 +10474,7 @@ app_server <- function(input, output, session) {
           "Basin Superlevel-Set Merge Tree"
         )
       ),
+      .gflowui_basin_panel_rule_disclosure(),
       shiny::p(
         class = "gf-basin-analysis-shell-status",
         role = "status",
@@ -11011,7 +11012,7 @@ app_server <- function(input, output, session) {
       gflowui_basin_state_event("open_viewer")
     ))
     shiny::showModal(shiny::modalDialog(
-      title = "Complete Interactive Basin Merge Tree",
+      title = .gflowui_basin_complete_viewer_title(),
       size = "l",
       easyClose = TRUE,
       footer = shiny::modalButton("Close"),
