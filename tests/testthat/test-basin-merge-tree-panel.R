@@ -345,6 +345,54 @@ test_that("static tree uses exact layout and trajectory-flow annotations", {
   )
 })
 
+test_that("tree terminology identifies density-value survival semantics", {
+  bundle <- phase5_panel_bundle("density-value-terminology")
+  state <- phase5_panel_state(bundle)
+  model <- gflowui:::gflowui_basin_merge_tree_model(state)
+  complete.layout <- gflowui:::gflowui_basin_complete_layout(
+    bundle,
+    component = state$context$component
+  )
+  captured <- new.env(parent = emptyenv())
+  captured$titles <- character()
+  plotter <- function(..., main.tree, basin.ids = NULL) {
+    captured$titles <- c(captured$titles, main.tree)
+    list(layout = if (is.null(basin.ids)) complete.layout else model$layout)
+  }
+
+  gflowui:::gflowui_basin_draw_merge_tree(
+    model$panel,
+    plotter = plotter
+  )
+  gflowui:::gflowui_basin_draw_merge_tree(
+    model$panel,
+    complete = TRUE,
+    plotter = plotter
+  )
+
+  expect_identical(
+    captured$titles,
+    c(
+      "Filtered crossing-free density-value elder-rule merge tree",
+      "Complete crossing-free density-value elder-rule merge tree"
+    )
+  )
+  ui <- htmltools::renderTags(
+    gflowui:::gflowui_basin_merge_tree_panel_ui(model$panel)
+  )$html
+  expect_match(ui, "greater birth density survives each merge", fixed = TRUE)
+  expect_match(
+    ui,
+    "mass and support are annotations and filtering quantities",
+    fixed = TRUE
+  )
+  expect_match(ui, "do not change tree parentage", fixed = TRUE)
+  expect_identical(
+    gflowui:::.gflowui_basin_complete_viewer_title(),
+    "Complete Interactive Density-Value Elder-Rule Basin Merge Tree"
+  )
+})
+
 test_that("sparse and absent label modes satisfy the canonical plot API", {
   bundle <- phase5_panel_bundle("labels")
   state <- phase5_panel_state(bundle)
