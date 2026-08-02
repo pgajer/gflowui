@@ -62,6 +62,8 @@ app_server <- function(input, output, session) {
   basin_analysis_context_generation <- shiny::reactiveVal(0L)
   basin_analysis_pending_job <- shiny::reactiveVal("")
   basin_analysis_telemetry <- shiny::reactiveVal(list())
+  basin_analysis_panel_metrics <- shiny::reactiveVal(list())
+  basin_complete_viewer_open <- shiny::reactiveVal(FALSE)
   basin_analysis_session_id <- paste0(
     "basin-analysis-",
     as.character(session$token %||% "session")
@@ -451,6 +453,8 @@ app_server <- function(input, output, session) {
     basin_analysis_state(NULL)
     basin_analysis_construction_fingerprint("")
     basin_analysis_pending_job("")
+    basin_analysis_panel_metrics(list())
+    basin_complete_viewer_open(FALSE)
     basin_inspector_open(FALSE)
     basin_selected_keys(character())
     basin_color_map(structure(character(), names = character()))
@@ -8659,6 +8663,8 @@ app_server <- function(input, output, session) {
     basin_analysis_state(NULL)
     basin_analysis_construction_fingerprint("")
     basin_analysis_pending_job("")
+    basin_analysis_panel_metrics(list())
+    basin_complete_viewer_open(FALSE)
     basin_inspector_open(FALSE)
     basin_plot_specs(list())
     basin_plot_next_id(0L)
@@ -9516,7 +9522,13 @@ app_server <- function(input, output, session) {
       } else {
         NA_integer_
       },
-      diagnostic = diagnostic
+      diagnostic = diagnostic,
+      metrics = if (is.list(completion) &&
+          is.list(completion$metrics)) {
+        completion$metrics
+      } else {
+        NULL
+      }
     )
     current <- shiny::isolate(basin_analysis_telemetry())
     basin_analysis_telemetry(utils::tail(
@@ -9576,6 +9588,18 @@ app_server <- function(input, output, session) {
         fingerprint,
         installed$state
       )
+      installed.proposal <- installed$state$current.proposal
+      if (is.list(installed.proposal) &&
+          identical(
+            installed.proposal$accepted.parameters$filter.mode,
+            "none"
+          ) &&
+          identical(
+            installed.proposal$render.outcome,
+            "core_overflow"
+          )) {
+        basin_complete_viewer_open(TRUE)
+      }
       graph_layout_state$color_by <- "basin_active"
       shiny::updateSelectInput(
         session,
@@ -9632,6 +9656,8 @@ app_server <- function(input, output, session) {
       basin_analysis_state(NULL)
       basin_analysis_construction_fingerprint("")
       basin_analysis_pending_job("")
+      basin_analysis_panel_metrics(list())
+      basin_complete_viewer_open(FALSE)
       basin_inspector_open(FALSE)
       basin_plot_specs(list())
       basin_plot_next_id(0L)
@@ -9694,6 +9720,8 @@ app_server <- function(input, output, session) {
       basin_analysis_state(NULL)
       basin_analysis_construction_fingerprint("")
       basin_analysis_pending_job("")
+      basin_analysis_panel_metrics(list())
+      basin_complete_viewer_open(FALSE)
       basin_inspector_open(FALSE)
       record_basin_analysis_telemetry(
         "internal_transition_failure",
@@ -9758,6 +9786,103 @@ app_server <- function(input, output, session) {
         started$job,
         .gflowui_basin_async_failure_result(
           started$job,
+          "launch_failed",
+          conditionMessage(launch)
+        ),
+        diagnostic = list(
+          kind = "internal_launch_failure",
+          message = conditionMessage(launch),
+          condition.class = class(launch)
+        )
+      )
+      install_basin_analysis_completion(completion, success.message)
+      return(invisible(FALSE))
+    }
+    invisible(TRUE)
+  }
+  apply_basin_analysis_event <- function(event, success.message) {
+    current <- shiny::isolate(basin_analysis_state())
+    if (!is.list(current)) {
+      return(invisible(FALSE))
+    }
+    fingerprint <- shiny::isolate(
+      basin_analysis_construction_fingerprint()
+    )
+    started <- gflowui_basin_start_panel_event(
+      state = current,
+      event = event,
+      session.id = basin_analysis_session_id,
+      construction.fingerprint = fingerprint
+    )
+    if (identical(
+      started$disposition,
+      "internal_transition_failure"
+    )) {
+      record_basin_analysis_telemetry(
+        "internal_transition_failure",
+        diagnostic = started$diagnostic
+      )
+      basin_status(sprintf(
+        "Basin Analysis encountered an unexpected internal failure: %s",
+        started$diagnostic$message
+      ))
+      return(invisible(FALSE))
+    }
+    next.state <- started$state
+    basin_analysis_state(next.state)
+    basin_analysis_context_generation(max(
+      shiny::isolate(basin_analysis_context_generation()),
+      next.state$context.generation
+    ))
+    if (is.null(started$job)) {
+      record_basin_analysis_telemetry(started$disposition)
+      if (identical(
+        started$disposition,
+        "scientific_blocked"
+      )) {
+        basin_analysis_pending_job("")
+      }
+      if (identical(next.state$active.attempt$outcome, "blocked")) {
+        detail <- paste(
+          next.state$active.attempt$messages,
+          collapse = " "
+        )
+        basin_status(sprintf(
+          "Basin Analysis controls are blocked%s.",
+          if (nzchar(detail)) paste0(": ", detail) else ""
+        ))
+      }
+      return(invisible(TRUE))
+    }
+    job <- started$job
+    basin_analysis_pending_job(job$job.id)
+    basin_status("Updating the canonical maximum-basin display proposal...")
+    launcher <- getOption(
+      "gflowui.basin.analysis.launcher",
+      gflowui_basin_launch_async_job
+    )
+    launch <- tryCatch(
+      launcher(
+        job,
+        callback = function(completion) {
+          if (!isTRUE(basin_analysis_session_active)) {
+            return(invisible("session_closed"))
+          }
+          shiny::withReactiveDomain(session, {
+            install_basin_analysis_completion(
+              completion,
+              success.message
+            )
+          })
+        }
+      ),
+      error = function(error) error
+    )
+    if (inherits(launch, "error")) {
+      completion <- gflowui_basin_async_completion(
+        job,
+        .gflowui_basin_async_failure_result(
+          job,
           "launch_failed",
           conditionMessage(launch)
         ),
@@ -10144,11 +10269,11 @@ app_server <- function(input, output, session) {
         !is.list(state)) {
       return(NULL)
     }
-    summary <- tryCatch(
-      gflowui_basin_analysis_shell_summary(state),
+    model <- tryCatch(
+      gflowui_basin_merge_tree_model(state),
       error = function(error) error
     )
-    if (inherits(summary, "error")) {
+    if (inherits(model, "error")) {
       return(shiny::tags$section(
         id = "gf_basin_merge_tree",
         class = "gf-basin-merge-tree",
@@ -10167,38 +10292,179 @@ app_server <- function(input, output, session) {
         )
       ))
     }
-    status <- if (identical(summary$outcome, "proposal_created")) {
-      sprintf(
-        paste(
-          "Current maximum-basin proposal: component %d;",
-          "%d total component%s;",
-          "%d of %d component maxima in the initial display;",
-          "filter %s."
-        ),
-        summary$component,
-        summary$component.count,
-        if (identical(summary$component.count, 1L)) "" else "s",
-        summary$final.count,
-        summary$component.maximum.count,
-        summary$filter.mode
-      )
-    } else if (identical(summary$outcome, "pending")) {
+    if (!isTRUE(model$available)) {
+      return(gflowui_basin_merge_tree_panel_ui(model$panel))
+    }
+    component.choices <- stats::setNames(
+      as.character(model$component.ids),
+      paste("Component", model$component.ids)
+    )
+    controls <- model$controls
+    mode <- as.character(controls$filter.mode)
+    attempt.status <- if (identical(model$attempt.outcome, "pending")) {
       "Preparing the current maximum-basin display proposal."
-    } else {
-      detail <- paste(summary$messages, collapse = " ")
+    } else if (!isTRUE(model$available)) {
+      detail <- paste(model$attempt.messages, collapse = " ")
       sprintf(
-        "The current maximum-basin proposal is %s%s.",
-        summary$outcome,
+        "The current proposal is %s%s.",
+        model$attempt.outcome,
         if (nzchar(detail)) paste0(": ", detail) else ""
       )
+    } else {
+      sprintf(
+        paste(
+          "Current maximum-basin proposal: %d maximum basins across",
+          "%d component%s; component %d has %d;",
+          "core %d, final display %d; core outcome %s; render %s."
+        ),
+        model$direction.maximum.count,
+        length(model$component.ids),
+        if (length(model$component.ids) == 1L) "" else "s",
+        model$component,
+        model$component.maximum.count,
+        model$counts$core,
+        model$counts$final,
+        model$proposal$core$outcome,
+        model$proposal$render.outcome
+      )
     }
+    coverage.text <- if (isTRUE(model$available) &&
+        isTRUE(model$mass$available)) {
+      sprintf(
+        "Positive-mass coverage: core %.6f; final %.6f.",
+        model$mass$core.coverage,
+        model$mass$final.coverage
+      )
+    } else if (isTRUE(model$available)) {
+      sprintf(
+        "Positive-mass coverage unavailable: %s.",
+        model$mass$unavailable.reason
+      )
+    } else {
+      NULL
+    }
+    disclosure <- if (isTRUE(model$available)) {
+      sprintf(
+        paste(
+          "Sentinel-only %d; ancestor-only %d; display source %s;",
+          "mass owner trajectory-flow primary.support.mass."
+        ),
+        model$counts$sentinel.only,
+        model$counts$ancestor.only,
+        gsub("_", " ", model$display.source)
+      )
+    } else {
+      NULL
+    }
+    panel.warnings <- if (isTRUE(model$available)) {
+      unique(c(
+        model$proposal$core$warnings,
+        model$labels$warning
+      ))
+    } else {
+      character()
+    }
+    panel.warnings <- panel.warnings[
+      !is.na(panel.warnings) & nzchar(as.character(panel.warnings))
+    ]
+    warning.text <- if (length(panel.warnings)) {
+      paste("Warnings:", paste(panel.warnings, collapse = ", "))
+    } else {
+      NULL
+    }
+    selected.text <- if (length(model$selected.hidden)) {
+      sprintf(
+        "%d selected basin%s hidden from the filtered tree; select one below to pin it.",
+        length(model$selected.hidden),
+        if (length(model$selected.hidden) == 1L) " is" else "s are"
+      )
+    } else if (length(model$selected.visible)) {
+      sprintf(
+        "%d selected basin%s visible in the filtered tree.",
+        length(model$selected.visible),
+        if (length(model$selected.visible) == 1L) " is" else "s are"
+      )
+    } else {
+      "No basin is transiently selected."
+    }
+    selected.choices <- unique(c(
+      model$selected.hidden,
+      model$selected.visible,
+      model$pinned.ids
+    ))
+    selected.choices <- stats::setNames(selected.choices, selected.choices)
+    mode.controls <- switch(
+      mode,
+      auto = shiny::tagList(
+        shiny::numericInput(
+          "basin_tree_coverage",
+          "Mass coverage",
+          value = controls$coverage.target,
+          min = 0.001,
+          max = 1,
+          step = 0.01
+        ),
+        shiny::numericInput(
+          "basin_tree_strong_gap",
+          "Strong-gap threshold (decades)",
+          value = controls$strong.gap.decades,
+          min = 0,
+          step = 0.1
+        ),
+        shiny::numericInput(
+          "basin_tree_core_budget",
+          "Core branch budget",
+          value = controls$core.branch.budget,
+          min = 3,
+          step = 1
+        )
+      ),
+      cumulative_mass = shiny::tagList(
+        shiny::numericInput(
+          "basin_tree_coverage",
+          "Mass coverage",
+          value = controls$coverage.target,
+          min = 0.001,
+          max = 1,
+          step = 0.01
+        ),
+        shiny::numericInput(
+          "basin_tree_core_budget",
+          "Core branch budget",
+          value = controls$core.branch.budget,
+          min = 3,
+          step = 1
+        )
+      ),
+      minimum_mass = shiny::numericInput(
+        "basin_tree_minimum_mass",
+        "Minimum raw trajectory-flow mass",
+        value = controls$minimum.mass,
+        min = 0,
+        step = 0.001
+      ),
+      top_k = shiny::numericInput(
+        "basin_tree_top_k",
+        "Top K",
+        value = controls$top.k,
+        min = 1,
+        max = model$component.maximum.count,
+        step = 1
+      ),
+      NULL
+    )
     shiny::tags$section(
       id = "gf_basin_merge_tree",
       class = "gf-basin-merge-tree",
       role = "region",
       `aria-labelledby` = "gf_basin_merge_tree_heading",
-      `data-analysis-state` = summary$outcome,
-      `data-display-source` = summary$display.source,
+      `data-analysis-state` = model$attempt.outcome,
+      `data-display-source` = model$display.source,
+      `data-render-outcome` = if (isTRUE(model$available)) {
+        model$proposal$render.outcome
+      } else {
+        "unavailable"
+      },
       `data-context-generation` = state$context.generation,
       `data-attempt-id` = state$active.attempt$attempt.id,
       shiny::div(
@@ -10212,8 +10478,195 @@ app_server <- function(input, output, session) {
         class = "gf-basin-analysis-shell-status",
         role = "status",
         `aria-live` = "polite",
-        status
-      )
+        attempt.status
+      ),
+      if (isTRUE(model$retained)) shiny::div(
+        class = "gf-basin-tree-retained",
+        role = "status",
+        paste(
+          "Showing the retained last valid proposal while the current",
+          "proposal attempt is unresolved."
+        )
+      ) else NULL,
+      if (!is.null(coverage.text)) shiny::p(
+        class = "gf-basin-tree-disclosure",
+        coverage.text
+      ) else NULL,
+      if (!is.null(disclosure)) shiny::p(
+        class = "gf-basin-tree-disclosure",
+        disclosure
+      ) else NULL,
+      if (!is.null(warning.text)) shiny::p(
+        class = "gf-basin-tree-warning",
+        warning.text
+      ) else NULL,
+      shiny::p(
+        class = "gf-basin-tree-selection-status",
+        selected.text
+      ),
+      shiny::tags$details(
+        class = "gf-basin-tree-controls",
+        open = NA,
+        shiny::tags$summary("Merge-tree display controls"),
+        shiny::div(
+          class = "gf-basin-tree-control-grid",
+          shiny::selectInput(
+            "basin_tree_component",
+            "Component",
+            choices = component.choices,
+            selected = as.character(model$component)
+          ),
+          shiny::selectInput(
+            "basin_tree_filter_mode",
+            "Filter",
+            choices = c(
+              "Auto" = "auto",
+              "Cumulative Mass" = "cumulative_mass",
+              "Minimum Mass" = "minimum_mass",
+              "Top K" = "top_k",
+              "None" = "none"
+            ),
+            selected = mode
+          ),
+          mode.controls,
+          shiny::numericInput(
+            "basin_tree_final_budget",
+            "Final render budget",
+            value = controls$final.render.budget,
+            min = 1,
+            step = 1
+          ),
+          shiny::numericInput(
+            "basin_tree_sentinel_n",
+            "Sentinel count per enabled measure",
+            value = controls$sentinel.top.n,
+            min = 0,
+            step = 1
+          ),
+          shiny::checkboxInput(
+            "basin_tree_peak_sentinel",
+            "Peak sentinels",
+            value = controls$peak.sentinel.enabled
+          ),
+          shiny::checkboxInput(
+            "basin_tree_prominence_sentinel",
+            "Prominence sentinels",
+            value = controls$prominence.sentinel.enabled
+          ),
+          shiny::checkboxInput(
+            "basin_tree_support_sentinel",
+            "Support sentinels",
+            value = controls$support.sentinel.enabled
+          ),
+          shiny::numericInput(
+            "basin_tree_important_labels",
+            "Important-label count",
+            value = model$presentation$important.label.n,
+            min = 0,
+            step = 1
+          ),
+          shiny::selectInput(
+            "basin_tree_label_mode",
+            "Labels",
+            choices = c(
+              "Important" = "important",
+              "Selected" = "selected",
+              "Displayed" = "displayed",
+              "None" = "none",
+              "All" = "all"
+            ),
+            selected = model$presentation$label.mode
+          ),
+          shiny::checkboxInput(
+            "basin_tree_show_diagnostic",
+            "Show diagnostic",
+            value = isTRUE(model$presentation$diagnostics.visible)
+          )
+        ),
+        if (length(selected.choices)) shiny::div(
+          class = "gf-basin-tree-pin-controls",
+          shiny::selectInput(
+            "basin_tree_selected_id",
+            "Selected basin",
+            choices = selected.choices,
+            selected = selected.choices[[1L]]
+          ),
+          shiny::actionButton(
+            "basin_tree_pin_selected",
+            "Pin selected basin"
+          ),
+          shiny::actionButton(
+            "basin_tree_unpin_selected",
+            "Unpin selected basin"
+          )
+        ) else NULL,
+        shiny::div(
+          class = "gf-basin-tree-actions",
+          shiny::actionButton(
+            "basin_tree_open_complete",
+            "Open complete interactive tree"
+          ),
+          shiny::actionButton(
+            "basin_tree_show_all",
+            "Show all"
+          )
+        )
+      ),
+      if (isTRUE(model$available) && !isTRUE(model$renderable)) {
+        shiny::div(
+          class = "gf-basin-tree-overflow",
+          role = "status",
+          `aria-live` = "polite",
+          shiny::h5("Static rendering paused"),
+          shiny::p(model$overflow.text),
+          shiny::p(
+            "Adjust the proposal controls or open the complete interactive tree."
+          )
+        )
+      } else NULL,
+      if (isTRUE(model$available) && isTRUE(model$renderable)) {
+        plot.width <- gflowui_basin_panel_plot_width(
+          model$counts$final,
+          model$labels$mode
+        )
+        shiny::div(
+          class = "gf-basin-tree-plot-frame",
+          shiny::plotOutput(
+            "basin_merge_tree_plot",
+            width = sprintf("%dpx", plot.width),
+            height = "780px"
+          )
+        )
+      } else NULL,
+      if (isTRUE(model$available) &&
+          isTRUE(model$presentation$diagnostics.visible)) {
+        if (isTRUE(model$diagnostics$available)) {
+          shiny::div(
+            class = "gf-basin-tree-diagnostic-frame",
+            shiny::plotOutput(
+              "basin_merge_tree_diagnostic_plot",
+              width = "100%",
+              height = "720px"
+            ),
+            shiny::p(
+              class = "gf-basin-tree-zero-count",
+              sprintf(
+                "%d exact zero-mass branch%s excluded from logarithmic diagnostics.",
+                model$diagnostics$zero.count,
+                if (model$diagnostics$zero.count == 1L) " was" else "es were"
+              )
+            )
+          )
+        } else {
+          shiny::p(
+            class = "gf-basin-tree-warning",
+            sprintf(
+              "Mass diagnostic unavailable: %s.",
+              model$diagnostics$unavailable.reason
+            )
+          )
+        }
+      } else NULL
     )
   })
   shiny::outputOptions(
@@ -10221,6 +10674,375 @@ app_server <- function(input, output, session) {
     "basin_merge_tree_ui",
     suspendWhenHidden = FALSE
   )
+
+  output$basin_merge_tree_plot <- shiny::renderPlot({
+    state <- basin_analysis_state()
+    shiny::req(is.list(state))
+    model <- gflowui_basin_merge_tree_model(state)
+    shiny::req(isTRUE(model$available), isTRUE(model$renderable))
+    rendered <- gflowui_basin_plot_merge_tree(model)
+    metrics <- shiny::isolate(basin_analysis_panel_metrics())
+    metrics$filtered <- list(
+      layout.elapsed.ms = model$layout.elapsed.ms,
+      render.elapsed.ms = rendered$elapsed.ms,
+      branch.count = rendered$branch.count
+    )
+    basin_analysis_panel_metrics(metrics)
+    invisible(rendered)
+  }, res = 96)
+  shiny::outputOptions(
+    output,
+    "basin_merge_tree_plot",
+    suspendWhenHidden = FALSE
+  )
+
+  output$basin_merge_tree_diagnostic_plot <- shiny::renderPlot({
+    state <- basin_analysis_state()
+    shiny::req(is.list(state))
+    model <- gflowui_basin_merge_tree_model(state)
+    shiny::req(
+      isTRUE(model$available),
+      isTRUE(model$presentation$diagnostics.visible),
+      isTRUE(model$diagnostics$available)
+    )
+    gflowui_basin_plot_diagnostics(model)
+  }, res = 96)
+  shiny::outputOptions(
+    output,
+    "basin_merge_tree_diagnostic_plot",
+    suspendWhenHidden = FALSE
+  )
+
+  output$basin_complete_tree_plot <- plotly::renderPlotly({
+    started <- unname(proc.time()[["elapsed"]])
+    state <- basin_analysis_state()
+    shiny::req(is.list(state))
+    shiny::req(!is.null(gflowui_basin_displayed_proposal(state)))
+    complete <- gflowui_basin_complete_interactive_data(state)
+    points <- complete$points
+    hover <- sprintf(
+      paste(
+        "%s",
+        "Peak: %.6g",
+        "Prominence: %.6g",
+        "Trajectory-flow mass: %.6g",
+        "Trajectory-flow support: %.0f",
+        "Selected: %s",
+        "Pinned: %s",
+        sep = "<br>"
+      ),
+      points$basin.id,
+      points$peak.value,
+      points$prominence,
+      points$trajectory.flow.mass,
+      points$trajectory.flow.support,
+      ifelse(points$selected, "yes", "no"),
+      ifelse(points$pinned, "yes", "no")
+    )
+    colors <- ifelse(
+      points$selected,
+      "#DC2626",
+      ifelse(points$pinned, "#7C3AED", "#0F766E")
+    )
+    labels <- ifelse(points$selected, points$basin.id, "")
+    plot <- plotly::plot_ly()
+    plot <- plotly::add_trace(
+      plot,
+      x = complete$vertical$x,
+      y = complete$vertical$y,
+      type = "scatter",
+      mode = "lines",
+      line = list(color = "#64748B", width = 1),
+      hoverinfo = "skip",
+      showlegend = FALSE
+    )
+    if (nrow(complete$horizontal)) {
+      plot <- plotly::add_trace(
+        plot,
+        x = complete$horizontal$x,
+        y = complete$horizontal$y,
+        type = "scatter",
+        mode = "lines",
+        line = list(color = "#64748B", width = 1),
+        hoverinfo = "skip",
+        showlegend = FALSE
+      )
+    }
+    plot <- plotly::add_trace(
+      plot,
+      x = points$x,
+      y = points$birth.level,
+      type = "scatter",
+      mode = "markers+text",
+      marker = list(color = colors, size = ifelse(points$selected, 9, 5)),
+      text = labels,
+      textposition = "top center",
+      hovertext = hover,
+      hoverinfo = "text",
+      showlegend = FALSE
+    )
+    plot <- plotly::layout(
+      plot,
+      dragmode = "zoom",
+      xaxis = list(title = "Canonical crossing-free leaf position"),
+      yaxis = list(title = "Selected field value"),
+      margin = list(l = 70, r = 30, b = 60, t = 30)
+    )
+    metrics <- shiny::isolate(basin_analysis_panel_metrics())
+    metrics$complete <- list(
+      prepare.elapsed.ms = max(
+        0,
+        as.numeric(
+          unname(proc.time()[["elapsed"]]) - started
+        ) * 1000
+      ),
+      branch.count = nrow(points)
+    )
+    basin_analysis_panel_metrics(metrics)
+    plot
+  })
+  shiny::outputOptions(
+    output,
+    "basin_complete_tree_plot",
+    suspendWhenHidden = FALSE
+  )
+
+  basin_tree_control_equal <- function(left, right) {
+    isTRUE(all.equal(left, right, check.attributes = FALSE))
+  }
+  basin_tree_apply_control <- function(name, value) {
+    state <- shiny::isolate(basin_analysis_state())
+    if (!is.list(state) ||
+        basin_tree_control_equal(state$controls[[name]], value)) {
+      return(invisible(FALSE))
+    }
+    apply_basin_analysis_event(
+      gflowui_basin_state_event(
+        "control_change",
+        name = name,
+        value = value
+      ),
+      "Updated the canonical Basin Analysis display proposal."
+    )
+  }
+
+  shiny::observeEvent(input$basin_tree_component, {
+    state <- shiny::isolate(basin_analysis_state())
+    component <- suppressWarnings(as.integer(input$basin_tree_component))
+    if (!is.list(state) ||
+        !is.finite(component) ||
+        identical(component, state$context$component)) {
+      return()
+    }
+    apply_basin_analysis_event(
+      gflowui_basin_state_event(
+        "component_change",
+        component = component
+      ),
+      sprintf(
+        "Updated Basin Analysis to graph component %d.",
+        component
+      )
+    )
+  }, ignoreInit = TRUE)
+
+  shiny::observeEvent(input$basin_tree_filter_mode, {
+    basin_tree_apply_control(
+      "filter.mode",
+      as.character(input$basin_tree_filter_mode)
+    )
+  }, ignoreInit = TRUE)
+  shiny::observeEvent(input$basin_tree_coverage, {
+    basin_tree_apply_control(
+      "coverage.target",
+      suppressWarnings(as.numeric(input$basin_tree_coverage))
+    )
+  }, ignoreInit = TRUE)
+  shiny::observeEvent(input$basin_tree_strong_gap, {
+    basin_tree_apply_control(
+      "strong.gap.decades",
+      suppressWarnings(as.numeric(input$basin_tree_strong_gap))
+    )
+  }, ignoreInit = TRUE)
+  shiny::observeEvent(input$basin_tree_minimum_mass, {
+    basin_tree_apply_control(
+      "minimum.mass",
+      suppressWarnings(as.numeric(input$basin_tree_minimum_mass))
+    )
+  }, ignoreInit = TRUE)
+  shiny::observeEvent(input$basin_tree_top_k, {
+    basin_tree_apply_control(
+      "top.k",
+      suppressWarnings(as.numeric(input$basin_tree_top_k))
+    )
+  }, ignoreInit = TRUE)
+  shiny::observeEvent(input$basin_tree_core_budget, {
+    basin_tree_apply_control(
+      "core.branch.budget",
+      suppressWarnings(as.numeric(input$basin_tree_core_budget))
+    )
+  }, ignoreInit = TRUE)
+  shiny::observeEvent(input$basin_tree_final_budget, {
+    basin_tree_apply_control(
+      "final.render.budget",
+      suppressWarnings(as.numeric(input$basin_tree_final_budget))
+    )
+  }, ignoreInit = TRUE)
+  shiny::observeEvent(input$basin_tree_sentinel_n, {
+    basin_tree_apply_control(
+      "sentinel.top.n",
+      suppressWarnings(as.numeric(input$basin_tree_sentinel_n))
+    )
+  }, ignoreInit = TRUE)
+  shiny::observeEvent(input$basin_tree_peak_sentinel, {
+    basin_tree_apply_control(
+      "peak.sentinel.enabled",
+      isTRUE(input$basin_tree_peak_sentinel)
+    )
+  }, ignoreInit = TRUE)
+  shiny::observeEvent(input$basin_tree_prominence_sentinel, {
+    basin_tree_apply_control(
+      "prominence.sentinel.enabled",
+      isTRUE(input$basin_tree_prominence_sentinel)
+    )
+  }, ignoreInit = TRUE)
+  shiny::observeEvent(input$basin_tree_support_sentinel, {
+    basin_tree_apply_control(
+      "support.sentinel.enabled",
+      isTRUE(input$basin_tree_support_sentinel)
+    )
+  }, ignoreInit = TRUE)
+  shiny::observeEvent(input$basin_tree_important_labels, {
+    basin_tree_apply_control(
+      "important.label.n",
+      suppressWarnings(as.numeric(input$basin_tree_important_labels))
+    )
+  }, ignoreInit = TRUE)
+  shiny::observeEvent(input$basin_tree_label_mode, {
+    basin_tree_apply_control(
+      "label.mode",
+      as.character(input$basin_tree_label_mode)
+    )
+  }, ignoreInit = TRUE)
+
+  shiny::observeEvent(input$basin_tree_show_diagnostic, {
+    state <- shiny::isolate(basin_analysis_state())
+    visible <- isTRUE(input$basin_tree_show_diagnostic)
+    if (!is.list(state) ||
+        identical(visible, state$presentation$diagnostics.visible)) {
+      return()
+    }
+    apply_basin_analysis_event(
+      gflowui_basin_state_event(
+        "diagnostic_visibility",
+        visible = visible
+      ),
+      "Updated Basin Analysis diagnostic visibility."
+    )
+  }, ignoreInit = TRUE)
+
+  shiny::observeEvent(input$basin_tree_show_all, {
+    state <- shiny::isolate(basin_analysis_state())
+    if (!is.list(state)) {
+      return()
+    }
+    shiny::updateSelectInput(
+      session,
+      "basin_tree_filter_mode",
+      selected = "none"
+    )
+    if (identical(state$controls$filter.mode, "none")) {
+      apply_basin_analysis_event(
+        gflowui_basin_state_event("recompute"),
+        "Recomputed the complete Basin Analysis proposal."
+      )
+    } else {
+      basin_tree_apply_control("filter.mode", "none")
+    }
+  }, ignoreInit = TRUE)
+
+  shiny::observeEvent(input$basin_tree_pin_selected, {
+    state <- shiny::isolate(basin_analysis_state())
+    id <- as.character(input$basin_tree_selected_id %||% "")
+    if (!is.list(state) || !nzchar(id) || id %in% state$pinned.ids) {
+      return()
+    }
+    apply_basin_analysis_event(
+      gflowui_basin_state_event("pin", id = id),
+      sprintf("Pinned %s and updated Basin Analysis.", id)
+    )
+  }, ignoreInit = TRUE)
+
+  shiny::observeEvent(input$basin_tree_unpin_selected, {
+    state <- shiny::isolate(basin_analysis_state())
+    id <- as.character(input$basin_tree_selected_id %||% "")
+    if (!is.list(state) || !nzchar(id) || !(id %in% state$pinned.ids)) {
+      return()
+    }
+    apply_basin_analysis_event(
+      gflowui_basin_state_event("unpin", id = id),
+      sprintf("Unpinned %s and updated Basin Analysis.", id)
+    )
+  }, ignoreInit = TRUE)
+
+  open_basin_complete_viewer <- function() {
+    state <- shiny::isolate(basin_analysis_state())
+    if (!is.list(state)) {
+      return(invisible(FALSE))
+    }
+    basin_analysis_state(gflowui_basin_reduce_state(
+      state,
+      gflowui_basin_state_event("open_viewer")
+    ))
+    shiny::showModal(shiny::modalDialog(
+      title = "Complete Interactive Basin Merge Tree",
+      size = "l",
+      easyClose = TRUE,
+      footer = shiny::modalButton("Close"),
+      shiny::div(
+        class = "gf-basin-complete-tree-viewer",
+        plotly::plotlyOutput(
+          "basin_complete_tree_plot",
+          width = "100%",
+          height = "74vh"
+        )
+      )
+    ))
+    invisible(TRUE)
+  }
+
+  shiny::observeEvent(input$basin_tree_open_complete, {
+    open_basin_complete_viewer()
+  }, ignoreInit = TRUE)
+
+  shiny::observeEvent(basin_complete_viewer_open(), {
+    if (!isTRUE(basin_complete_viewer_open())) {
+      return()
+    }
+    basin_complete_viewer_open(FALSE)
+    open_basin_complete_viewer()
+  }, ignoreInit = TRUE)
+
+  shiny::observeEvent(basin_selected_keys(), {
+    state <- shiny::isolate(basin_analysis_state())
+    if (!is.list(state)) {
+      return()
+    }
+    selected <- gflowui_basin_panel_canonical_selection(
+      state,
+      as.character(basin_selected_keys())
+    )
+    if (identical(selected, state$selected.ids)) {
+      return()
+    }
+    basin_analysis_state(gflowui_basin_reduce_state(
+      state,
+      gflowui_basin_state_event(
+        "selection_change",
+        ids = selected
+      )
+    ))
+  }, ignoreInit = TRUE)
 
   output$basin_plot_workspace_ui <- shiny::renderUI({
     result <- basin_result()
@@ -10515,6 +11337,8 @@ app_server <- function(input, output, session) {
       basin_analysis_state(NULL)
       basin_analysis_construction_fingerprint("")
       basin_analysis_pending_job("")
+      basin_analysis_panel_metrics(list())
+      basin_complete_viewer_open(FALSE)
       basin_inspector_open(FALSE)
       basin_plot_specs(list())
       basin_plot_next_id(0L)
@@ -10642,6 +11466,8 @@ app_server <- function(input, output, session) {
       basin_analysis_state(NULL)
       basin_analysis_construction_fingerprint("")
       basin_analysis_pending_job("")
+      basin_analysis_panel_metrics(list())
+      basin_complete_viewer_open(FALSE)
       basin_inspector_open(FALSE)
       basin_plot_specs(list())
       basin_plot_next_id(0L)
