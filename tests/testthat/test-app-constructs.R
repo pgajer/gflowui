@@ -823,6 +823,150 @@ test_that("basin server invalidates changed fields and graph identities", {
       "Current maximum-basin proposal",
       fixed = TRUE
     )
+    expect_match(
+      tree.shell,
+      'data-render-outcome="renderable"',
+      fixed = TRUE
+    )
+    for (control.id in c(
+      "basin_tree_component",
+      "basin_tree_filter_mode",
+      "basin_tree_coverage",
+      "basin_tree_strong_gap",
+      "basin_tree_core_budget",
+      "basin_tree_final_budget",
+      "basin_tree_sentinel_n",
+      "basin_tree_peak_sentinel",
+      "basin_tree_prominence_sentinel",
+      "basin_tree_support_sentinel",
+      "basin_tree_important_labels",
+      "basin_tree_label_mode",
+      "basin_tree_show_diagnostic",
+      "basin_tree_open_complete",
+      "basin_tree_show_all"
+    )) {
+      expect_match(
+        tree.shell,
+        sprintf('id="%s"', control.id),
+        fixed = TRUE,
+        info = control.id
+      )
+    }
+    panel.model <- gflowui:::gflowui_basin_merge_tree_model(analysis)
+    expect_identical(panel.model$direction.maximum.count, 352L)
+    expect_identical(panel.model$component.maximum.count, 352L)
+    expect_identical(panel.model$proposal$core$outcome, "strong_gap")
+    expect_identical(panel.model$counts$core, 17L)
+    expect_identical(panel.model$counts$final, 17L)
+    expect_equal(
+      panel.model$proposal$core$gap.decades,
+      12.9397631299771,
+      tolerance = 1e-12
+    )
+    expect_equal(
+      panel.model$mass$core.coverage,
+      0.99999999999991729,
+      tolerance = 1e-14
+    )
+
+    presentation.attempt <- analysis$active.attempt$attempt.id
+    session$setInputs(
+      basin_tree_label_mode = "all",
+      basin_tree_show_diagnostic = FALSE
+    )
+    session$flushReact()
+    expect_identical(
+      basin_analysis_state()$active.attempt$attempt.id,
+      presentation.attempt
+    )
+    all.label.shell <- htmltools::renderTags(
+      output$basin_merge_tree_ui
+    )$html
+    expect_match(all.label.shell, "labels may be crowded", ignore.case = TRUE)
+    expect_false(grepl(
+      "basin_merge_tree_diagnostic_plot",
+      all.label.shell,
+      fixed = TRUE
+    ))
+    session$setInputs(
+      basin_tree_label_mode = "important",
+      basin_tree_show_diagnostic = TRUE
+    )
+    session$flushReact()
+    expect_identical(
+      basin_analysis_state()$active.attempt$attempt.id,
+      presentation.attempt
+    )
+
+    session$setInputs(basin_tree_final_budget = 10)
+    session$flushReact()
+    finish_basin_analysis()
+    overflow.state <- basin_analysis_state()
+    expect_identical(
+      overflow.state$current.proposal$render.outcome,
+      "core_overflow"
+    )
+    overflow.shell <- htmltools::renderTags(
+      output$basin_merge_tree_ui
+    )$html
+    expect_match(
+      overflow.shell,
+      'data-render-outcome="core_overflow"',
+      fixed = TRUE
+    )
+    expect_match(overflow.shell, "Open complete interactive tree", fixed = TRUE)
+    expect_false(grepl(
+      'id="basin_merge_tree_plot"',
+      overflow.shell,
+      fixed = TRUE
+    ))
+    session$setInputs(basin_tree_final_budget = 80)
+    session$flushReact()
+    finish_basin_analysis()
+    expect_identical(
+      basin_analysis_state()$current.proposal$render.outcome,
+      "renderable"
+    )
+
+    selectable <- basin_analysis_state()
+    selected.snapshot <- gflowui:::gflowui_basin_bundle_snapshot(
+      selectable$bundle
+    )$canonical
+    hidden.id <- setdiff(
+      selectable$current.proposal$component$ids,
+      selectable$current.proposal$final.ids
+    )[[1L]]
+    hidden.row <- selected.snapshot[
+      selected.snapshot$basin.id == hidden.id,
+      ,
+      drop = FALSE
+    ]
+    basin_selected_keys(paste(
+      "max",
+      hidden.row$trajectory.basin.id,
+      sep = "|"
+    ))
+    session$flushReact()
+    expect_identical(basin_analysis_state()$selected.ids, hidden.id)
+    hidden.shell <- htmltools::renderTags(
+      output$basin_merge_tree_ui
+    )$html
+    expect_match(hidden.shell, "hidden from the filtered tree", fixed = TRUE)
+    hidden.attempt <- basin_analysis_state()$active.attempt$attempt.id
+    session$setInputs(
+      basin_tree_selected_id = hidden.id,
+      basin_tree_pin_selected = 1L
+    )
+    session$flushReact()
+    finish_basin_analysis()
+    expect_gt(
+      basin_analysis_state()$active.attempt$attempt.id,
+      hidden.attempt
+    )
+    expect_true(hidden.id %in%
+      basin_analysis_state()$current.proposal$pinned.ids)
+    expect_true(hidden.id %in%
+      basin_analysis_state()$current.proposal$final.ids)
     inspector <- htmltools::renderTags(output$basin_inspector_ui)$html
     expect_match(inspector, "Basin Inspector", fixed = TRUE)
     expect_match(inspector, "Largest maximum basins", fixed = TRUE)

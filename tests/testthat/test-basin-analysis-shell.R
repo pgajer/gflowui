@@ -592,6 +592,18 @@ test_that("deferred launcher invokes one completion and validates delay", {
     completions[[1L]],
     "gflowui_basin_async_completion"
   )
+  expect_true(is.list(completions[[1L]]$metrics))
+  expect_true(is.finite(
+    completions[[1L]]$metrics$proposal.elapsed.ms
+  ))
+  expect_gte(completions[[1L]]$metrics$proposal.elapsed.ms, 0)
+  expect_true(is.finite(
+    completions[[1L]]$metrics$callback.queue.delay.ms
+  ))
+  expect_gte(
+    completions[[1L]]$metrics$callback.queue.delay.ms,
+    0
+  )
   expect_error(
     gflowui:::gflowui_basin_launch_async_job(
       started$job,

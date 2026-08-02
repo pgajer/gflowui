@@ -1052,7 +1052,7 @@ body.gf-general-inspector-resizing {
   margin: 0;
   padding: 0.8rem 0.9rem;
   border: 1px solid rgba(15, 139, 119, 0.28);
-  border-radius: 0.9rem;
+  border-radius: 6px;
   background: rgba(255, 255, 255, 0.96);
   box-shadow: 0 6px 20px rgba(26, 47, 51, 0.06);
 }
@@ -1066,6 +1066,124 @@ body.gf-general-inspector-resizing {
   margin: 0.45rem 0 0;
   color: #164e43;
   font-size: 0.86rem;
+}
+
+.gf-basin-tree-disclosure,
+.gf-basin-tree-selection-status,
+.gf-basin-tree-zero-count {
+  margin: 0.28rem 0 0;
+  color: #475569;
+  font-size: 0.8rem;
+}
+
+.gf-basin-tree-warning {
+  margin: 0.35rem 0 0;
+  color: #9a3412;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.gf-basin-tree-controls {
+  margin-top: 0.75rem;
+  padding: 0.65rem 0;
+  border: 0;
+  border-top: 1px solid rgba(15, 139, 119, 0.2);
+  border-bottom: 1px solid rgba(15, 139, 119, 0.2);
+  border-radius: 0;
+  background: transparent;
+}
+
+.gf-basin-tree-controls > summary {
+  cursor: pointer;
+  color: #164e43;
+  font-weight: 650;
+}
+
+.gf-basin-tree-control-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem 0.75rem;
+  margin-top: 0.65rem;
+}
+
+.gf-basin-tree-control-grid .form-group,
+.gf-basin-tree-pin-controls .form-group {
+  min-width: 0;
+  margin-bottom: 0;
+}
+
+.gf-basin-tree-control-grid .checkbox {
+  margin: 1.6rem 0 0;
+}
+
+.gf-basin-tree-pin-controls,
+.gf-basin-tree-actions {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+  margin-top: 0.65rem;
+}
+
+.gf-basin-tree-pin-controls .form-group {
+  flex: 1 1 13rem;
+}
+
+.gf-basin-tree-overflow {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  border: 1px solid #fdba74;
+  border-radius: 6px;
+  background: #fff7ed;
+  color: #7c2d12;
+}
+
+.gf-basin-tree-overflow h5,
+.gf-basin-tree-overflow p {
+  margin: 0;
+}
+
+.gf-basin-tree-overflow p + p {
+  margin-top: 0.35rem;
+}
+
+.gf-basin-tree-plot-frame,
+.gf-basin-tree-diagnostic-frame {
+  min-width: 0;
+  margin-top: 0.75rem;
+  padding: 0.45rem;
+  border: 1px solid rgba(15, 139, 119, 0.16);
+  border-radius: 6px;
+  background: #fff;
+  overflow-x: auto;
+}
+
+.gf-basin-complete-tree-viewer {
+  min-height: 32rem;
+}
+
+.gf-basin-tree-retained {
+  margin-top: 0.55rem;
+  padding: 0.5rem 0.6rem;
+  border-left: 3px solid #b45309;
+  background: #fff7ed;
+  color: #7c2d12;
+  font-size: 0.82rem;
+}
+
+.gf-basin-tree-plot-frame > .shiny-plot-output {
+  min-height: 780px;
+  flex: 0 0 auto;
+}
+
+@media (max-width: 760px) {
+  .gf-basin-tree-control-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .gf-basin-tree-control-grid .checkbox {
+    margin-top: 0;
+  }
 }
 
 .gf-basin-inspector {

@@ -285,9 +285,15 @@ gflowui_basin_async_job <- function(state,
 
 gflowui_basin_async_completion <- function(job,
                                            result,
-                                           diagnostic = NULL) {
+                                           diagnostic = NULL,
+                                           metrics = NULL) {
   if (!inherits(job, "gflowui_basin_async_job")) {
     .gflowui_basin_shell_stop("A typed basin-analysis job is required.")
+  }
+  if (!is.null(metrics) && !is.list(metrics)) {
+    .gflowui_basin_shell_stop(
+      "Asynchronous completion metrics must be a list."
+    )
   }
   structure(
     list(
@@ -295,7 +301,8 @@ gflowui_basin_async_completion <- function(job,
       session.id = job$session.id,
       construction.fingerprint = job$construction.fingerprint,
       result = result,
-      diagnostic = diagnostic
+      diagnostic = diagnostic,
+      metrics = metrics
     ),
     class = c("gflowui_basin_async_completion", "list")
   )
@@ -305,6 +312,7 @@ gflowui_basin_execute_async_job <- function(job) {
   if (!inherits(job, "gflowui_basin_async_job")) {
     .gflowui_basin_shell_stop("A typed basin-analysis job is required.")
   }
+  started <- unname(proc.time()[["elapsed"]])
   result <- tryCatch(
     gflowui_basin_execute_pending(job$pending.work),
     error = identity
@@ -322,7 +330,19 @@ gflowui_basin_execute_async_job <- function(job) {
       conditionMessage(result)
     )
   }
-  gflowui_basin_async_completion(job, result, diagnostic)
+  gflowui_basin_async_completion(
+    job,
+    result,
+    diagnostic,
+    metrics = list(
+      proposal.elapsed.ms = max(
+        0,
+        as.numeric(
+          unname(proc.time()[["elapsed"]]) - started
+        ) * 1000
+      )
+    )
+  )
 }
 
 gflowui_basin_install_async_completion <- function(
@@ -540,8 +560,17 @@ gflowui_basin_launch_async_job <- function(job,
       "The asynchronous launch delay must be a finite nonnegative scalar."
     )
   }
+  scheduled <- unname(proc.time()[["elapsed"]])
   later::later(
-    function() callback(gflowui_basin_execute_async_job(job)),
+    function() {
+      callback.started <- unname(proc.time()[["elapsed"]])
+      completion <- gflowui_basin_execute_async_job(job)
+      completion$metrics$callback.queue.delay.ms <- max(
+        0,
+        as.numeric(callback.started - scheduled - delay) * 1000
+      )
+      callback(completion)
+    },
     delay = delay
   )
   invisible(job$job.id)
