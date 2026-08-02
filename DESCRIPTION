@@ -23,6 +23,7 @@ Imports:
     digest,
     gflow,
     jsonlite,
+    later,
     zip
 Suggests:
     geosmooth,

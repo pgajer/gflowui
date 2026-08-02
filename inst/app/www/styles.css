@@ -1043,6 +1043,31 @@ body.gf-general-inspector-resizing {
   flex: 0 0 auto;
 }
 
+#basin_merge_tree_ui {
+  flex: 0 0 auto;
+}
+
+.gf-basin-merge-tree {
+  min-width: 0;
+  margin: 0;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid rgba(15, 139, 119, 0.28);
+  border-radius: 0.9rem;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 6px 20px rgba(26, 47, 51, 0.06);
+}
+
+.gf-basin-merge-tree-header h4 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.gf-basin-analysis-shell-status {
+  margin: 0.45rem 0 0;
+  color: #164e43;
+  font-size: 0.86rem;
+}
+
 .gf-basin-inspector {
   min-width: 0;
   min-height: 860px;

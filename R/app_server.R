@@ -57,6 +57,19 @@ app_server <- function(input, output, session) {
     "Choose an estimate, then show it on the graph."
   )
   basin_result <- shiny::reactiveVal(NULL)
+  basin_analysis_state <- shiny::reactiveVal(NULL)
+  basin_analysis_construction_fingerprint <- shiny::reactiveVal("")
+  basin_analysis_context_generation <- shiny::reactiveVal(0L)
+  basin_analysis_pending_job <- shiny::reactiveVal("")
+  basin_analysis_telemetry <- shiny::reactiveVal(list())
+  basin_analysis_session_id <- paste0(
+    "basin-analysis-",
+    as.character(session$token %||% "session")
+  )
+  basin_analysis_session_active <- TRUE
+  session$onSessionEnded(function() {
+    basin_analysis_session_active <<- FALSE
+  })
   basin_inspector_open <- shiny::reactiveVal(FALSE)
   basin_selected_keys <- shiny::reactiveVal(character())
   basin_color_map <- shiny::reactiveVal(
@@ -64,6 +77,7 @@ app_server <- function(input, output, session) {
   )
   basin_plot_specs <- shiny::reactiveVal(list())
   basin_plot_next_id <- shiny::reactiveVal(0L)
+  basin_default_plot_fingerprints <- shiny::reactiveVal(character())
   basin_plot_remove_observers <- new.env(parent = emptyenv())
   basin_status <- shiny::reactiveVal(
     "Apply an occupation density or choose a conditional-expectation estimate."
@@ -434,11 +448,15 @@ app_server <- function(input, output, session) {
       "Choose an estimate, then show it on the graph."
     )
     basin_result(NULL)
+    basin_analysis_state(NULL)
+    basin_analysis_construction_fingerprint("")
+    basin_analysis_pending_job("")
     basin_inspector_open(FALSE)
     basin_selected_keys(character())
     basin_color_map(structure(character(), names = character()))
     basin_plot_specs(list())
     basin_plot_next_id(0L)
+    basin_default_plot_fingerprints(character())
     basin_status(
       "Apply an occupation density or choose a conditional-expectation estimate."
     )
@@ -8620,7 +8638,7 @@ app_server <- function(input, output, session) {
       request,
       message = paste(
         "Estimate or graph inputs changed.",
-        "Compute and Open Basin Inspector again."
+        "Compute & Open Basin Analysis again."
       )) {
     result <- shiny::isolate(basin_result())
     if (!is.list(result)) {
@@ -8638,7 +8656,13 @@ app_server <- function(input, output, session) {
       return(invisible(FALSE))
     }
     basin_result(NULL)
+    basin_analysis_state(NULL)
+    basin_analysis_construction_fingerprint("")
+    basin_analysis_pending_job("")
     basin_inspector_open(FALSE)
+    basin_plot_specs(list())
+    basin_plot_next_id(0L)
+    basin_default_plot_fingerprints(character())
     if (identical(
       as.character(graph_layout_state$color_by %||% ""),
       "basin_active"
@@ -9432,6 +9456,322 @@ app_server <- function(input, output, session) {
     value <- shiny::isolate(input[[id]])
     if (is.null(value) || length(value) < 1L) default else value
   }
+  seed_basin_analysis_default_plots <- function(
+      construction.fingerprint,
+      state) {
+    fingerprint <- as.character(construction.fingerprint %||% "")
+    if (!nzchar(fingerprint) ||
+        !is.list(state) ||
+        is.null(state$current.proposal)) {
+      return(invisible(FALSE))
+    }
+    seeded <- gflowui_basin_seed_default_plots(
+      existing = shiny::isolate(basin_plot_specs()),
+      seeded.fingerprints = shiny::isolate(
+        basin_default_plot_fingerprints()
+      ),
+      construction.fingerprint = fingerprint,
+      next.id = shiny::isolate(basin_plot_next_id())
+    )
+    if (seeded$added > 0L) {
+      basin_plot_specs(seeded$specs)
+      basin_plot_next_id(seeded$next.id)
+    }
+    basin_default_plot_fingerprints(seeded$seeded.fingerprints)
+    invisible(seeded$added > 0L)
+  }
+  record_basin_analysis_telemetry <- function(
+      disposition,
+      completion = NULL,
+      diagnostic = NULL) {
+    result <- if (is.list(completion)) completion$result else NULL
+    entry <- list(
+      recorded.at = format(
+        Sys.time(),
+        "%Y-%m-%dT%H:%M:%OS6%z"
+      ),
+      disposition = as.character(disposition),
+      session.id = if (is.list(completion)) {
+        as.character(completion$session.id %||% "")
+      } else {
+        ""
+      },
+      construction.fingerprint = if (is.list(completion)) {
+        as.character(completion$construction.fingerprint %||% "")
+      } else {
+        ""
+      },
+      bundle.id = if (is.list(result)) {
+        as.character(result$bundle.id %||% "")
+      } else {
+        ""
+      },
+      context.generation = if (is.list(result)) {
+        result$context.generation %||% NA_integer_
+      } else {
+        NA_integer_
+      },
+      attempt.id = if (is.list(result)) {
+        result$attempt.id %||% NA_integer_
+      } else {
+        NA_integer_
+      },
+      diagnostic = diagnostic
+    )
+    current <- shiny::isolate(basin_analysis_telemetry())
+    basin_analysis_telemetry(utils::tail(
+      c(current, list(entry)),
+      100L
+    ))
+    invisible(entry)
+  }
+  install_basin_analysis_completion <- function(
+      completion,
+      success.message) {
+    if (!isTRUE(basin_analysis_session_active)) {
+      return(invisible("session_closed"))
+    }
+    current <- shiny::isolate(basin_analysis_state())
+    fingerprint <- shiny::isolate(
+      basin_analysis_construction_fingerprint()
+    )
+    installed <- tryCatch(
+      gflowui_basin_install_async_completion(
+        current,
+        completion,
+        session.id = basin_analysis_session_id,
+        session.active = basin_analysis_session_active,
+        construction.fingerprint = fingerprint
+      ),
+      error = function(error) {
+        list(
+          state = current,
+          disposition = "internal_transition_failure",
+          installed = FALSE,
+          diagnostic = list(
+            kind = "internal_transition_failure",
+            message = conditionMessage(error),
+            condition.class = class(error)
+          )
+        )
+      }
+    )
+    record_basin_analysis_telemetry(
+      installed$disposition,
+      completion,
+      installed$diagnostic
+    )
+    if (!isTRUE(installed$installed)) {
+      return(invisible(installed$disposition))
+    }
+    basin_analysis_state(installed$state)
+    basin_analysis_context_generation(max(
+      shiny::isolate(basin_analysis_context_generation()),
+      installed$state$context.generation
+    ))
+    basin_analysis_pending_job("")
+    basin_inspector_open(TRUE)
+    if (identical(installed$disposition, "proposal_installed")) {
+      seed_basin_analysis_default_plots(
+        fingerprint,
+        installed$state
+      )
+      graph_layout_state$color_by <- "basin_active"
+      shiny::updateSelectInput(
+        session,
+        "graph_layout_color_by",
+        selected = "basin_active"
+      )
+      basin_status(success.message)
+    } else {
+      detail <- paste(
+        installed$state$active.attempt$messages,
+        collapse = " "
+      )
+      diagnostic.kind <- if (is.list(installed$diagnostic)) {
+        as.character(installed$diagnostic$kind %||% "")
+      } else {
+        ""
+      }
+      internal <- diagnostic.kind %in% c(
+        "internal_execution_failure",
+        "internal_launch_failure"
+      )
+      basin_status(sprintf(
+        "%s%s.",
+        if (internal) {
+          "Basin Analysis encountered an unexpected internal failure"
+        } else {
+          "Basin Analysis proposal construction failed"
+        },
+        if (nzchar(detail)) paste0(": ", detail) else ""
+      ))
+    }
+    invisible(installed$disposition)
+  }
+  start_basin_analysis_attempt <- function(
+      result,
+      request,
+      success.message) {
+    fingerprint <- as.character(
+      request$construction_identity$fingerprint %||% ""
+    )
+    previous.fingerprint <- shiny::isolate(
+      basin_analysis_construction_fingerprint()
+    )
+    if (!identical(previous.fingerprint, fingerprint)) {
+      basin_plot_specs(list())
+      basin_plot_next_id(0L)
+      basin_default_plot_fingerprints(character())
+    }
+    bundle.result <- gflowui_basin_try_bundle_from_overlay(
+      result,
+      request
+    )
+    if (!isTRUE(bundle.result$ok)) {
+      basin_analysis_state(NULL)
+      basin_analysis_construction_fingerprint("")
+      basin_analysis_pending_job("")
+      basin_inspector_open(FALSE)
+      basin_plot_specs(list())
+      basin_plot_next_id(0L)
+      basin_default_plot_fingerprints(character())
+      message <- as.character(
+        bundle.result$diagnostic$message %||%
+          "The immutable basin-analysis bundle is invalid."
+      )
+      internal <- identical(
+        bundle.result$diagnostic$kind,
+        "internal_bundle_assembly_failure"
+      )
+      record_basin_analysis_telemetry(
+        if (internal) {
+          "internal_bundle_assembly_failure"
+        } else {
+          "bundle_input_invalid"
+        },
+        diagnostic = bundle.result$diagnostic
+      )
+      basin_status(sprintf(
+        "%s: %s",
+        if (internal) {
+          "Basin Analysis assembly encountered an unexpected internal failure"
+        } else {
+          "Basin Analysis was blocked"
+        },
+        message
+      ))
+      shiny::showNotification(message, type = "error")
+      return(invisible(FALSE))
+    }
+    previous.state <- shiny::isolate(basin_analysis_state())
+    next.generation <- if (is.null(previous.state)) {
+      shiny::isolate(basin_analysis_context_generation()) + 1
+    } else {
+      previous.state$context.generation
+    }
+    started <- tryCatch(
+      gflowui_basin_start_bundle_attempt(
+        state = previous.state,
+        bundle = bundle.result$bundle,
+        session.id = basin_analysis_session_id,
+        construction.fingerprint = fingerprint,
+        context.generation = next.generation
+      ),
+      error = function(error) {
+        list(
+          state = previous.state,
+          job = NULL,
+          diagnostic = list(
+            kind = "internal_transition_failure",
+            message = conditionMessage(error),
+            condition.class = class(error)
+          )
+        )
+      }
+    )
+    if (is.null(started$state)) {
+      basin_analysis_state(NULL)
+      basin_analysis_construction_fingerprint("")
+      basin_analysis_pending_job("")
+      basin_inspector_open(FALSE)
+      record_basin_analysis_telemetry(
+        "internal_transition_failure",
+        diagnostic = started$diagnostic
+      )
+      basin_status(sprintf(
+        "Basin Analysis encountered an unexpected internal failure: %s",
+        started$diagnostic$message
+      ))
+      return(invisible(FALSE))
+    }
+    basin_analysis_state(started$state)
+    basin_analysis_construction_fingerprint(fingerprint)
+    basin_analysis_context_generation(max(
+      shiny::isolate(basin_analysis_context_generation()),
+      started$state$context.generation
+    ))
+    basin_inspector_open(TRUE)
+    if (is.null(started$job)) {
+      basin_analysis_pending_job("")
+      message <- as.character(
+        started$diagnostic$message %||%
+          "The current scientific or proposal inputs are blocked."
+      )
+      basin_status(sprintf(
+        "Basin Analysis was blocked: %s",
+        message
+      ))
+      record_basin_analysis_telemetry(
+        started$diagnostic$kind %||% "scientific_blocked",
+        diagnostic = started$diagnostic
+      )
+      return(invisible(FALSE))
+    }
+    basin_analysis_pending_job(started$job$job.id)
+    basin_status(
+      "Preparing the canonical maximum-basin display proposal..."
+    )
+    launcher <- getOption(
+      "gflowui.basin.analysis.launcher",
+      gflowui_basin_launch_async_job
+    )
+    launch <- tryCatch(
+      launcher(
+        started$job,
+        callback = function(completion) {
+          if (!isTRUE(basin_analysis_session_active)) {
+            return(invisible("session_closed"))
+          }
+          shiny::withReactiveDomain(session, {
+            install_basin_analysis_completion(
+              completion,
+              success.message
+            )
+          })
+        }
+      ),
+      error = function(error) error
+    )
+    if (inherits(launch, "error")) {
+      completion <- gflowui_basin_async_completion(
+        started$job,
+        .gflowui_basin_async_failure_result(
+          started$job,
+          "launch_failed",
+          conditionMessage(launch)
+        ),
+        diagnostic = list(
+          kind = "internal_launch_failure",
+          message = conditionMessage(launch),
+          condition.class = class(launch)
+        )
+      )
+      install_basin_analysis_completion(completion, success.message)
+      return(invisible(FALSE))
+    }
+    invisible(TRUE)
+  }
   install_basin_plot_remove_observer <- function(card.id) {
     key <- as.character(card.id)
     if (exists(key, envir = basin_plot_remove_observers, inherits = FALSE)) {
@@ -9464,12 +9804,14 @@ app_server <- function(input, output, session) {
     label.k.id <- paste0("basin_plot_label_k_", card.id)
     x.scale.id <- paste0("basin_plot_x_scale_", card.id)
     y.scale.id <- paste0("basin_plot_y_scale_", card.id)
-    default.x.scale <- "log10"
-    default.y.scale <- if (identical(as.character(spec$kind), "scatter")) {
+    default.x.scale <- as.character(spec$x_scale %||% "log10")
+    default.y.scale <- as.character(spec$y_scale %||% if (
+      identical(as.character(spec$kind), "scatter")
+    ) {
       "log10"
     } else {
       "raw"
-    }
+    })
     default.point.size <- 0.5
     current.fingerprint <- as.character(
       result$construction_identity$fingerprint %||% ""
@@ -9794,6 +10136,92 @@ app_server <- function(input, output, session) {
     )
   }
 
+  output$basin_merge_tree_ui <- shiny::renderUI({
+    result <- basin_result()
+    state <- basin_analysis_state()
+    if (!isTRUE(basin_inspector_open()) ||
+        !is.list(result) ||
+        !is.list(state)) {
+      return(NULL)
+    }
+    summary <- tryCatch(
+      gflowui_basin_analysis_shell_summary(state),
+      error = function(error) error
+    )
+    if (inherits(summary, "error")) {
+      return(shiny::tags$section(
+        id = "gf_basin_merge_tree",
+        class = "gf-basin-merge-tree",
+        role = "region",
+        `aria-labelledby` = "gf_basin_merge_tree_heading",
+        `data-analysis-state` = "internal_failure",
+        shiny::h4(
+          id = "gf_basin_merge_tree_heading",
+          "Basin Superlevel-Set Merge Tree"
+        ),
+        shiny::p(
+          class = "gf-basin-analysis-shell-status gf-status-error",
+          role = "status",
+          `aria-live` = "polite",
+          "The Basin Analysis state is unavailable."
+        )
+      ))
+    }
+    status <- if (identical(summary$outcome, "proposal_created")) {
+      sprintf(
+        paste(
+          "Current maximum-basin proposal: component %d;",
+          "%d total component%s;",
+          "%d of %d component maxima in the initial display;",
+          "filter %s."
+        ),
+        summary$component,
+        summary$component.count,
+        if (identical(summary$component.count, 1L)) "" else "s",
+        summary$final.count,
+        summary$component.maximum.count,
+        summary$filter.mode
+      )
+    } else if (identical(summary$outcome, "pending")) {
+      "Preparing the current maximum-basin display proposal."
+    } else {
+      detail <- paste(summary$messages, collapse = " ")
+      sprintf(
+        "The current maximum-basin proposal is %s%s.",
+        summary$outcome,
+        if (nzchar(detail)) paste0(": ", detail) else ""
+      )
+    }
+    shiny::tags$section(
+      id = "gf_basin_merge_tree",
+      class = "gf-basin-merge-tree",
+      role = "region",
+      `aria-labelledby` = "gf_basin_merge_tree_heading",
+      `data-analysis-state` = summary$outcome,
+      `data-display-source` = summary$display.source,
+      `data-context-generation` = state$context.generation,
+      `data-attempt-id` = state$active.attempt$attempt.id,
+      shiny::div(
+        class = "gf-basin-merge-tree-header",
+        shiny::h4(
+          id = "gf_basin_merge_tree_heading",
+          "Basin Superlevel-Set Merge Tree"
+        )
+      ),
+      shiny::p(
+        class = "gf-basin-analysis-shell-status",
+        role = "status",
+        `aria-live` = "polite",
+        status
+      )
+    )
+  })
+  shiny::outputOptions(
+    output,
+    "basin_merge_tree_ui",
+    suspendWhenHidden = FALSE
+  )
+
   output$basin_plot_workspace_ui <- shiny::renderUI({
     result <- basin_result()
     if (!isTRUE(basin_inspector_open()) || !is.list(result)) {
@@ -10084,7 +10512,13 @@ app_server <- function(input, output, session) {
     )
     if (inherits(request, "error")) {
       basin_result(NULL)
+      basin_analysis_state(NULL)
+      basin_analysis_construction_fingerprint("")
+      basin_analysis_pending_job("")
       basin_inspector_open(FALSE)
+      basin_plot_specs(list())
+      basin_plot_next_id(0L)
+      basin_default_plot_fingerprints(character())
       basin_status(sprintf(
         "Basin reconstruction was not started: %s",
         conditionMessage(request)
@@ -10115,17 +10549,50 @@ app_server <- function(input, output, session) {
         return()
       }
       basin_result(current)
+      analysis <- shiny::isolate(basin_analysis_state())
+      analysis.matches <- is.list(analysis) &&
+        identical(
+          shiny::isolate(
+            basin_analysis_construction_fingerprint()
+          ),
+          request.identity
+        )
       basin_inspector_open(TRUE)
-      graph_layout_state$color_by <- "basin_active"
-      shiny::updateSelectInput(
-        session,
-        "graph_layout_color_by",
-        selected = "basin_active"
-      )
-      basin_status(sprintf(
-        "Opened the current Basin Inspector for %s without reconstruction.",
+      reopened.message <- sprintf(
+        paste(
+          "Opened the current Basin Analysis for %s without basin-complex",
+          "reconstruction or duplicate default plots."
+        ),
         current$source_label %||% request$source$label
-      ))
+      )
+      if (isTRUE(analysis.matches) &&
+          identical(
+            analysis$active.attempt$outcome,
+            "proposal_created"
+          )) {
+        seed_basin_analysis_default_plots(
+          request.identity,
+          analysis
+        )
+        graph_layout_state$color_by <- "basin_active"
+        shiny::updateSelectInput(
+          session,
+          "graph_layout_color_by",
+          selected = "basin_active"
+        )
+        basin_status(reopened.message)
+      } else if (isTRUE(analysis.matches) &&
+          identical(analysis$active.attempt$outcome, "pending")) {
+        basin_status(
+          "The current Basin Analysis proposal is already being prepared."
+        )
+      } else {
+        start_basin_analysis_attempt(
+          current,
+          request,
+          reopened.message
+        )
+      }
       return()
     }
     source <- request$source
@@ -10172,6 +10639,13 @@ app_server <- function(input, output, session) {
     )
     if (inherits(result, "error")) {
       basin_result(NULL)
+      basin_analysis_state(NULL)
+      basin_analysis_construction_fingerprint("")
+      basin_analysis_pending_job("")
+      basin_inspector_open(FALSE)
+      basin_plot_specs(list())
+      basin_plot_next_id(0L)
+      basin_default_plot_fingerprints(character())
       basin_status(sprintf(
         "Basin reconstruction failed: %s",
         conditionMessage(result)
@@ -10204,16 +10678,9 @@ app_server <- function(input, output, session) {
     )
     result <- update_basin_display_result(result)
     basin_result(result)
-    basin_inspector_open(TRUE)
-    graph_layout_state$color_by <- "basin_active"
-    shiny::updateSelectInput(
-      session,
-      "graph_layout_color_by",
-      selected = "basin_active"
-    )
-    basin_status(sprintf(
+    ready.message <- sprintf(
       paste(
-        "Computed both directions and opened the Basin Inspector for %s:",
+        "Computed both directions and opened Basin Analysis for %s:",
         "%d maximum and %d minimum basins",
         "(cache %s; max rank %s; min rank %s)."
       ),
@@ -10224,7 +10691,12 @@ app_server <- function(input, output, session) {
         if (isTRUE(result$cache_hit)) "memory" else "miss"),
       result$ranking_resolved[["max"]],
       result$ranking_resolved[["min"]]
-    ))
+    )
+    start_basin_analysis_attempt(
+      result,
+      request,
+      ready.message
+    )
   }, ignoreInit = TRUE)
 
   shiny::observeEvent(input$basin_inspector_close, {
@@ -14884,10 +15356,13 @@ app_server <- function(input, output, session) {
                   "Apply an occupation density or load a conditional-expectation estimate first."
                 )
               },
-              shiny::actionButton(
-                "basin_compute",
-                "Compute & Open Basin Inspector",
-                class = "btn-primary gf-btn-wide"
+              htmltools::tagAppendAttributes(
+                shiny::actionButton(
+                  "basin_compute",
+                  "Compute & Open Basin Analysis",
+                  class = "btn-primary gf-btn-wide"
+                ),
+                `aria-label` = "Compute and open Basin Analysis"
               ),
               shiny::div(
                 class = "gf-density-status",
@@ -16019,8 +16494,9 @@ app_server <- function(input, output, session) {
           ),
           shiny::div(
             class = "gf-general-inspector-stack",
-            shiny::uiOutput("basin_inspector_ui"),
-            shiny::uiOutput("basin_plot_workspace_ui")
+            shiny::uiOutput("basin_merge_tree_ui"),
+            shiny::uiOutput("basin_plot_workspace_ui"),
+            shiny::uiOutput("basin_inspector_ui")
           )
         )
       )
