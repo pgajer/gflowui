@@ -7,14 +7,14 @@ This guide is for collaborators who want to use the app (not develop it).
 In R:
 
 ```r
-pkgload::load_all("/Users/pgajer/current_projects/gflowui", export_all = FALSE)
 gflowui::run_gflowui()
 ```
 
-If `pkgload` is not installed:
+From a development checkout:
 
 ```r
-source("/Users/pgajer/current_projects/gflowui/app.R")
+pkgload::load_all(".", export_all = FALSE)
+gflowui::run_gflowui()
 ```
 
 ## 2) Open a project
@@ -58,13 +58,34 @@ Top section:
 
 The right panel updates the visualization based on these controls.
 
-## 5) Save and exit
+## 5) Analyze basins
+
+After showing an occupation-density or conditional-expectation field:
+
+1. Open `Basins` and verify `Estimate source`.
+2. Click `Compute & Open Basin Analysis`.
+3. Use the linked merge tree, Plot Workspace, and Basin Inspector in the
+   General Inspector.
+4. Check a row's `Show` box for transient linked selection.
+5. Use `Pin` only when that maximum basin must be protected in a recomputed
+   display proposal.
+6. Click `Show basin colors` to replace the graph's current color source
+   explicitly. Opening or selecting basins alone preserves the current graph
+   colors.
+7. Use `Save current recipe` for settings-only persistence, or
+   `Save full basin bundle` for the complete unfiltered analysis.
+
+See [BASIN_ANALYSIS.md](BASIN_ANALYSIS.md) for the scientific semantics,
+current/retained attempt behavior, recipes, accessibility, performance
+expectations, and export validation.
+
+## 6) Save and exit
 
 - `Save Project`: writes current project state.
 - `Exit Project`: leaves workspace.
   - If there are unsaved changes, choose whether to save first.
 
-## 6) Run Monitor
+## 7) Run Monitor
 
 - Appears in the left panel when tasks run.
 - Shows project status, renderer mode, and latest job note.
@@ -80,3 +101,9 @@ The right panel updates the visualization based on these controls.
    - The selected criterion artifact may not exist for that data type.
 4. `Set As Reference Graph` fails:
    - Ensure both `Data Type` and `k` are selected and valid.
+5. A selected basin is not visible in the filtered static tree:
+   - It is a hidden transient selection. Open the complete tree or Pin it to
+     request proposal reconstruction and ancestor closure.
+6. Basin colors do not replace density colors:
+   - This is intentional. Click `Show basin colors` to change the graph color
+     source explicitly.
