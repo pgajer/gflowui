@@ -637,7 +637,12 @@ test_that("basin panel discovers conditional-expectation estimates", {
     expect_false(grepl("Field extrema", controls, fixed = TRUE))
     expect_match(
       controls,
-      "Compute &amp; Open Basin Inspector",
+      "Compute &amp; Open Basin Analysis",
+      fixed = TRUE
+    )
+    expect_match(
+      controls,
+      'aria-label="Compute and open Basin Analysis"',
       fixed = TRUE
     )
     expect_false(grepl(
@@ -671,6 +676,12 @@ test_that("basin extrema defaults depend on estimate source type", {
 
 test_that("basin server invalidates changed fields and graph identities", {
   local_projects_data_sandbox()
+  withr::local_options(list(
+    gflowui.basin.analysis.launcher = function(job, callback) {
+      callback(gflowui:::gflowui_basin_execute_async_job(job))
+      invisible(job$job.id)
+    }
+  ))
 
   project_id <- "hmp_subject15_k03_heat_basin_path"
   reg <- gflowui::list_projects()
@@ -685,6 +696,10 @@ test_that("basin server invalidates changed fields and graph identities", {
   )
 
   shiny::testServer(gflowui:::app_server, {
+    finish_basin_analysis <- function() {
+      later::run_now(timeoutSecs = 1)
+      session$flushReact()
+    }
     open_project(project_id)
     session$flushReact()
     session$setInputs(
@@ -705,6 +720,7 @@ test_that("basin server invalidates changed fields and graph identities", {
       basin_compute = 1L
     )
     session$flushReact()
+    finish_basin_analysis()
 
     first <- basin_result()
     expect_true(is.list(first))
@@ -715,6 +731,38 @@ test_that("basin server invalidates changed fields and graph identities", {
     expect_false(any(first$table$selected))
     first.identity <- first$construction_identity$fingerprint
     expect_true(nzchar(first.identity))
+    analysis <- basin_analysis_state()
+    expect_true(is.list(analysis))
+    expect_identical(
+      analysis$active.attempt$outcome,
+      "proposal_created"
+    )
+    expect_identical(analysis$display.source, "current")
+    default.plots <- basin_plot_specs()
+    expect_length(default.plots, 2L)
+    expect_true(all(vapply(
+      default.plots,
+      function(spec) isTRUE(spec$seeded.default),
+      logical(1)
+    )))
+    expect_identical(
+      lapply(default.plots, `[[`, "features"),
+      list(
+        c("extremum_value_rank", "support_rank"),
+        c("extremum_value_rank", "mass_rank")
+      )
+    )
+    expect_true(all(vapply(
+      default.plots,
+      function(spec) {
+        identical(spec$scope, "all") &&
+          identical(spec$type, "max") &&
+          identical(spec$x_scale, "log10") &&
+          identical(spec$y_scale, "log10") &&
+          identical(spec$construction_fingerprint, first.identity)
+      },
+      logical(1)
+    )))
     expect_identical(basin_display_settings$maxima_scope, "listed")
     expect_true(isTRUE(basin_display_settings$show_maxima))
     expect_true(isTRUE(basin_display_settings$label_maxima))
@@ -727,6 +775,54 @@ test_that("basin server invalidates changed fields and graph identities", {
     expect_match(workspace, "gf_reference_split", fixed = TRUE)
     expect_match(workspace, "General Inspector", fixed = TRUE)
     expect_match(workspace, "Resize General Inspector", fixed = TRUE)
+    tree.position <- regexpr(
+      "basin_merge_tree_ui",
+      workspace,
+      fixed = TRUE
+    )[[1L]]
+    plot.position <- regexpr(
+      "basin_plot_workspace_ui",
+      workspace,
+      fixed = TRUE
+    )[[1L]]
+    inspector.position <- regexpr(
+      "basin_inspector_ui",
+      workspace,
+      fixed = TRUE
+    )[[1L]]
+    expect_true(
+      tree.position > 0L &&
+        tree.position < plot.position &&
+        plot.position < inspector.position
+    )
+    tree.shell <- htmltools::renderTags(
+      output$basin_merge_tree_ui
+    )$html
+    expect_match(
+      tree.shell,
+      "Basin Superlevel-Set Merge Tree",
+      fixed = TRUE
+    )
+    expect_match(
+      tree.shell,
+      'role="region"',
+      fixed = TRUE
+    )
+    expect_match(
+      tree.shell,
+      'aria-labelledby="gf_basin_merge_tree_heading"',
+      fixed = TRUE
+    )
+    expect_match(
+      tree.shell,
+      'aria-live="polite"',
+      fixed = TRUE
+    )
+    expect_match(
+      tree.shell,
+      "Current maximum-basin proposal",
+      fixed = TRUE
+    )
     inspector <- htmltools::renderTags(output$basin_inspector_ui)$html
     expect_match(inspector, "Basin Inspector", fixed = TRUE)
     expect_match(inspector, "Largest maximum basins", fixed = TRUE)
@@ -865,6 +961,30 @@ test_that("basin server invalidates changed fields and graph identities", {
       '<option value="max" selected>Maximum only</option>',
       fixed = TRUE
     )
+    expect_match(
+      plot.workspace,
+      "Extremum value rank × Support rank",
+      fixed = TRUE
+    )
+    expect_match(
+      plot.workspace,
+      "Extremum value rank × Mass rank",
+      fixed = TRUE
+    )
+    expect_equal(
+      lengths(regmatches(
+        plot.workspace,
+        gregexpr(
+          '<option value="log10" selected>Log10 (positive values only)</option>',
+          plot.workspace,
+          fixed = TRUE
+        )
+      )),
+      4L
+    )
+    session$setInputs(basin_plot_clear_all = 1L)
+    session$flushReact()
+    expect_length(basin_plot_specs(), 0L)
     session$setInputs(
       basin_plot_features = c("support", "mass"),
       basin_plot_builder_scope = "all",
@@ -915,7 +1035,7 @@ test_that("basin server invalidates changed fields and graph identities", {
     session$setInputs(basin_plot_add_histograms = 3L)
     session$flushReact()
     expect_length(basin_plot_specs(), 3L)
-    session$setInputs(basin_plot_clear_all = 1L)
+    session$setInputs(basin_plot_clear_all = 2L)
     session$flushReact()
     expect_length(basin_plot_specs(), 0L)
     session$setInputs(
@@ -992,7 +1112,7 @@ test_that("basin server invalidates changed fields and graph identities", {
     session$setInputs(basin_plot_add_pairs = 2L)
     session$flushReact()
     expect_length(basin_plot_specs(), 3L)
-    session$setInputs(basin_plot_clear_all = 2L)
+    session$setInputs(basin_plot_clear_all = 3L)
     session$flushReact()
     session$setInputs(
       basin_plot_features = c(
@@ -1171,14 +1291,40 @@ test_that("basin server invalidates changed fields and graph identities", {
     )
     session$flushReact()
     expect_false(isTRUE(basin_inspector_open()))
+    analysis.before.reopen <- basin_analysis_state()
+    plots.before.reopen <- basin_plot_specs()
+    plot.signatures.before.reopen <- vapply(
+      plots.before.reopen,
+      gflowui:::gflowui_basin_plot_spec_signature,
+      character(1)
+    )
     session$setInputs(basin_compute = 2L)
     session$flushReact()
+    finish_basin_analysis()
     expect_true(isTRUE(basin_inspector_open()))
     expect_identical(
       basin_result()$construction_identity$fingerprint,
       first.identity
     )
-    expect_match(basin_status(), "without reconstruction", fixed = TRUE)
+    expect_identical(basin_analysis_state(), analysis.before.reopen)
+    expect_identical(
+      vapply(
+        basin_plot_specs(),
+        gflowui:::gflowui_basin_plot_spec_signature,
+        character(1)
+      ),
+      plot.signatures.before.reopen
+    )
+    expect_match(
+      basin_status(),
+      "without basin-complex reconstruction",
+      fixed = TRUE
+    )
+    expect_match(
+      basin_status(),
+      "without basin-complex reconstruction or duplicate default plots",
+      fixed = TRUE
+    )
     expect_identical(basin_display_settings$maxima_scope, "none")
     expect_false(isTRUE(basin_display_settings$label_maxima))
     expect_identical(basin_display_settings$plot_builder_type, "both")
@@ -1186,13 +1332,23 @@ test_that("basin server invalidates changed fields and graph identities", {
     session$setInputs(occupation_density_eta_index = "5")
     session$flushReact()
     expect_null(basin_result())
+    expect_null(basin_analysis_state())
     expect_false(isTRUE(basin_inspector_open()))
+    expect_length(basin_plot_specs(), 0L)
+    expect_null(output$basin_merge_tree_ui)
     expect_match(basin_status(), "changed|stale", ignore.case = TRUE)
 
     session$setInputs(basin_compute = 3L)
     session$flushReact()
+    finish_basin_analysis()
     second <- basin_result()
     expect_true(is.list(second))
+    second.analysis <- basin_analysis_state()
+    expect_true(is.list(second.analysis))
+    expect_identical(
+      second.analysis$active.attempt$outcome,
+      "proposal_created"
+    )
     expect_identical(basin_display_settings$maxima_scope, "listed")
     expect_true(isTRUE(basin_display_settings$label_maxima))
     expect_identical(basin_display_settings$minima_scope, "none")
@@ -1202,6 +1358,17 @@ test_that("basin server invalidates changed fields and graph identities", {
       first.identity,
       second$construction_identity$fingerprint
     ))
+    second.defaults <- Filter(
+      function(spec) {
+        isTRUE(spec$seeded.default) &&
+          identical(
+            spec$construction_fingerprint,
+            second$construction_identity$fingerprint
+          )
+      },
+      basin_plot_specs()
+    )
+    expect_length(second.defaults, 2L)
 
     request <- basin_construction_request(basin_source_state())
     changed.graph <- request$graph_identity
@@ -1230,8 +1397,52 @@ test_that("basin server invalidates changed fields and graph identities", {
 
     session$setInputs(basin_compute = 4L)
     session$flushReact()
+    finish_basin_analysis()
     expect_true(is.list(basin_result()))
     expect_true(isTRUE(basin_result()$cache_hit))
+
+    held <- new.env(parent = emptyenv())
+    options(
+      gflowui.basin.analysis.launcher = function(job, callback) {
+        held$job <- job
+        held$callback <- callback
+        invisible(job$job.id)
+      }
+    )
+    session$setInputs(occupation_density_eta_index = "4")
+    session$flushReact()
+    expect_null(basin_analysis_state())
+    session$setInputs(basin_compute = 5L)
+    session$flushReact()
+    expect_true(is.list(held$job))
+    expect_true(is.function(held$callback))
+    expect_identical(
+      basin_analysis_state()$active.attempt$outcome,
+      "pending"
+    )
+    expect_true(nzchar(basin_analysis_pending_job()))
+
+    session$setInputs(occupation_density_eta_index = "5")
+    session$flushReact()
+    expect_null(basin_result())
+    expect_null(basin_analysis_state())
+    expect_identical(basin_analysis_pending_job(), "")
+    expect_length(basin_plot_specs(), 0L)
+    status.before.stale <- basin_status()
+
+    held$callback(
+      gflowui:::gflowui_basin_execute_async_job(held$job)
+    )
+    session$flushReact()
+    expect_null(basin_result())
+    expect_null(basin_analysis_state())
+    expect_false(isTRUE(basin_inspector_open()))
+    expect_identical(basin_status(), status.before.stale)
+    telemetry <- basin_analysis_telemetry()
+    expect_identical(
+      telemetry[[length(telemetry)]]$disposition,
+      "state_invalidated"
+    )
   })
 })
 
