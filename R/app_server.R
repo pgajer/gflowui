@@ -10689,7 +10689,23 @@ app_server <- function(input, output, session) {
     )
     basin_analysis_panel_metrics(metrics)
     invisible(rendered)
-  }, res = 96)
+  }, width = function() {
+    state <- basin_analysis_state()
+    if (!is.list(state)) {
+      return(920L)
+    }
+    model <- tryCatch(
+      gflowui_basin_merge_tree_model(state),
+      error = function(error) NULL
+    )
+    if (!is.list(model) || !isTRUE(model$available)) {
+      return(920L)
+    }
+    gflowui_basin_panel_plot_width(
+      model$counts$final,
+      model$labels$mode
+    )
+  }, height = 780L, res = 96)
   shiny::outputOptions(
     output,
     "basin_merge_tree_plot",
@@ -10706,7 +10722,7 @@ app_server <- function(input, output, session) {
       isTRUE(model$diagnostics$available)
     )
     gflowui_basin_plot_diagnostics(model)
-  }, res = 96)
+  }, width = 960L, height = 720L, res = 96)
   shiny::outputOptions(
     output,
     "basin_merge_tree_diagnostic_plot",
