@@ -1295,11 +1295,9 @@ gflowui_basin_recipe <- function(controls, component.size) {
   values[.gflowui_basin_recipe_fields(controls$filter.mode)]
 }
 
-gflowui_basin_restore_recipe <- function(
-    recipe,
-    bundle,
-    context.generation = 1L,
-    attempt.id = 1L) {
+.gflowui_basin_recipe_runtime <- function(recipe,
+                                          bundle,
+                                          context.generation = 1L) {
   .gflowui_basin_assert_bundle(bundle)
   if (!is.list(recipe) ||
       !identical(recipe$recipe.version, 1L) ||
@@ -1344,11 +1342,30 @@ gflowui_basin_restore_recipe <- function(
     controls = controls,
     presentation = validated$presentation[
       c("important.label.n", "label.mode")
+    ]
+  )
+}
+
+gflowui_basin_restore_recipe <- function(
+    recipe,
+    bundle,
+    context.generation = 1L,
+    attempt.id = 1L) {
+  runtime <- .gflowui_basin_recipe_runtime(
+    recipe,
+    bundle,
+    context.generation = context.generation
+  )
+  list(
+    context = runtime$context,
+    controls = runtime$controls,
+    presentation = runtime$presentation[
+      c("important.label.n", "label.mode")
     ],
     attempt = gflowui_basin_construct_proposal(
-      context,
+      runtime$context,
       bundle,
-      controls,
+      runtime$controls,
       pinned.ids = character(),
       attempt.id = attempt.id
     )

@@ -706,36 +706,47 @@ gflowui_basin_new_runtime_state <- function(bundle,
     bundle,
     context.generation = context.generation
   )
-  list(
-    bundle = bundle,
-    context = context,
+  component.size <- sum(
+    gflowui_basin_bundle_snapshot(bundle)$canonical$component ==
+      context$component
+  )
+  controls <- gflowui_basin_default_controls(component.size)
+  validated <- gflowui_basin_validate_controls(
+    controls,
+    component.size
+  )
+  state <- list(
+    bundle.id = bundle$bundle.id,
+    context.generation = context$context.generation,
+    next.attempt.id = 1L,
+    active.attempt = NULL,
     current.proposal = NULL,
     retained.last.valid.proposal = NULL,
     pinned.ids = character(),
     selected.ids = character(),
+    display.source = "none",
+    bundle = bundle,
+    context = context,
+    controls = controls,
+    presentation = c(
+      validated$presentation[
+        c("important.label.n", "label.mode")
+      ],
+      list(diagnostics.visible = TRUE)
+    ),
     caches = list(),
     pending.work = NULL
   )
+  .gflowui_basin_assert_runtime_state(state)
+  state
 }
 
 gflowui_basin_replace_runtime_bundle <- function(state, bundle) {
-  if (!is.list(state) ||
-      is.null(state$context) ||
-      !is.numeric(state$context$context.generation)) {
-    .gflowui_basin_stop(
-      "A valid basin-analysis runtime state is required.",
-      "gflowui_basin_context_error"
+  gflowui_basin_reduce_state(
+    state,
+    gflowui_basin_state_event(
+      "bundle_change",
+      bundle = bundle
     )
-  }
-  next.generation <- state$context$context.generation + 1
-  if (next.generation > .Machine$integer.max) {
-    .gflowui_basin_stop(
-      "The context generation exceeded the supported R integer range.",
-      "gflowui_basin_context_error"
-    )
-  }
-  gflowui_basin_new_runtime_state(
-    bundle,
-    context.generation = next.generation
   )
 }

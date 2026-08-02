@@ -558,11 +558,10 @@ test_that("bundle replacement is replacement-only and clears context state [7,8,
   bundle <- phase2_bundle(case, "immutable")
   state <- gflowui:::gflowui_basin_new_runtime_state(bundle)
   state$current.proposal <- phase2_attempt(bundle)$proposal
-  state$retained.last.valid.proposal <- state$current.proposal
+  state$display.source <- "current"
   state$pinned.ids <- state$current.proposal$core$ids[[1L]]
   state$selected.ids <- state$current.proposal$core$ids[[1L]]
   state$caches <- list(layout = "cached")
-  state$pending.work <- list(attempt = 1L)
 
   case$source.values[[1L]] <- -999
   case$trajectory$primary.support.mass[[1L]] <- 999
@@ -602,7 +601,11 @@ test_that("bundle replacement is replacement-only and clears context state [7,8,
   expect_identical(replaced$pinned.ids, character())
   expect_identical(replaced$selected.ids, character())
   expect_identical(replaced$caches, list())
-  expect_null(replaced$pending.work)
+  expect_identical(replaced$active.attempt$outcome, "pending")
+  expect_identical(
+    replaced$pending.work$bundle.id,
+    replacement$bundle.id
+  )
 })
 
 test_that("active settings validate ordinary R domains and ranges [11-13]", {
