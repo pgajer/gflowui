@@ -31,7 +31,7 @@
     }
     var key = owner.dataset.gfBasinKey || "";
     var role = owner.dataset.gfBasinRole || "";
-    var control = role === "selection"
+    var control = role === "selection" || role === "pin"
       ? owner.querySelector('input[type="checkbox"]')
       : owner.querySelector("select");
     if (!control) {

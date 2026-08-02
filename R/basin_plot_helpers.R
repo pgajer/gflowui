@@ -95,12 +95,20 @@ gflowui_basin_plot_axis_label <- function(feature, scale = "raw") {
 
 gflowui_basin_plot_data <- function(
     result,
-    scope = c("all", "listed", "selected"),
+    scope = c(
+      "all", "component_maxima", "initial_display", "core",
+      "sentinels", "pinned", "listed", "selected"
+    ),
     type = c("both", "max", "min"),
-    selected_keys = character()) {
+    selected_keys = character(),
+    analysis_state = NULL) {
   scope <- match.arg(scope)
   type <- match.arg(type)
-  table <- result$all_table
+  table <- gflowui_basin_proposal_context_table(
+    result,
+    state = analysis_state,
+    selected_keys = selected_keys
+  )
   if (!is.data.frame(table) || nrow(table) < 1L) {
     return(data.frame(
       key = character(),
@@ -115,6 +123,12 @@ gflowui_basin_plot_data <- function(
       support_rank = integer(),
       mass_rank = integer(),
       prominence_rank = integer(),
+      canonical_basin_id = character(),
+      membership = character(),
+      inclusion_reasons = character(),
+      pinned = logical(),
+      selected = logical(),
+      visibility = character(),
       stringsAsFactors = FALSE
     ))
   }
@@ -159,7 +173,38 @@ gflowui_basin_plot_data <- function(
   support.rank <- direction.rank(support)
   mass.rank <- direction.rank(mass)
   prominence.rank <- direction.rank(prominence)
-  if (identical(scope, "listed")) {
+  if (identical(scope, "component_maxima")) {
+    keep <- as.character(table$type) == "max" & table$proposal.component
+    table <- table[keep, , drop = FALSE]
+    extremum.value <- extremum.value[keep]
+    support <- support[keep]
+    mass <- mass[keep]
+    prominence <- prominence[keep]
+    extremum.value.rank <- extremum.value.rank[keep]
+    support.rank <- support.rank[keep]
+    mass.rank <- mass.rank[keep]
+    prominence.rank <- prominence.rank[keep]
+  } else if (scope %in% c(
+      "initial_display", "core", "sentinels", "pinned"
+  )) {
+    scoped <- gflowui_basin_inspector_rows(
+      result,
+      state = analysis_state,
+      scope = scope,
+      sort.by = "canonical_label",
+      selected_keys = selected_keys
+    )
+    keep <- as.character(table$key) %in% as.character(scoped$key)
+    table <- table[keep, , drop = FALSE]
+    extremum.value <- extremum.value[keep]
+    support <- support[keep]
+    mass <- mass[keep]
+    prominence <- prominence[keep]
+    extremum.value.rank <- extremum.value.rank[keep]
+    support.rank <- support.rank[keep]
+    mass.rank <- mass.rank[keep]
+    prominence.rank <- prominence.rank[keep]
+  } else if (identical(scope, "listed")) {
     listed.keys <- if (is.data.frame(result$table)) {
       as.character(result$table$key)
     } else {
@@ -212,6 +257,12 @@ gflowui_basin_plot_data <- function(
     support_rank = support.rank,
     mass_rank = mass.rank,
     prominence_rank = prominence.rank,
+    canonical_basin_id = as.character(table$canonical.basin.id),
+    membership = as.character(table$proposal.membership.class),
+    inclusion_reasons = as.character(table$proposal.inclusion.reasons),
+    pinned = as.logical(table$proposal.pinned),
+    selected = as.logical(table$proposal.selected),
+    visibility = as.character(table$proposal.visibility),
     stringsAsFactors = FALSE
   )
 }
@@ -424,6 +475,23 @@ gflowui_draw_basin_plot <- function(
   point_opacity <- max(0, min(1, point_opacity))
   point_colors <- if (identical(as.character(point_color), "type")) {
     ifelse(data$type == "max", "#111827", "#06B6D4")
+  } else if (identical(as.character(point_color), "proposal")) {
+    membership.colors <- c(
+      pinned = "#7C3AED",
+      core = "#2563EB",
+      sentinel_only = "#EA580C",
+      ancestor_only = "#64748B",
+      displayed = "#0F766E",
+      hidden = "#CBD5E1",
+      other_component = "#E2E8F0",
+      not_applicable = "#06B6D4",
+      unavailable = "#94A3B8"
+    )
+    colors <- unname(membership.colors[as.character(data$membership)])
+    colors[is.na(colors)] <- "#94A3B8"
+    selected.rows <- !is.na(data$selected) & data$selected
+    colors[selected.rows] <- "#DC2626"
+    colors
   } else {
     rep(as.character(point_color), nrow(data))
   }
@@ -451,7 +519,8 @@ gflowui_draw_basin_plot <- function(
     y.feature <- features[[2L]]
     show.type.legend <- identical(as.character(point_color), "type") &&
       length(unique(data$type)) > 1L
-    if (show.type.legend) {
+    show.proposal.legend <- identical(as.character(point_color), "proposal")
+    if (show.type.legend || show.proposal.legend) {
       original.mar <- graphics::par("mar")
       on.exit(graphics::par(mar = original.mar), add = TRUE)
       graphics::par(mar = c(
@@ -501,6 +570,33 @@ gflowui_draw_basin_plot <- function(
         xpd = NA,
         bty = "n",
         cex = 0.8
+      )
+    }
+    if (show.proposal.legend) {
+      present <- unique(as.character(data$membership))
+      legend.colors <- c(
+        pinned = "#7C3AED",
+        core = "#2563EB",
+        sentinel_only = "#EA580C",
+        ancestor_only = "#64748B",
+        displayed = "#0F766E",
+        hidden = "#CBD5E1",
+        other_component = "#E2E8F0"
+      )
+      present <- names(legend.colors)[names(legend.colors) %in% present]
+      if (any(data$selected, na.rm = TRUE)) {
+        legend.colors <- c(selected = "#DC2626", legend.colors)
+        present <- c("selected", present)
+      }
+      graphics::legend(
+        "topright",
+        inset = c(-0.27, 0),
+        legend = gsub("_", " ", present, fixed = TRUE),
+        col = unname(legend.colors[present]),
+        pch = point_glyph,
+        xpd = NA,
+        bty = "n",
+        cex = 0.75
       )
     }
   } else {

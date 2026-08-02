@@ -114,7 +114,8 @@ app_server <- function(input, output, session) {
     opacity = 0.85,
     unselected_color = "#D1D5DB",
     unselected_opacity = 0.28,
-    inspector_filter = "all",
+    inspector_scope = "initial_display",
+    inspector_sort = "mass",
     inspector_columns = "compact",
     inspector_show_extremum_vertex = FALSE,
     inspector_width = 620,
@@ -481,7 +482,7 @@ app_server <- function(input, output, session) {
   )
   shiny::observeEvent(input$basin_extrema_max_scope, {
     scope <- as.character(input$basin_extrema_max_scope %||% "none")
-    if (scope %in% c("none", "selected", "listed", "all")) {
+    if (scope %in% c("none", "selected", "initial_display", "all")) {
       basin_display_settings$maxima_scope <- scope
       basin_display_settings$show_maxima <- !identical(scope, "none")
     }
@@ -493,7 +494,7 @@ app_server <- function(input, output, session) {
   }, ignoreInit = FALSE, ignoreNULL = TRUE)
   shiny::observeEvent(input$basin_extrema_min_scope, {
     scope <- as.character(input$basin_extrema_min_scope %||% "none")
-    if (scope %in% c("none", "selected", "listed", "all")) {
+    if (scope %in% c("none", "selected", "initial_display", "all")) {
       basin_display_settings$minima_scope <- scope
       basin_display_settings$show_minima <- !identical(scope, "none")
     }
@@ -8751,19 +8752,18 @@ app_server <- function(input, output, session) {
     result
   }
 
-  basin_displayed_table <- function(result) {
-    table <- if (is.list(result) && is.data.frame(result$table)) {
-      result$table
-    } else {
-      data.frame()
-    }
-    type.filter <- as.character(
-      basin_display_settings$inspector_filter %||% "all"
+  basin_displayed_table <- function(
+      result,
+      state = shiny::isolate(basin_analysis_state()),
+      selected.keys = shiny::isolate(basin_selected_keys())) {
+    gflowui_basin_inspector_rows(
+      result,
+      state = state,
+      scope = basin_display_settings$inspector_scope %||%
+        "initial_display",
+      sort.by = basin_display_settings$inspector_sort %||% "mass",
+      selected_keys = selected.keys
     )
-    if (nrow(table) > 0L && type.filter %in% c("max", "min")) {
-      table <- table[table$type == type.filter, , drop = FALSE]
-    }
-    table
   }
 
   basin_extrema_scope_rows <- function(result, direction, scope) {
@@ -8780,89 +8780,52 @@ app_server <- function(input, output, session) {
         stringsAsFactors = FALSE
       ))
     }
-    table <- if (identical(scope, "all") &&
-        is.data.frame(result$all_table)) {
-      result$all_table
-    } else {
-      result$table
-    }
+    table <- gflowui_basin_inspector_rows(
+      result,
+      state = basin_analysis_state(),
+      scope = if (identical(scope, "all")) {
+        if (identical(direction, "max")) "all_maxima" else "all_minima"
+      } else if (identical(scope, "initial_display")) {
+        "initial_display"
+      } else if (identical(scope, "selected")) {
+        "selected"
+      } else {
+        "initial_display"
+      },
+      sort.by = "canonical_label",
+      selected_keys = basin_selected_keys()
+    )
     table <- table[
       as.character(table$type) == as.character(direction),
       ,
       drop = FALSE
     ]
-    if (identical(scope, "selected")) {
-      table <- table[table$selected, , drop = FALSE]
-    }
     data.frame(
       vertex = suppressWarnings(as.integer(table$extremum.vertex)),
       value = suppressWarnings(as.numeric(table$extremum.value)),
       type = if (identical(direction, "max")) "maximum" else "minimum",
-      rank = suppressWarnings(as.integer(table$rank)),
+      rank = suppressWarnings(as.integer(table$canonical.label.rank)),
       label = as.character(table$display.label),
       stringsAsFactors = FALSE
     )
   }
 
-  resummarize_basin_result <- function(result) {
-    if (!is.list(result) || !inherits(result$basin, "basin_complex")) {
-      return(result)
-    }
-    top.max <- suppressWarnings(as.integer(
-      basin_display_settings$top_k_max %||% 6L
-    ))
-    top.min <- suppressWarnings(as.integer(
-      basin_display_settings$top_k_min %||% 6L
-    ))
-    if (!is.finite(top.max) || top.max < 0L) top.max <- 6L
-    if (!is.finite(top.min) || top.min < 0L) top.min <- 6L
-    rank.by <- as.character(
-      basin_display_settings$rank_by %||% "primary.support.mass"
-    )
-    summary <- summary(
-      result$basin,
-      rank.by = rank.by,
-      top.k.max = top.max,
-      top.k.min = top.min,
-      include.vertex.lists = FALSE
-    )
-    table <- gflowui_basin_table(summary, result$prominence_complex)
-    all.summary <- summary(
-      result$basin,
-      rank.by = rank.by,
-      top.k.max = sum(result$basin$basin.table$type == "max"),
-      top.k.min = sum(result$basin$basin.table$type == "min"),
-      include.vertex.lists = FALSE
-    )
-    result$all_table <- gflowui_basin_table(
-      all.summary,
-      result$prominence_complex
-    )
-    existing.colors <- basin_color_map()
-    defaults <- stats::setNames(table$color, table$key)
-    defaults[names(existing.colors)] <- existing.colors
-    basin_color_map(defaults)
-    result$summary <- summary
-    result$table <- table
-    result$top_k_max <- top.max
-    result$top_k_min <- top.min
-    result$rank_by <- rank.by
-    result$ranking_resolved <- summary$rank.resolved
-    update_basin_display_result(result)
-  }
-
   output$basin_inspector_ui <- shiny::renderUI({
     result <- basin_result()
+    analysis <- basin_analysis_state()
     if (!isTRUE(basin_inspector_open()) ||
         !is.list(result) ||
         !is.data.frame(result$table)) {
       return(NULL)
     }
-    table <- basin_displayed_table(result)
-    type.filter <- as.character(
-      basin_display_settings$inspector_filter %||% "all"
-    )
     selected <- basin_selected_keys()
+    table <- basin_displayed_table(result, analysis, selected)
+    inspector.scope <- as.character(
+      basin_display_settings$inspector_scope %||% "initial_display"
+    )
+    inspector.sort <- as.character(
+      basin_display_settings$inspector_sort %||% "mass"
+    )
     colors <- basin_color_map()
     definitions <- result$summary$column.definitions %||% data.frame()
     definition_for <- function(field, fallback) {
@@ -8875,80 +8838,39 @@ app_server <- function(input, output, session) {
       }
       fallback
     }
-    ranking_measure_label <- function(measure) {
-      labels <- c(
-        "primary.support.mass" = "Mass",
-        "primary.support.size" = "Support",
-        "extremum.value" = "Peak value",
-        "raw.allocated.mass" = "Allocated mass",
-        "raw.support.mass" = "Raw mass",
-        "raw.support.size" = "Raw support",
-        "retained.support.mass" = "Retained mass",
-        "retained.support.size" = "Retained support"
-      )
-      measure <- as.character(measure %||% "")
-      label <- unname(labels[measure])
-      if (length(label) == 1L && !is.na(label) && nzchar(label)) {
-        return(label)
-      }
-      if (nzchar(measure)) {
-        return(gsub(".", " ", measure, fixed = TRUE))
-      }
-      "Unavailable"
-    }
-    ranking.resolved <- result$ranking_resolved %||%
-      result$summary$rank.resolved %||% character()
-    ranking_for_direction <- function(direction) {
-      if (direction %in% names(ranking.resolved)) {
-        ranking.resolved[[direction]]
-      } else {
-        ""
-      }
-    }
-    max.ranking <- ranking_measure_label(ranking_for_direction("max"))
-    min.ranking <- ranking_measure_label(ranking_for_direction("min"))
-    ranking.description <- if (identical(max.ranking, min.ranking)) {
-      sprintf(
-        paste(
-          "Basins are ranked separately within maxima and minima.",
-          "Ranking measure: %s."
-        ),
-        max.ranking
-      )
-    } else {
-      sprintf(
-        paste(
-          "Basins are ranked separately within maxima and minima.",
-          "Ranking measures: maxima use %s; minima use %s."
-        ),
-        max.ranking,
-        min.ranking
-      )
-    }
-    if (identical(max.ranking, "Peak value") &&
-        identical(min.ranking, "Peak value")) {
-      ranking.description <- paste(
-        ranking.description,
-        paste(
-          "Peak value ranks maxima from highest to lowest and minima",
-          "from lowest to highest."
-        )
-      )
-    }
+    ranking.description <- paste(
+      "Rows are sorted for viewing only; the default row sort is Mass.",
+      "M/m labels are stable canonical labels assigned by extremum-vertex",
+      "order and never change with row scope or sorting."
+    )
     show.extremum.vertex <- isTRUE(
       basin_display_settings$inspector_show_extremum_vertex
     )
     header <- shiny::tags$tr(
-      shiny::tags$th(class = "gf-basin-show-column", "Show"),
+      shiny::tags$th(
+        class = "gf-basin-show-column",
+        title = "Transiently select/show without changing proposal membership.",
+        "Show"
+      ),
+      shiny::tags$th(
+        class = "gf-basin-pin-column",
+        title = "Protect this maximum basin and reconstruct the proposal.",
+        "Pin"
+      ),
       shiny::tags$th(class = "gf-basin-color-column", "Color"),
       shiny::tags$th(
         class = "gf-basin-label-column",
         title = paste(
           "M denotes a maximum basin and m denotes a minimum basin.",
-          "The number is its direction-specific rank under the selected",
-          "ranking measure."
+          "The number is stable canonical extremum-vertex order and does",
+          "not change when rows are sorted."
         ),
         "Extremum / basin"
+      ),
+      shiny::tags$th(
+        class = "gf-basin-full-column",
+        title = "Stable canonical ID used to link all Basin Analysis panels.",
+        "Canonical ID"
       ),
       if (show.extremum.vertex) {
         shiny::tags$th(
@@ -8986,6 +8908,21 @@ app_server <- function(input, output, session) {
           )
         ),
         "Prominence"
+      ),
+      shiny::tags$th(
+        title = "Proposal membership without changing table scope or identity.",
+        "Proposal class"
+      ),
+      shiny::tags$th(
+        title = paste(
+          "All reasons for proposal inclusion, including core, sentinels,",
+          "pins, component survivor, and ancestor closure."
+        ),
+        "Inclusion reasons"
+      ),
+      shiny::tags$th(
+        title = "Visible or hidden in the current filtered maximum-basin tree.",
+        "Tree state"
       ),
       shiny::tags$th(
         class = "gf-basin-full-column",
@@ -9037,6 +8974,28 @@ app_server <- function(input, output, session) {
           )
         ),
         shiny::tags$td(
+          class = "gf-basin-pin-column",
+          if (identical(as.character(row$type), "max") &&
+              isTRUE(row$proposal.component)) {
+            shiny::tagAppendAttributes(
+              shiny::checkboxInput(
+                paste0("basin_pin_", suffix),
+                label = NULL,
+                value = isTRUE(row$proposal.pinned)
+              ),
+              `aria-label` = sprintf("Pin %s", row$display.label),
+              `data-gf-basin-key` = key,
+              `data-gf-basin-role` = "pin"
+            )
+          } else {
+            shiny::span(
+              class = "gf-basin-not-applicable",
+              title = "Pinning applies to maxima in the selected component.",
+              "—"
+            )
+          }
+        ),
+        shiny::tags$td(
           class = "gf-basin-color-column",
           shiny::tagAppendAttributes(
             shiny::selectInput(
@@ -9055,11 +9014,21 @@ app_server <- function(input, output, session) {
         shiny::tags$td(
           class = "gf-basin-label-column",
           title = if (row$type == "max") {
-            sprintf("Maximum basin, rank %d", as.integer(row$rank))
+            sprintf(
+              "Maximum basin, canonical label rank %d",
+              as.integer(row$canonical.label.rank)
+            )
           } else {
-            sprintf("Minimum basin, rank %d", as.integer(row$rank))
+            sprintf(
+              "Minimum basin, canonical label rank %d",
+              as.integer(row$canonical.label.rank)
+            )
           },
           as.character(row$display.label)
+        ),
+        shiny::tags$td(
+          class = "gf-basin-full-column gf-basin-canonical-id",
+          as.character(row$canonical.basin.id)
         ),
         if (show.extremum.vertex) {
           shiny::tags$td(as.integer(row$extremum.vertex))
@@ -9076,6 +9045,15 @@ app_server <- function(input, output, session) {
         shiny::tags$td(if (is.finite(row$prominence)) {
           formatC(as.numeric(row$prominence), digits = 4, format = "g")
         } else "\u2014"),
+        shiny::tags$td(as.character(row$proposal.membership.class)),
+        shiny::tags$td(
+          if (nzchar(as.character(row$proposal.inclusion.reasons))) {
+            as.character(row$proposal.inclusion.reasons)
+          } else {
+            "\u2014"
+          }
+        ),
+        shiny::tags$td(as.character(row$proposal.visibility)),
         shiny::tags$td(
           class = "gf-basin-full-column",
           as.integer(row$raw.support.size)
@@ -9151,41 +9129,13 @@ app_server <- function(input, output, session) {
       ),
       shiny::div(
         class = "gf-basin-inspector-summary-controls",
-        shiny::numericInput(
-          "basin_top_k_max",
-          "Largest maximum basins",
-          value = basin_display_settings$top_k_max %||% 6L,
-          min = 0L,
-          step = 1L,
-          width = "170px"
-        ),
-        shiny::numericInput(
-          "basin_top_k_min",
-          "Largest minimum basins",
-          value = basin_display_settings$top_k_min %||% 6L,
-          min = 0L,
-          step = 1L,
-          width = "170px"
-        ),
-        shiny::selectInput(
-          "basin_rank_by",
-          "Ranking measure",
-          choices = c(
-            "Mass" = "primary.support.mass",
-            "Support" = "primary.support.size",
-            "Peak value" = "extremum.value"
-          ),
-          selected = basin_display_settings$rank_by %||%
-            "primary.support.mass",
-          width = "170px"
-        ),
         shiny::selectInput(
           "basin_extrema_max_scope",
           "Maximum extrema",
           choices = c(
             "Hide" = "none",
             "Selected basins" = "selected",
-            "Listed top-K" = "listed",
+            "Initial display" = "initial_display",
             "All" = "all"
           ),
           selected = basin_display_settings$maxima_scope %||% "none",
@@ -9203,7 +9153,7 @@ app_server <- function(input, output, session) {
           choices = c(
             "Hide" = "none",
             "Selected basins" = "selected",
-            "Listed top-K" = "listed",
+            "Initial display" = "initial_display",
             "All" = "all"
           ),
           selected = basin_display_settings$minima_scope %||% "none",
@@ -9219,15 +9169,18 @@ app_server <- function(input, output, session) {
       shiny::div(
         class = "gf-basin-inspector-toolbar",
         shiny::selectInput(
-          "basin_inspector_filter",
-          "Rows",
-          choices = c(
-            "All basins" = "all",
-            "Maximum only" = "max",
-            "Minimum only" = "min"
-          ),
-          selected = type.filter,
-          width = "160px"
+          "basin_inspector_scope",
+          "Row scope",
+          choices = gflowui_basin_inspector_scope_choices(),
+          selected = inspector.scope,
+          width = "190px"
+        ),
+        shiny::selectInput(
+          "basin_inspector_sort",
+          "Row sort",
+          choices = gflowui_basin_inspector_sort_choices(),
+          selected = inspector.sort,
+          width = "170px"
         ),
         shiny::selectInput(
           "basin_inspector_columns",
@@ -9333,7 +9286,7 @@ app_server <- function(input, output, session) {
           sprintf(
             paste(
               "Exports all %d basins in raw coordinates.",
-              "Rows, top-K, selections, and display filters are ignored.",
+              "Row scope, sorting, selections, and display filters are ignored.",
               "Use ~ or an absolute directory path."
             ),
             nrow(result$all_table)
@@ -9353,7 +9306,9 @@ app_server <- function(input, output, session) {
           paste(
             "Support is the number of primarily assigned vertices;",
             "Mass is their normalized mass;",
-            "Prominence is the extremum-to-merge field difference."
+            "Prominence is the extremum-to-merge field difference.",
+            "Proposal class, reasons, pinning, selection, and tree state",
+            "describe the current maximum-basin display proposal."
           )
         ),
         shiny::div(
@@ -9425,7 +9380,11 @@ app_server <- function(input, output, session) {
 
   basin_plot_scope_choices <- c(
     "All basins" = "all",
-    "Listed top-K" = "listed",
+    "Selected-component maxima" = "component_maxima",
+    "Initial display" = "initial_display",
+    "Core" = "core",
+    "Sentinels" = "sentinels",
+    "Pinned" = "pinned",
     "Selected basins" = "selected"
   )
   basin_plot_type_choices <- c(
@@ -9446,6 +9405,7 @@ app_server <- function(input, output, session) {
     "Black" = "#111827"
   )
   basin_plot_point_color_choices <- c(
+    "By proposal membership" = "proposal",
     "By maximum/minimum" = "type",
     basin_plot_color_choices
   )
@@ -9993,7 +9953,8 @@ app_server <- function(input, output, session) {
           active,
           scope = scope,
           type = type,
-          selected_keys = basin_selected_keys()
+          selected_keys = basin_selected_keys(),
+          analysis_state = basin_analysis_state()
         )
         gflowui_draw_basin_plot(
           data = data,
@@ -10001,7 +9962,8 @@ app_server <- function(input, output, session) {
           bins = input[[card.bins.id]] %||% 20L,
           histogram_color =
             input[[card.histogram.color.id]] %||% "#2563EB",
-          point_color = input[[card.point.color.id]] %||% "type",
+          point_color = input[[card.point.color.id]] %||%
+            card.spec$point_color %||% "type",
           point_glyph = input[[card.glyph.id]] %||% 19L,
           point_size =
             input[[card.size.id]] %||% card.default.point.size,
@@ -10037,7 +9999,8 @@ app_server <- function(input, output, session) {
           active,
           scope = scope,
           type = type,
-          selected_keys = basin_selected_keys()
+          selected_keys = basin_selected_keys(),
+          analysis_state = basin_analysis_state()
         )
         scaled <- gflowui_basin_plot_scaled_data(
           data,
@@ -10202,7 +10165,10 @@ app_server <- function(input, output, session) {
               point.color.id,
               "Glyph color",
               choices = basin_plot_point_color_choices,
-              selected = basin_plot_input_value(point.color.id, "type")
+              selected = basin_plot_input_value(
+                point.color.id,
+                spec$point_color %||% "type"
+              )
             )
           } else NULL,
           if (!is.histogram) {
@@ -11042,10 +11008,12 @@ app_server <- function(input, output, session) {
 
   shiny::observeEvent(basin_selected_keys(), {
     state <- shiny::isolate(basin_analysis_state())
-    if (!is.list(state)) {
+    result <- shiny::isolate(basin_result())
+    if (!is.list(state) || !is.list(result)) {
       return()
     }
-    selected <- gflowui_basin_panel_canonical_selection(
+    selected <- gflowui_basin_selected_canonical_ids(
+      result,
       state,
       as.character(basin_selected_keys())
     )
@@ -11084,7 +11052,11 @@ app_server <- function(input, output, session) {
         shiny::div(
           shiny::h4("Basin Plot Workspace"),
           shiny::p(
-            "Plots persist as independent cards until removed or cleared."
+            paste(
+              "The two default rank plots contain every maximum basin in",
+              "the selected component; proposal membership changes styling,",
+              "not point inclusion. Plot cards persist until removed or cleared."
+            )
           )
         ),
         shiny::actionButton(
@@ -11282,67 +11254,6 @@ app_server <- function(input, output, session) {
     }
   })
 
-  shiny::observeEvent(
-    list(input$basin_top_k_max, input$basin_top_k_min, input$basin_rank_by),
-    {
-      top.max <- suppressWarnings(as.integer(input$basin_top_k_max))
-      top.min <- suppressWarnings(as.integer(input$basin_top_k_min))
-      rank.by <- as.character(
-        input$basin_rank_by %||% "primary.support.mass"
-      )
-      if (length(top.max) == 1L && is.finite(top.max) && top.max >= 0L) {
-        basin_display_settings$top_k_max <- top.max
-      }
-      if (length(top.min) == 1L && is.finite(top.min) && top.min >= 0L) {
-        basin_display_settings$top_k_min <- top.min
-      }
-      if (rank.by %in% c(
-          "primary.support.mass",
-          "primary.support.size",
-          "extremum.value"
-      )) {
-        basin_display_settings$rank_by <- rank.by
-      }
-      result <- shiny::isolate(basin_result())
-      if (is.list(result)) {
-        needs.update <- !identical(
-          suppressWarnings(as.integer(result$top_k_max)),
-          suppressWarnings(as.integer(basin_display_settings$top_k_max))
-        ) || !identical(
-          suppressWarnings(as.integer(result$top_k_min)),
-          suppressWarnings(as.integer(basin_display_settings$top_k_min))
-        ) || !identical(
-          as.character(result$rank_by %||% "primary.support.mass"),
-          as.character(
-            basin_display_settings$rank_by %||% "primary.support.mass"
-          )
-        )
-        if (!isTRUE(needs.update)) {
-          return()
-        }
-        updated <- tryCatch(
-          resummarize_basin_result(result),
-          error = function(e) e
-        )
-        if (inherits(updated, "error")) {
-          basin_status(sprintf(
-            "Basin summary failed: %s",
-            conditionMessage(updated)
-          ))
-        } else {
-          basin_result(updated)
-          resolved <- updated$summary$rank.resolved
-          basin_status(sprintf(
-            "Basin summary updated without reconstruction (max: %s; min: %s).",
-            resolved[["max"]] %||% "\u2014",
-            resolved[["min"]] %||% "\u2014"
-          ))
-        }
-      }
-    },
-    ignoreInit = TRUE
-  )
-
   shiny::observeEvent(input$basin_compute, {
     source <- basin_source_state()
     request <- tryCatch(
@@ -11377,18 +11288,7 @@ app_server <- function(input, output, session) {
     if (is.list(current) &&
         nzchar(current.identity) &&
         identical(current.identity, request.identity)) {
-      current <- tryCatch(
-        resummarize_basin_result(current),
-        error = function(e) e
-      )
-      if (inherits(current, "error")) {
-        basin_status(sprintf(
-          "Basin summary failed: %s",
-          conditionMessage(current)
-        ))
-        shiny::showNotification(conditionMessage(current), type = "error")
-        return()
-      }
+      current <- gflowui_basin_prepare_analysis_result(current)
       basin_result(current)
       analysis <- shiny::isolate(basin_analysis_state())
       analysis.matches <- is.list(analysis) &&
@@ -11452,11 +11352,6 @@ app_server <- function(input, output, session) {
         identical(rank.by, "primary.support.mass")) {
       rank.by <- "primary.support.size"
       basin_display_settings$rank_by <- rank.by
-      shiny::updateSelectInput(
-        session,
-        "basin_rank_by",
-        selected = rank.by
-      )
     }
     result <- tryCatch(
       gflowui_estimate_basin_overlay(
@@ -11507,6 +11402,7 @@ app_server <- function(input, output, session) {
     ))
     result$construction_identity <- request$construction_identity
     result$alignment_validation <- request$alignment
+    result <- gflowui_basin_prepare_analysis_result(result)
     colors <- stats::setNames(result$table$color, result$table$key)
     old.colors <- basin_color_map()
     colors[names(old.colors)] <- old.colors
@@ -11634,10 +11530,19 @@ app_server <- function(input, output, session) {
     )
   }, ignoreInit = TRUE)
 
-  shiny::observeEvent(input$basin_inspector_filter, {
-    value <- as.character(input$basin_inspector_filter %||% "all")
-    if (value %in% c("all", "max", "min")) {
-      basin_display_settings$inspector_filter <- value
+  shiny::observeEvent(input$basin_inspector_scope, {
+    value <- as.character(
+      input$basin_inspector_scope %||% "initial_display"
+    )
+    if (value %in% unname(gflowui_basin_inspector_scope_choices())) {
+      basin_display_settings$inspector_scope <- value
+    }
+  }, ignoreInit = TRUE)
+
+  shiny::observeEvent(input$basin_inspector_sort, {
+    value <- as.character(input$basin_inspector_sort %||% "mass")
+    if (value %in% unname(gflowui_basin_inspector_sort_choices())) {
+      basin_display_settings$inspector_sort <- value
     }
   }, ignoreInit = TRUE)
 
@@ -11785,20 +11690,55 @@ app_server <- function(input, output, session) {
 
   shiny::observeEvent(input$basin_inspector_row_event, {
     result <- basin_result()
-    if (!is.list(result) || !is.data.frame(result$table) ||
-        nrow(result$table) < 1L) {
+    if (!is.list(result) || !is.data.frame(result$all_table) ||
+        nrow(result$all_table) < 1L) {
       return()
     }
     event <- input$basin_inspector_row_event
     key <- as.character(event$key %||% "")
     role <- as.character(event$role %||% "")
-    if (!nzchar(key) || !(key %in% as.character(result$table$key))) {
+    if (!nzchar(key) || !(key %in% as.character(result$all_table$key))) {
+      return()
+    }
+    if (identical(role, "pin")) {
+      state <- shiny::isolate(basin_analysis_state())
+      if (!is.list(state)) {
+        return()
+      }
+      context <- gflowui_basin_proposal_context_table(
+        result,
+        state = state,
+        selected_keys = shiny::isolate(basin_selected_keys())
+      )
+      row <- context[as.character(context$key) == key, , drop = FALSE]
+      if (nrow(row) != 1L ||
+          !identical(as.character(row$type), "max") ||
+          !isTRUE(row$proposal.component)) {
+        return()
+      }
+      canonical.id <- as.character(row$canonical.basin.id)
+      checked <- isTRUE(event$checked)
+      already.pinned <- canonical.id %in% state$pinned.ids
+      if (identical(checked, already.pinned)) {
+        return()
+      }
+      apply_basin_analysis_event(
+        gflowui_basin_state_event(
+          if (checked) "pin" else "unpin",
+          id = canonical.id
+        ),
+        sprintf(
+          "%s %s and updated Basin Analysis.",
+          if (checked) "Pinned" else "Unpinned",
+          canonical.id
+        )
+      )
       return()
     }
     next.state <- gflowui_update_basin_row_state(
       selected_keys = basin_selected_keys(),
       color_map = basin_color_map(),
-      valid_keys = result$table$key,
+      valid_keys = result$all_table$key,
       key = key,
       role = role,
       checked = event$checked,
