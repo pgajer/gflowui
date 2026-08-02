@@ -8803,7 +8803,10 @@ app_server <- function(input, output, session) {
     data.frame(
       vertex = suppressWarnings(as.integer(table$extremum.vertex)),
       value = suppressWarnings(as.numeric(table$extremum.value)),
-      type = if (identical(direction, "max")) "maximum" else "minimum",
+      type = rep.int(
+        if (identical(direction, "max")) "maximum" else "minimum",
+        nrow(table)
+      ),
       rank = suppressWarnings(as.integer(table$canonical.label.rank)),
       label = as.character(table$display.label),
       stringsAsFactors = FALSE
@@ -8991,7 +8994,7 @@ app_server <- function(input, output, session) {
             shiny::span(
               class = "gf-basin-not-applicable",
               title = "Pinning applies to maxima in the selected component.",
-              "—"
+              "N/A"
             )
           }
         ),
