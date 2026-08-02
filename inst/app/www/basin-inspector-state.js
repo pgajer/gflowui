@@ -1,6 +1,88 @@
 (function () {
   "use strict";
 
+  var basinRecipeStorageKey = "gflowui-basin-analysis-recipe-v1";
+  var basinRecipeHandlersBound = false;
+
+  function publishRecipeEvent(status, recipe, requestId, message) {
+    if (!window.Shiny || typeof window.Shiny.setInputValue !== "function") {
+      return;
+    }
+    window.Shiny.setInputValue(
+      "basin_recipe_restore_event",
+      {
+        status: status,
+        recipe: recipe || null,
+        request_id: requestId || "",
+        message: message || "",
+        nonce: Date.now() + Math.random()
+      },
+      { priority: "event" }
+    );
+  }
+
+  function bindBasinRecipeHandlers() {
+    if (
+      basinRecipeHandlersBound ||
+      !window.Shiny ||
+      typeof window.Shiny.addCustomMessageHandler !== "function"
+    ) {
+      return;
+    }
+    basinRecipeHandlersBound = true;
+    window.Shiny.addCustomMessageHandler(
+      "gflowui-basin-recipe-save",
+      function (payload) {
+        var requestId = payload && payload.request_id
+          ? String(payload.request_id)
+          : "";
+        try {
+          window.localStorage.setItem(
+            basinRecipeStorageKey,
+            JSON.stringify(payload.recipe)
+          );
+          publishRecipeEvent("saved", payload.recipe, requestId, "");
+        } catch (error) {
+          publishRecipeEvent(
+            "storage_error",
+            null,
+            requestId,
+            String(error && error.message ? error.message : error)
+          );
+        }
+      }
+    );
+    window.Shiny.addCustomMessageHandler(
+      "gflowui-basin-recipe-request",
+      function (payload) {
+        var requestId = payload && payload.request_id
+          ? String(payload.request_id)
+          : "";
+        var stored;
+        try {
+          stored = window.localStorage.getItem(basinRecipeStorageKey);
+          if (stored === null) {
+            publishRecipeEvent("missing", null, requestId, "");
+            return;
+          }
+          publishRecipeEvent(
+            "available",
+            JSON.parse(stored),
+            requestId,
+            ""
+          );
+        } catch (error) {
+          publishRecipeEvent(
+            "storage_error",
+            null,
+            requestId,
+            String(error && error.message ? error.message : error)
+          );
+        }
+      }
+    );
+  }
+
   function clamp(value, split) {
     var available = split
       ? Math.max(380, split.getBoundingClientRect().width - 420)
@@ -186,7 +268,18 @@
     });
   }
 
-  document.addEventListener("DOMContentLoaded", bindSplitter);
+  document.addEventListener("DOMContentLoaded", function () {
+    bindSplitter();
+    bindBasinRecipeHandlers();
+  });
+  document.addEventListener("shiny:connected", bindBasinRecipeHandlers);
+  if (window.jQuery) {
+    window.jQuery(document).on(
+      "shiny:connected",
+      bindBasinRecipeHandlers
+    );
+  }
+  window.setTimeout(bindBasinRecipeHandlers, 0);
   document.addEventListener("change", function (event) {
     var target = event.target;
     if (

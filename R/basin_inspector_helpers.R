@@ -303,3 +303,135 @@ gflowui_basin_selected_canonical_ids <- function(
     table$proposal.component
   sort(unique(as.character(table$canonical.basin.id[rows])), method = "radix")
 }
+
+gflowui_basin_canonical_ids_to_keys <- function(
+    result,
+    state,
+    canonical_ids) {
+  if (!is.character(canonical_ids) ||
+      anyNA(canonical_ids) ||
+      anyDuplicated(canonical_ids)) {
+    return(character())
+  }
+  table <- gflowui_basin_proposal_context_table(
+    result,
+    state = state,
+    selected_keys = character()
+  )
+  if (!nrow(table)) {
+    return(character())
+  }
+  rows <- as.character(table$type) == "max" &
+    table$proposal.component &
+    as.character(table$canonical.basin.id) %in% canonical_ids
+  resolved <- table[rows, c("key", "canonical.basin.id"), drop = FALSE]
+  if (!nrow(resolved)) {
+    return(character())
+  }
+  ordered <- match(canonical_ids, as.character(resolved$canonical.basin.id))
+  ordered <- ordered[!is.na(ordered)]
+  unique(as.character(resolved$key[ordered]))
+}
+
+gflowui_basin_vertex_canonical_id <- function(
+    result,
+    state,
+    vertex) {
+  vertex.value <- suppressWarnings(as.numeric(vertex))
+  if (!is.list(result) ||
+      !is.data.frame(result$all_table) ||
+      !is.list(result$basin) ||
+      !is.data.frame(result$basin$assignment) ||
+      !is.list(state) ||
+      length(vertex.value) != 1L ||
+      !is.finite(vertex.value) ||
+      vertex.value != floor(vertex.value) ||
+      vertex.value < 1) {
+    return(character())
+  }
+  assignment <- result$basin$assignment
+  required <- c(
+    "vertex", "direction", "assignment.status", "basin.id"
+  )
+  if (!all(required %in% names(assignment))) {
+    return(character())
+  }
+  rows <- suppressWarnings(as.numeric(assignment$vertex)) == vertex.value &
+    as.character(assignment$direction) == "max" &
+    as.character(assignment$assignment.status) == "assigned"
+  basin.ids <- unique(as.character(assignment$basin.id[rows]))
+  basin.ids <- basin.ids[!is.na(basin.ids) & nzchar(basin.ids)]
+  if (length(basin.ids) != 1L) {
+    return(character())
+  }
+  table <- gflowui_basin_proposal_context_table(
+    result,
+    state = state,
+    selected_keys = character()
+  )
+  matched <- as.character(table$type) == "max" &
+    as.character(table$basin.id) == basin.ids[[1L]] &
+    table$proposal.component
+  ids <- unique(as.character(table$canonical.basin.id[matched]))
+  ids <- ids[!is.na(ids) & nzchar(ids)]
+  if (length(ids) == 1L) ids else character()
+}
+
+gflowui_basin_linked_display_status <- function(state) {
+  if (!is.list(state)) {
+    return(list(
+      available = FALSE,
+      display.source = "none",
+      active.outcome = "not_started",
+      active.attempt.id = NA_integer_,
+      displayed.attempt.id = NA_integer_,
+      text = "No Basin Analysis proposal is available."
+    ))
+  }
+  .gflowui_basin_assert_runtime_state(state)
+  active <- state$active.attempt
+  proposal <- gflowui_basin_displayed_proposal(state)
+  active.outcome <- as.character(active$outcome %||% "not_started")
+  active.id <- suppressWarnings(as.integer(
+    active$attempt.id %||% NA_integer_
+  ))
+  displayed.id <- suppressWarnings(as.integer(
+    proposal$attempt.id %||% NA_integer_
+  ))
+  detail <- paste(as.character(active$messages %||% character()), collapse = " ")
+  text <- if (identical(state$display.source, "current")) {
+    sprintf(
+      paste(
+        "Current proposal attempt %d is displayed across the tree, plots,",
+        "Inspector, and graph."
+      ),
+      displayed.id
+    )
+  } else if (identical(state$display.source, "retained_last_valid")) {
+    sprintf(
+      paste(
+        "Retained proposal attempt %d is displayed across the tree, plots,",
+        "Inspector, and graph while active attempt %d is %s%s."
+      ),
+      displayed.id,
+      active.id,
+      gsub("_", " ", active.outcome, fixed = TRUE),
+      if (nzchar(detail)) paste0(": ", detail) else ""
+    )
+  } else {
+    sprintf(
+      "No proposal is displayed; active attempt %d is %s%s.",
+      active.id,
+      gsub("_", " ", active.outcome, fixed = TRUE),
+      if (nzchar(detail)) paste0(": ", detail) else ""
+    )
+  }
+  list(
+    available = !is.null(proposal),
+    display.source = state$display.source,
+    active.outcome = active.outcome,
+    active.attempt.id = active.id,
+    displayed.attempt.id = displayed.id,
+    text = text
+  )
+}
