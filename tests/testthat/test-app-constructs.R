@@ -1587,6 +1587,26 @@ test_that("basin server invalidates changed fields and graph identities", {
       "gf-basin-plot-frame",
       fixed = TRUE
     )
+    styles <- readLines(
+      system.file("app/www/styles.css", package = "gflowui"),
+      warn = FALSE
+    )
+    styles <- paste(styles, collapse = "\n")
+    expect_match(
+      styles,
+      ".gf-basin-plot-card",
+      fixed = TRUE
+    )
+    expect_match(
+      styles,
+      "overflow-x: auto",
+      fixed = TRUE
+    )
+    expect_match(
+      styles,
+      "min-width: 360px",
+      fixed = TRUE
+    )
     expect_match(plot.workspace.with.cards, "Value scale", fixed = TRUE)
     expect_match(
       plot.workspace.with.cards,
