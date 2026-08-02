@@ -97,7 +97,43 @@
   as.integer(component[as.integer(vertices)])
 }
 
-.gflowui_basin_validate_tree <- function(tree, direction) {
+.gflowui_basin_prominence_validation_tree <- function(tree,
+                                                       direction,
+                                                       branches) {
+  birth <- branches$birth.level
+  death <- branches$death.level
+  repairable <- is.numeric(branches$persistence) &&
+    is.numeric(birth) &&
+    is.numeric(death) &&
+    length(birth) == nrow(branches) &&
+    length(death) == nrow(branches) &&
+    !anyNA(birth) &&
+    !anyNA(death) &&
+    all(is.finite(birth)) &&
+    all(is.finite(death))
+  if (!repairable) {
+    return(tree)
+  }
+
+  expected <- birth - death
+  if (any(!is.finite(expected)) || any(expected < 0)) {
+    return(tree)
+  }
+
+  validation.tree <- .gflowui_basin_copy(tree)
+  rows <- which(validation.tree$basin.table$type == direction)
+  invalid.rows <- !is.finite(branches$persistence) |
+    branches$persistence < 0
+  persistence <- validation.tree$basin.table$persistence
+  persistence[rows[invalid.rows]] <- expected[invalid.rows]
+  validation.tree$basin.table$persistence <- persistence
+  validation.tree
+}
+
+.gflowui_basin_validate_tree <- function(tree,
+                                         direction,
+                                         branches = NULL,
+                                         allow.invalid.prominence = FALSE) {
   if (!inherits(tree, "basin.merge.tree") ||
       !identical(direction, "max") ||
       !direction %in% c(tree$direction, if (tree$direction == "both") {
@@ -110,11 +146,13 @@
       "gflowui_basin_bundle_error"
     )
   }
-  branches <- tree$basin.table[
-    tree$basin.table$type == direction,
-    ,
-    drop = FALSE
-  ]
+  if (is.null(branches)) {
+    branches <- tree$basin.table[
+      tree$basin.table$type == direction,
+      ,
+      drop = FALSE
+    ]
+  }
   if (!nrow(branches)) {
     .gflowui_basin_stop(
       "The canonical maximum merge tree has no branches.",
@@ -122,10 +160,19 @@
     )
   }
   branches$component <- .gflowui_basin_tree_components(tree, branches)
+  validation.tree <- if (allow.invalid.prominence) {
+    .gflowui_basin_prominence_validation_tree(
+      tree,
+      direction,
+      branches
+    )
+  } else {
+    tree
+  }
   for (component in sort(unique(branches$component))) {
     tryCatch(
       gflow::get.basin.merge.tree.layout(
-        tree,
+        validation.tree,
         direction = direction,
         component = component
       ),
@@ -143,9 +190,33 @@
   branches
 }
 
+.gflowui_basin_plain_character_vector <- function(value, size) {
+  is.character(value) &&
+    !is.object(value) &&
+    is.null(dim(value)) &&
+    length(value) == size &&
+    !anyNA(value)
+}
+
+.gflowui_basin_whole_number_vector <- function(value,
+                                                size,
+                                                lower = 1,
+                                                upper = .Machine$integer.max) {
+  (is.integer(value) || is.double(value)) &&
+    !is.object(value) &&
+    is.null(dim(value)) &&
+    length(value) == size &&
+    !anyNA(value) &&
+    all(is.finite(value)) &&
+    all(value == floor(value)) &&
+    all(value >= lower) &&
+    all(value <= upper)
+}
+
 .gflowui_basin_mapping_table <- function(trajectory.table,
                                          canonical,
-                                         direction) {
+                                         direction,
+                                         vertex.count) {
   required <- c(
     "trajectory.basin.id",
     "direction",
@@ -155,45 +226,79 @@
     "primary.support.size"
   )
   invalid <- !is.data.frame(trajectory.table) ||
+    !is.data.frame(canonical) ||
     !all(required %in% names(trajectory.table)) ||
-    nrow(trajectory.table) != nrow(canonical)
+    !all(c(
+      "basin.id",
+      "type",
+      "component",
+      "extremum.vertex"
+    ) %in% names(canonical)) ||
+    nrow(trajectory.table) != nrow(canonical) ||
+    !.gflowui_basin_scalar_string(direction) ||
+    !.gflowui_basin_whole_number_vector(vertex.count, 1L)
   if (invalid) {
     return(list(status = "mapping_invalid", table = NULL))
   }
 
   trajectory <- trajectory.table[, required, drop = FALSE]
-  trajectory$trajectory.basin.id <-
-    as.character(trajectory$trajectory.basin.id)
-  trajectory$direction <- as.character(trajectory$direction)
-  canonical.key <- paste(
-    canonical$type,
-    canonical$extremum.vertex,
-    sep = "\r"
-  )
-  trajectory.key <- paste(
-    trajectory$direction,
-    trajectory$extremum.vertex,
-    sep = "\r"
-  )
-  match.index <- match(canonical.key, trajectory.key)
-  invalid <- anyNA(match.index) ||
-    anyDuplicated(canonical.key) ||
-    anyDuplicated(trajectory.key) ||
-    anyNA(trajectory$trajectory.basin.id) ||
-    any(!nzchar(trajectory$trajectory.basin.id)) ||
-    anyDuplicated(trajectory$trajectory.basin.id) ||
-    any(trajectory$direction != direction) ||
-    anyNA(trajectory$component) ||
-    any(trajectory$component != floor(trajectory$component)) ||
-    any(trajectory$component < 1L) ||
-    !setequal(canonical.key, trajectory.key)
+  size <- nrow(canonical)
+  invalid <- !.gflowui_basin_plain_character_vector(
+    trajectory$trajectory.basin.id,
+    size
+  ) ||
+    !.gflowui_basin_plain_character_vector(
+      trajectory$direction,
+      size
+    ) ||
+    !.gflowui_basin_whole_number_vector(
+      trajectory$component,
+      size
+    ) ||
+    !.gflowui_basin_whole_number_vector(
+      trajectory$extremum.vertex,
+      size,
+      upper = vertex.count
+    ) ||
+    !.gflowui_basin_plain_character_vector(
+      canonical$basin.id,
+      size
+    ) ||
+    !.gflowui_basin_plain_character_vector(canonical$type, size) ||
+    !.gflowui_basin_whole_number_vector(canonical$component, size) ||
+    !.gflowui_basin_whole_number_vector(
+      canonical$extremum.vertex,
+      size,
+      upper = vertex.count
+    )
   if (invalid) {
     return(list(status = "mapping_invalid", table = NULL))
   }
 
+  invalid <- any(!nzchar(canonical$basin.id)) ||
+    anyDuplicated(canonical$basin.id) ||
+    any(!nzchar(trajectory$trajectory.basin.id)) ||
+    anyDuplicated(trajectory$trajectory.basin.id) ||
+    any(trajectory$direction != direction) ||
+    any(canonical$type != direction) ||
+    anyDuplicated(canonical$extremum.vertex) ||
+    anyDuplicated(trajectory$extremum.vertex) ||
+    !setequal(
+      canonical$extremum.vertex,
+      trajectory$extremum.vertex
+    )
+  if (invalid) {
+    return(list(status = "mapping_invalid", table = NULL))
+  }
+
+  match.index <- match(
+    canonical$extremum.vertex,
+    trajectory$extremum.vertex
+  )
   mapped <- trajectory[match.index, , drop = FALSE]
   row.names(mapped) <- NULL
-  invalid <- any(mapped$component != canonical$component) ||
+  invalid <- anyNA(match.index) ||
+    any(mapped$component != canonical$component) ||
     any(mapped$extremum.vertex != canonical$extremum.vertex)
   if (invalid) {
     return(list(status = "mapping_invalid", table = NULL))
@@ -419,9 +524,12 @@ gflowui_basin_new_scientific_bundle <- function(
     any(raw.branches$persistence < 0)
   canonical <- if (prominence.invalid && is.data.frame(raw.branches) &&
       nrow(raw.branches)) {
-    raw.branches$component <-
-      .gflowui_basin_tree_components(tree, raw.branches)
-    raw.branches
+    .gflowui_basin_validate_tree(
+      tree,
+      direction,
+      branches = raw.branches,
+      allow.invalid.prominence = TRUE
+    )
   } else {
     .gflowui_basin_validate_tree(tree, direction)
   }
@@ -434,7 +542,8 @@ gflowui_basin_new_scientific_bundle <- function(
   mapping <- .gflowui_basin_mapping_table(
     trajectory.table,
     canonical,
-    direction
+    direction,
+    vertex.count = tree$n.vertices
   )
   ranking <- .gflowui_basin_ranking_status(
     canonical,
