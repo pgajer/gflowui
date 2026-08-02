@@ -321,6 +321,97 @@ test_that("bundle validates source alignment and complete canonical mapping [1,2
   }
 })
 
+test_that("malformed mapping keys return mapping_invalid without coercion", {
+  case <- phase2_graph_case()
+  mutations <- list(
+    character_extremum = function(table) {
+      table$extremum.vertex <- as.character(table$extremum.vertex)
+      table
+    },
+    factor_extremum = function(table) {
+      table$extremum.vertex <- factor(table$extremum.vertex)
+      table
+    },
+    list_extremum = function(table) {
+      table$extremum.vertex <- as.list(table$extremum.vertex)
+      table
+    },
+    fractional_extremum = function(table) {
+      table$extremum.vertex[[1L]] <- 1.5
+      table
+    },
+    infinite_extremum = function(table) {
+      table$extremum.vertex[[1L]] <- Inf
+      table
+    },
+    out_of_range_extremum = function(table) {
+      table$extremum.vertex[[1L]] <- 0
+      table
+    },
+    character_component = function(table) {
+      table$component <- as.character(table$component)
+      table
+    },
+    factor_component = function(table) {
+      table$component <- factor(table$component)
+      table
+    },
+    list_component = function(table) {
+      table$component <- as.list(table$component)
+      table
+    },
+    matrix_component = function(table) {
+      table$component <- matrix(table$component, ncol = 1L)
+      table
+    },
+    fractional_component = function(table) {
+      table$component[[1L]] <- 1.5
+      table
+    },
+    nonfinite_component = function(table) {
+      table$component[[1L]] <- NaN
+      table
+    },
+    factor_direction = function(table) {
+      table$direction <- factor(table$direction)
+      table
+    },
+    list_direction = function(table) {
+      table$direction <- as.list(table$direction)
+      table
+    },
+    numeric_trajectory_id = function(table) {
+      table$trajectory.basin.id <- seq_len(nrow(table))
+      table
+    },
+    factor_trajectory_id = function(table) {
+      table$trajectory.basin.id <- factor(
+        table$trajectory.basin.id
+      )
+      table
+    }
+  )
+
+  for (name in names(mutations)) {
+    changed <- case
+    changed$trajectory <- mutations[[name]](changed$trajectory)
+    bundle <- expect_silent(
+      phase2_bundle(changed, paste0("malformed-", name))
+    )
+    snapshot <- gflowui:::gflowui_basin_bundle_snapshot(bundle)
+    expect_identical(
+      snapshot$validation$mapping,
+      "mapping_invalid",
+      info = name
+    )
+    expect_identical(
+      phase2_attempt(bundle)$reason,
+      "mapping_invalid",
+      info = name
+    )
+  }
+})
+
 test_that("whole-direction rankings gate component selection [3,4]", {
   case <- phase2_graph_case(disconnected = TRUE)
   valid <- phase2_bundle(case)
@@ -387,6 +478,24 @@ test_that("whole-direction rankings gate component selection [3,4]", {
       prominence.bundle
     )$validation$canonical_prominence,
     "prominence_invalid"
+  )
+})
+
+test_that("invalid prominence does not mask parent-event corruption", {
+  case <- phase2_graph_case()
+  branches <- case$tree$basin.table
+  row <- which(
+    branches$type == "max" &
+      !is.na(branches$parent.basin.id)
+  )[[1L]]
+  case$tree$basin.table$persistence[[row]] <- NA_real_
+  case$tree$basin.table$parent.basin.id[[row]] <-
+    case$tree$basin.table$basin.id[[row]]
+
+  expect_error(
+    phase2_bundle(case, "bad-prominence-and-parent-event"),
+    "event survivor disagrees",
+    class = "gflowui_basin_bundle_error"
   )
 })
 
