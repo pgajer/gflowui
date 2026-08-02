@@ -679,6 +679,24 @@ test_that("basin plot helpers preserve all, listed, and selected scopes", {
   grDevices::dev.off()
   expect_gt(file.info(plot.file)$size, 0)
   unlink(plot.file)
+
+  narrow.plot.file <- tempfile(fileext = ".png")
+  narrow.data <- log.table
+  narrow.data$membership <- rep(
+    c("core", "hidden", "sentinel_only"),
+    length.out = nrow(narrow.data)
+  )
+  narrow.data$selected <- FALSE
+  grDevices::png(narrow.plot.file, width = 360, height = 320)
+  expect_no_error(gflowui:::gflowui_draw_basin_plot(
+    data = narrow.data,
+    spec = log.spec,
+    point_color = "proposal",
+    y_scale = "log10"
+  ))
+  grDevices::dev.off()
+  expect_gt(file.info(narrow.plot.file)$size, 0)
+  unlink(narrow.plot.file)
 })
 
 test_that("scatter clicks resolve the nearest complete canonical plot row", {

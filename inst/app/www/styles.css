@@ -1569,6 +1569,7 @@ body.gf-general-inspector-resizing {
   border: 1px solid rgba(100, 116, 139, 0.24);
   border-radius: 0.75rem;
   background: #fff;
+  overflow-x: auto;
 }
 
 .gf-basin-plot-card-stale {
@@ -1607,7 +1608,7 @@ body.gf-general-inspector-resizing {
 
 .gf-basin-plot-frame {
   width: 100%;
-  min-width: 0;
+  min-width: 360px;
   min-height: 320px;
   aspect-ratio: 4 / 3;
 }
