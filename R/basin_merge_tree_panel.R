@@ -516,9 +516,9 @@ gflowui_basin_draw_merge_tree <- function(
     show.barcode.parent.labels = has.visible.labels,
     branch.col = colors,
     main.tree = if (complete) {
-      "Complete crossing-free elder-rule merge tree"
+      "Complete crossing-free density-value elder-rule merge tree"
     } else {
-      "Filtered crossing-free elder-rule merge tree"
+      "Filtered crossing-free density-value elder-rule merge tree"
     },
     main.barcode = if (complete) {
       "Complete extremum-to-saddle persistence barcode"
@@ -924,6 +924,22 @@ gflowui_basin_complete_interactive_data <- function(
   )
 }
 
+.gflowui_basin_panel_rule_disclosure <- function() {
+  shiny::p(
+    class = "gf-basin-tree-disclosure gf-basin-tree-rule-disclosure",
+    paste(
+      "Canonical continuation follows the density-value elder rule:",
+      "the branch with the greater birth density survives each merge.",
+      "Trajectory-flow mass and support are annotations and filtering",
+      "quantities; they do not change tree parentage."
+    )
+  )
+}
+
+.gflowui_basin_complete_viewer_title <- function() {
+  "Complete Interactive Density-Value Elder-Rule Basin Merge Tree"
+}
+
 .gflowui_basin_panel_selection_ui <- function(model) {
   ids <- model$selected$ids
   if (!length(ids)) {
@@ -1189,6 +1205,7 @@ gflowui_basin_merge_tree_panel_ui <- function(model) {
           if (nzchar(detail)) paste0(": ", detail) else ""
         )
       ),
+      .gflowui_basin_panel_rule_disclosure(),
       if (has.state) {
         .gflowui_basin_panel_controls_ui(model)
       } else {
@@ -1310,6 +1327,7 @@ gflowui_basin_merge_tree_panel_ui <- function(model) {
     } else {
       NULL
     },
+    .gflowui_basin_panel_rule_disclosure(),
     shiny::div(
       class = "gf-basin-tree-summary",
       .gflowui_basin_panel_summary_item(
