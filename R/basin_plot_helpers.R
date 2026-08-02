@@ -288,6 +288,78 @@ gflowui_basin_plot_label_rows <- function(data, label_top_k = 0L) {
   )
 }
 
+.gflowui_basin_scaled_distance <- function(x, y, target.x, target.y) {
+  x.range <- range(x, finite = TRUE)
+  y.range <- range(y, finite = TRUE)
+  x.span <- diff(x.range)
+  y.span <- diff(y.range)
+  if (!is.finite(x.span) || x.span <= 0) x.span <- 1
+  if (!is.finite(y.span) || y.span <= 0) y.span <- 1
+  sqrt(
+    ((x - target.x) / x.span)^2 +
+      ((y - target.y) / y.span)^2
+  )
+}
+
+gflowui_basin_plot_nearest_key <- function(
+    data,
+    spec,
+    click.x,
+    click.y,
+    x_scale = "raw",
+    y_scale = "raw",
+    threshold = 0.045) {
+  if (!is.data.frame(data) ||
+      !identical(as.character(spec$kind), "scatter") ||
+      length(spec$features) != 2L ||
+      !is.numeric(click.x) ||
+      !is.numeric(click.y) ||
+      length(click.x) != 1L ||
+      length(click.y) != 1L ||
+      !is.finite(click.x) ||
+      !is.finite(click.y) ||
+      !is.numeric(threshold) ||
+      length(threshold) != 1L ||
+      !is.finite(threshold) ||
+      threshold <= 0) {
+    return(character())
+  }
+  scaled <- gflowui_basin_plot_scaled_data(
+    data,
+    spec,
+    x_scale = x_scale,
+    y_scale = y_scale
+  )
+  features <- as.character(spec$features)
+  if (!nrow(scaled) ||
+      !"key" %in% names(scaled) ||
+      any(!features %in% names(scaled))) {
+    return(character())
+  }
+  distance <- .gflowui_basin_scaled_distance(
+    suppressWarnings(as.numeric(scaled[[features[[1L]]]])),
+    suppressWarnings(as.numeric(scaled[[features[[2L]]]])),
+    as.numeric(click.x),
+    as.numeric(click.y)
+  )
+  finite.distance <- which(is.finite(distance))
+  if (!length(finite.distance)) {
+    return(character())
+  }
+  minimum <- min(distance[finite.distance])
+  candidates <- finite.distance[distance[finite.distance] == minimum]
+  nearest <- candidates[order(
+    as.character(scaled$key[candidates]),
+    method = "radix"
+  )][[1L]]
+  if (!length(nearest) ||
+      !is.finite(distance[[nearest]]) ||
+      distance[[nearest]] > threshold) {
+    return(character())
+  }
+  as.character(scaled$key[[nearest]])
+}
+
 gflowui_basin_new_plot_specs <- function(
     features,
     mode = c("histograms", "pairs", "matrix"),

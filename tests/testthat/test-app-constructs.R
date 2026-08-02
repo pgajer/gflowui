@@ -712,6 +712,7 @@ test_that("basin server invalidates changed fields and graph identities", {
     show_occupation_density_selection(notify_errors = FALSE)
     session$flushReact()
     expect_false(isTRUE(subject_state$show_overlay))
+    graph_layout_state$color_by <- "occupation_density_active"
     session$setInputs(
       basin_source = "occupation_density_active",
       basin_compute = 1L
@@ -722,6 +723,10 @@ test_that("basin server invalidates changed fields and graph identities", {
     first <- basin_result()
     expect_true(is.list(first))
     expect_true(isTRUE(basin_inspector_open()))
+    expect_identical(
+      graph_layout_state$color_by,
+      "occupation_density_active"
+    )
     expect_equal(nrow(first$all_table), nrow(first$table))
     expect_true(all(is.finite(first$all_table$prominence)))
     expect_length(basin_selected_keys(), 0L)
@@ -842,6 +847,7 @@ test_that("basin server invalidates changed fields and graph identities", {
       'data-render-outcome="renderable"',
       fixed = TRUE
     )
+    expect_match(tree.shell, "Current proposal attempt", fixed = TRUE)
     for (control.id in c(
       "basin_tree_component",
       "basin_tree_filter_mode",
@@ -857,7 +863,11 @@ test_that("basin server invalidates changed fields and graph identities", {
       "basin_tree_label_mode",
       "basin_tree_show_diagnostic",
       "basin_tree_open_complete",
-      "basin_tree_show_all"
+      "basin_tree_show_all",
+      "basin_tree_recipe_save",
+      "basin_tree_recipe_apply",
+      "basin_tree_recipe_download",
+      "basin_tree_recipe_upload"
     )) {
       expect_match(
         tree.shell,
@@ -887,6 +897,286 @@ test_that("basin server invalidates changed fields and graph identities", {
       function(data) all(data$type == "max"),
       logical(1)
     )))
+    linked.attempt <- basin_analysis_state()$active.attempt$attempt.id
+    branch <- panel.model$layout$coordinates$branches[1L, , drop = FALSE]
+    session$setInputs(basin_merge_tree_click = list(
+      x = as.numeric(branch$x),
+      y = mean(c(
+        as.numeric(branch$birth.level),
+        as.numeric(branch$death.level)
+      ))
+    ))
+    session$flushReact()
+    expect_identical(
+      basin_analysis_state()$selected.ids,
+      as.character(branch$basin.id)
+    )
+    expect_identical(
+      basin_analysis_state()$active.attempt$attempt.id,
+      linked.attempt
+    )
+    expect_identical(
+      graph_layout_state$color_by,
+      "occupation_density_active"
+    )
+
+    htmltools::renderTags(output$basin_plot_workspace_ui)
+    plot.row <- default.plot.data[[1L]][2L, , drop = FALSE]
+    plot.input <- list(list(
+      x = log10(as.numeric(plot.row$extremum_value_rank)),
+      y = log10(as.numeric(plot.row$support_rank))
+    ))
+    names(plot.input) <- paste0(
+      "basin_plot_click_",
+      default.plots[[1L]]$id
+    )
+    do.call(session$setInputs, plot.input)
+    session$flushReact()
+    plot.id <- gflowui:::gflowui_basin_selected_canonical_ids(
+      basin_result(),
+      basin_analysis_state(),
+      as.character(plot.row$key)
+    )
+    expect_identical(basin_analysis_state()$selected.ids, plot.id)
+    expect_identical(
+      basin_analysis_state()$active.attempt$attempt.id,
+      linked.attempt
+    )
+    linked.table <- gflowui:::gflowui_basin_proposal_context_table(
+      basin_result(),
+      basin_analysis_state()
+    )
+    linked.row <- linked.table[
+      linked.table$type == "max" &
+        linked.table$proposal.component,
+      ,
+      drop = FALSE
+    ][1L, , drop = FALSE]
+    expect_identical(
+      gflowui:::gflowui_basin_vertex_canonical_id(
+        basin_result(),
+        basin_analysis_state(),
+        linked.row$extremum.vertex
+      ),
+      as.character(linked.row$canonical.basin.id)
+    )
+    complete.click <- list(list(
+      customdata = as.character(linked.row$canonical.basin.id)
+    ))
+    names(complete.click) <- "plotly_click-basin_complete_tree_source"
+    do.call(session$setInputs, complete.click)
+    session$flushReact()
+    expect_identical(
+      basin_analysis_state()$selected.ids,
+      as.character(linked.row$canonical.basin.id)
+    )
+    if (requireNamespace("plotly", quietly = TRUE)) {
+      expect_identical(reference_renderer_state()$effective, "plotly")
+      graph.click <- list(list(
+        key = as.integer(linked.row$extremum.vertex)
+      ))
+      names(graph.click) <- "plotly_click-reference_plot_source"
+      do.call(session$setInputs, graph.click)
+      session$flushReact()
+      expect_length(basin_analysis_state()$selected.ids, 0L)
+      expect_identical(
+        graph_layout_state$color_by,
+        "occupation_density_active"
+      )
+    }
+    basin_selected_keys(character())
+    session$flushReact()
+    graph_layout_state$color_by <- "occupation_density_active"
+    session$setInputs(basin_tree_recipe_save = 1L)
+    session$flushReact()
+    saved.recipe <- basin_analysis_saved_recipe()
+    expect_true(is.list(saved.recipe))
+    expect_identical(saved.recipe$recipe.version, 1L)
+    expect_false(any(c(
+      "bundle.id",
+      "component",
+      "pinned.ids",
+      "selected.ids",
+      "proposal",
+      "layout"
+    ) %in% names(saved.recipe)))
+
+    race <- new.env(parent = emptyenv())
+    race$jobs <- list()
+    race$callbacks <- list()
+    options(gflowui.basin.analysis.launcher = function(job, callback) {
+      index <- length(race$jobs) + 1L
+      race$jobs[[index]] <- job
+      race$callbacks[[index]] <- callback
+      invisible(job$job.id)
+    })
+    race.before <- basin_analysis_state()
+    race.budget <- race.before$controls$final.render.budget
+    session$setInputs(basin_tree_final_budget = race.budget + 1L)
+    session$flushReact()
+    first.pending <- basin_analysis_state()
+    expect_identical(first.pending$active.attempt$outcome, "pending")
+    expect_identical(first.pending$display.source, "retained_last_valid")
+    expect_identical(
+      first.pending$active.attempt$attempt.id,
+      race.before$active.attempt$attempt.id + 1L
+    )
+    expect_length(race$jobs, 1L)
+    retained.id <- first.pending$retained.last.valid.proposal$attempt.id
+    retained.text <- sprintf("Retained proposal attempt %d", retained.id)
+    for (panel.html in list(
+        htmltools::renderTags(output$basin_merge_tree_ui)$html,
+        htmltools::renderTags(output$basin_plot_workspace_ui)$html,
+        htmltools::renderTags(output$basin_inspector_ui)$html
+    )) {
+      expect_match(
+        panel.html,
+        'data-display-source="retained_last_valid"',
+        fixed = TRUE
+      )
+      expect_match(panel.html, retained.text, fixed = TRUE)
+    }
+
+    session$setInputs(basin_tree_final_budget = race.budget + 2L)
+    session$flushReact()
+    second.pending <- basin_analysis_state()
+    expect_identical(second.pending$active.attempt$outcome, "pending")
+    expect_identical(
+      second.pending$active.attempt$attempt.id,
+      first.pending$active.attempt$attempt.id + 1L
+    )
+    expect_length(race$jobs, 2L)
+    race$callbacks[[1L]](
+      gflowui:::gflowui_basin_execute_async_job(race$jobs[[1L]])
+    )
+    session$flushReact()
+    expect_identical(basin_analysis_state(), second.pending)
+    expect_identical(
+      basin_analysis_telemetry()[[
+        length(basin_analysis_telemetry())
+      ]]$disposition,
+      "stale_attempt"
+    )
+    race$callbacks[[2L]](
+      gflowui:::gflowui_basin_execute_async_job(race$jobs[[2L]])
+    )
+    session$flushReact()
+    expect_identical(
+      basin_analysis_state()$active.attempt$outcome,
+      "proposal_created"
+    )
+    expect_identical(basin_analysis_state()$display.source, "current")
+
+    session$setInputs(basin_tree_final_budget = race.budget + 3L)
+    session$flushReact()
+    expect_length(race$jobs, 3L)
+    failed <- gflowui:::gflowui_basin_async_completion(
+      race$jobs[[3L]],
+      gflowui:::.gflowui_basin_async_failure_result(
+        race$jobs[[3L]],
+        "phase7_test_failure",
+        "Phase 7 matching failure evidence."
+      )
+    )
+    race$callbacks[[3L]](failed)
+    session$flushReact()
+    failed.state <- basin_analysis_state()
+    expect_identical(
+      failed.state$active.attempt$outcome,
+      "construction_failed"
+    )
+    expect_identical(
+      failed.state$display.source,
+      "retained_last_valid"
+    )
+    for (panel.html in list(
+        htmltools::renderTags(output$basin_merge_tree_ui)$html,
+        htmltools::renderTags(output$basin_plot_workspace_ui)$html,
+        htmltools::renderTags(output$basin_inspector_ui)$html
+    )) {
+      expect_match(
+        panel.html,
+        'data-display-source="retained_last_valid"',
+        fixed = TRUE
+      )
+    }
+    session$setInputs(basin_tree_final_budget = race.budget + 4L)
+    session$flushReact()
+    expect_length(race$jobs, 4L)
+    race$callbacks[[4L]](
+      gflowui:::gflowui_basin_execute_async_job(race$jobs[[4L]])
+    )
+    session$flushReact()
+    expect_identical(
+      basin_analysis_state()$active.attempt$outcome,
+      "proposal_created"
+    )
+    expect_identical(basin_analysis_state()$display.source, "current")
+    options(gflowui.basin.analysis.launcher = function(job, callback) {
+      callback(gflowui:::gflowui_basin_execute_async_job(job))
+      invisible(job$job.id)
+    })
+
+    basin_analysis_saved_recipe(NULL)
+    session$setInputs(basin_tree_recipe_apply = 1L)
+    session$flushReact()
+    malformed.request <- basin_analysis_recipe_request_id()
+    malformed.recipe <- saved.recipe
+    malformed.recipe$recipe.version <- "1"
+    malformed.before <- basin_analysis_state()
+    session$setInputs(basin_recipe_restore_event = list(
+      status = "available",
+      recipe = malformed.recipe,
+      request_id = malformed.request,
+      nonce = 1
+    ))
+    session$flushReact()
+    malformed.state <- basin_analysis_state()
+    expect_identical(
+      malformed.state$active.attempt$attempt.id,
+      malformed.before$active.attempt$attempt.id + 1L
+    )
+    expect_identical(malformed.state$active.attempt$outcome, "blocked")
+    expect_identical(
+      malformed.state$display.source,
+      "retained_last_valid"
+    )
+    expect_match(
+      basin_analysis_recipe_status(),
+      "incompatible with the active analysis",
+      fixed = TRUE
+    )
+    expect_identical(
+      graph_layout_state$color_by,
+      "occupation_density_active"
+    )
+    basin_analysis_saved_recipe(saved.recipe)
+    basin_selected_keys(as.character(linked.row$key))
+    session$flushReact()
+    recipe.attempt <- basin_analysis_state()$active.attempt$attempt.id
+    session$setInputs(basin_tree_recipe_apply = 2L)
+    session$flushReact()
+    finish_basin_analysis()
+    expect_identical(
+      basin_analysis_state()$active.attempt$attempt.id,
+      recipe.attempt + 1L
+    )
+    expect_identical(
+      basin_analysis_state()$active.attempt$outcome,
+      "proposal_created"
+    )
+    expect_identical(
+      basin_analysis_state()$controls$filter.mode,
+      saved.recipe$filter.mode
+    )
+    expect_length(basin_analysis_state()$selected.ids, 0L)
+    expect_length(basin_analysis_state()$pinned.ids, 0L)
+    expect_length(basin_selected_keys(), 0L)
+    expect_true(all(basin_result()$values == "Other basins"))
+    expect_identical(
+      graph_layout_state$color_by,
+      "occupation_density_active"
+    )
     expect_identical(panel.model$proposal$core$outcome, "strong_gap")
     expect_identical(panel.model$counts$core, 17L)
     expect_identical(panel.model$counts$final, 17L)
@@ -901,7 +1191,8 @@ test_that("basin server invalidates changed fields and graph identities", {
       tolerance = 1e-14
     )
 
-    presentation.attempt <- analysis$active.attempt$attempt.id
+    presentation.attempt <-
+      basin_analysis_state()$active.attempt$attempt.id
     session$setInputs(
       basin_tree_label_mode = "all",
       basin_tree_show_diagnostic = FALSE
@@ -1428,7 +1719,10 @@ test_that("basin server invalidates changed fields and graph identities", {
     session$flushReact()
     expect_true(selected.key %in% basin_selected_keys())
     expect_true(basin_result()$table$selected[[1L]])
-    expect_identical(graph_layout_state$color_by, "basin_active")
+    expect_identical(
+      graph_layout_state$color_by,
+      "occupation_density_active"
+    )
     show_occupation_density_selection(notify_errors = FALSE)
     session$flushReact()
     expect_identical(
@@ -1447,7 +1741,10 @@ test_that("basin server invalidates changed fields and graph identities", {
     session$flushReact()
     expect_false(selected.key %in% basin_selected_keys())
     expect_false(basin_result()$table$selected[[1L]])
-    expect_identical(graph_layout_state$color_by, "basin_active")
+    expect_identical(
+      graph_layout_state$color_by,
+      "occupation_density_active"
+    )
     expect_true(all(basin_result()$values == "Other basins"))
 
     show_occupation_density_selection(notify_errors = FALSE)
@@ -1460,7 +1757,10 @@ test_that("basin server invalidates changed fields and graph identities", {
       nonce = 3
     ))
     session$flushReact()
-    expect_identical(graph_layout_state$color_by, "basin_active")
+    expect_identical(
+      graph_layout_state$color_by,
+      "occupation_density_active"
+    )
     expect_true(selected.key %in% basin_selected_keys())
     expect_true(any(basin_result()$values != "Other basins"))
 
@@ -1475,7 +1775,10 @@ test_that("basin server invalidates changed fields and graph identities", {
     session$flushReact()
     session$setInputs(basin_clear_all = 1L)
     session$flushReact()
-    expect_identical(graph_layout_state$color_by, "basin_active")
+    expect_identical(
+      graph_layout_state$color_by,
+      "occupation_density_active"
+    )
     expect_length(basin_selected_keys(), 0L)
     expect_true(all(basin_result()$values == "Other basins"))
 
@@ -1483,7 +1786,10 @@ test_that("basin server invalidates changed fields and graph identities", {
     session$flushReact()
     session$setInputs(basin_reset_colors = 1L)
     session$flushReact()
-    expect_identical(graph_layout_state$color_by, "basin_active")
+    expect_identical(
+      graph_layout_state$color_by,
+      "occupation_density_active"
+    )
 
     if (requireNamespace("plotly", quietly = TRUE)) {
       trace.names <- function() {
@@ -1583,6 +1889,8 @@ test_that("basin server invalidates changed fields and graph identities", {
     expect_null(basin_analysis_state())
     expect_false(isTRUE(basin_inspector_open()))
     expect_length(basin_plot_specs(), 0L)
+    expect_length(ls(basin_plot_remove_observers, all.names = TRUE), 0L)
+    expect_length(ls(basin_plot_click_observers, all.names = TRUE), 0L)
     expect_null(output$basin_merge_tree_ui)
     expect_match(basin_status(), "changed|stale", ignore.case = TRUE)
 
@@ -1617,6 +1925,48 @@ test_that("basin server invalidates changed fields and graph identities", {
       basin_plot_specs()
     )
     expect_length(second.defaults, 2L)
+    htmltools::renderTags(output$basin_plot_workspace_ui)
+    expect_length(
+      ls(basin_plot_click_observers, all.names = TRUE),
+      length(second.defaults)
+    )
+    second.plot.data <- gflowui:::gflowui_basin_plot_data(
+      second,
+      scope = second.defaults[[1L]]$scope,
+      type = second.defaults[[1L]]$type,
+      analysis_state = second.analysis
+    )
+    second.plot.row <- second.plot.data[1L, , drop = FALSE]
+    second.click <- list(list(
+      x = log10(as.numeric(second.plot.row$extremum_value_rank)),
+      y = log10(as.numeric(second.plot.row$support_rank))
+    ))
+    names(second.click) <- paste0(
+      "basin_plot_click_",
+      second.defaults[[1L]]$id
+    )
+    do.call(session$setInputs, second.click)
+    session$flushReact()
+    expect_length(basin_analysis_state()$selected.ids, 1L)
+    second.recipe.attempt <- basin_analysis_state()$active.attempt$attempt.id
+    session$setInputs(basin_tree_recipe_apply = 3L)
+    session$flushReact()
+    finish_basin_analysis()
+    expect_identical(
+      basin_analysis_state()$active.attempt$attempt.id,
+      second.recipe.attempt + 1L
+    )
+    expect_identical(
+      basin_analysis_state()$active.attempt$outcome,
+      "proposal_created"
+    )
+    expect_identical(
+      basin_analysis_state()$controls$filter.mode,
+      saved.recipe$filter.mode
+    )
+    expect_length(basin_analysis_state()$selected.ids, 0L)
+    expect_length(basin_analysis_state()$pinned.ids, 0L)
+    expect_length(basin_selected_keys(), 0L)
 
     request <- basin_construction_request(basin_source_state())
     changed.graph <- request$graph_identity

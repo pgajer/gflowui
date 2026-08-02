@@ -995,6 +995,72 @@ test_that("retained display separates active controls from displayed status", {
   expect_identical(model$controls$coverage.target, 0)
 })
 
+test_that("tree clicks resolve canonical branches without proposal mutation", {
+  bundle <- phase5_panel_bundle("tree-click")
+  state <- phase5_panel_state(bundle)
+  model <- gflowui:::gflowui_basin_merge_tree_model(state)
+  branches <- model$layout$coordinates$branches
+  target <- branches[1L, , drop = FALSE]
+  attempt.before <- state$active.attempt$attempt.id
+  id <- gflowui:::gflowui_basin_tree_nearest_id(
+    model,
+    click.x = as.numeric(target$x),
+    click.y = mean(c(
+      as.numeric(target$birth.level),
+      as.numeric(target$death.level)
+    ))
+  )
+  expect_identical(id, as.character(target$basin.id))
+  selected <- gflowui:::gflowui_basin_reduce_state(
+    state,
+    gflowui:::gflowui_basin_state_event(
+      "selection_change",
+      ids = id
+    )
+  )
+  expect_identical(selected$selected.ids, id)
+  expect_identical(
+    selected$active.attempt$attempt.id,
+    attempt.before
+  )
+  expect_identical(
+    selected$current.proposal$final.ids,
+    state$current.proposal$final.ids
+  )
+  expect_length(gflowui:::gflowui_basin_tree_nearest_id(
+    model,
+    click.x = max(branches$x) + 100,
+    click.y = max(branches$birth.level) + 100
+  ), 0L)
+})
+
+test_that("linked panel status reports one current or retained proposal", {
+  bundle <- phase5_panel_bundle("linked-status")
+  state <- phase5_panel_state(bundle)
+  current <- gflowui:::gflowui_basin_linked_display_status(state)
+  expect_identical(current$display.source, "current")
+  expect_identical(
+    current$active.attempt.id,
+    current$displayed.attempt.id
+  )
+  expect_match(current$text, "Current proposal attempt", fixed = TRUE)
+
+  retained <- gflowui:::gflowui_basin_reduce_state(
+    state,
+    gflowui:::gflowui_basin_state_event(
+      "control_change",
+      name = "final.render.budget",
+      value = 0
+    )
+  )
+  expect_identical(retained$display.source, "retained_last_valid")
+  status <- gflowui:::gflowui_basin_linked_display_status(retained)
+  expect_identical(status$display.source, "retained_last_valid")
+  expect_gt(status$active.attempt.id, status$displayed.attempt.id)
+  expect_match(status$text, "Retained proposal attempt", fixed = TRUE)
+  expect_match(status$text, "active attempt", fixed = TRUE)
+})
+
 test_that("blocked states without retained proposals keep recovery controls", {
   bundle <- phase5_panel_bundle("blocked-recovery")
   state <- gflowui:::gflowui_basin_new_runtime_state(bundle)
@@ -1073,4 +1139,155 @@ test_that("Subject 15 panel reconciles rank-17 core and complete count", {
     tolerance = 1e-14
   )
   expect_identical(model$counts$final, 17L)
+})
+
+test_that("Phase 7 canonical adapters link plots, tree, table, and graph", {
+  bundle <- phase5_panel_bundle("phase7-linking")
+  state <- phase5_panel_state(bundle)
+  snapshot <- gflowui:::gflowui_basin_bundle_snapshot(bundle)
+  canonical <- snapshot$canonical[
+    snapshot$canonical$component == state$context$component,
+    ,
+    drop = FALSE
+  ]
+  table <- data.frame(
+    key = paste("max", canonical$trajectory.basin.id, sep = "|"),
+    type = "max",
+    basin.id = canonical$trajectory.basin.id,
+    extremum.vertex = canonical$extremum.vertex,
+    stringsAsFactors = FALSE
+  )
+  assignment <- data.frame(
+    vertex = canonical$extremum.vertex,
+    direction = "max",
+    assignment.status = "assigned",
+    basin.id = canonical$trajectory.basin.id,
+    stringsAsFactors = FALSE
+  )
+  result <- list(
+    all_table = table,
+    basin = list(assignment = assignment)
+  )
+  selected.id <- canonical$basin.id[[1L]]
+  selected.key <- table$key[[1L]]
+
+  expect_identical(
+    gflowui:::gflowui_basin_canonical_ids_to_keys(
+      result,
+      state,
+      selected.id
+    ),
+    selected.key
+  )
+  expect_identical(
+    gflowui:::gflowui_basin_selected_canonical_ids(
+      result,
+      state,
+      selected.key
+    ),
+    selected.id
+  )
+  expect_identical(
+    gflowui:::gflowui_basin_vertex_canonical_id(
+      result,
+      state,
+      canonical$extremum.vertex[[1L]]
+    ),
+    selected.id
+  )
+  expect_length(
+    gflowui:::gflowui_basin_vertex_canonical_id(
+      result,
+      state,
+      canonical$extremum.vertex[[1L]] + 0.5
+    ),
+    0L
+  )
+
+  model <- gflowui:::gflowui_basin_merge_tree_model(state)
+  branches <- model$layout$coordinates$branches
+  branch <- branches[
+    as.character(branches$basin.id) == selected.id,
+    ,
+    drop = FALSE
+  ]
+  expect_identical(
+    gflowui:::gflowui_basin_tree_nearest_id(
+      model,
+      click.x = branch$x[[1L]],
+      click.y = mean(c(
+        branch$birth.level[[1L]],
+        branch$death.level[[1L]]
+      ))
+    ),
+    selected.id
+  )
+
+  plot.data <- data.frame(
+    key = c("max|z", "max|a"),
+    x = c(1, 1),
+    y = c(2, 2),
+    stringsAsFactors = FALSE
+  )
+  spec <- list(kind = "scatter", features = c("x", "y"))
+  expect_identical(
+    gflowui:::gflowui_basin_plot_nearest_key(
+      plot.data,
+      spec,
+      click.x = 1,
+      click.y = 2
+    ),
+    "max|a"
+  )
+})
+
+test_that("Phase 7 status separates retained display from active attempt", {
+  state <- phase5_panel_state(phase5_panel_bundle("phase7-status"))
+  current <- gflowui:::gflowui_basin_linked_display_status(state)
+  expect_true(current$available)
+  expect_identical(current$display.source, "current")
+  expect_identical(
+    current$active.attempt.id,
+    current$displayed.attempt.id
+  )
+  expect_match(current$text, "Current proposal attempt")
+
+  retained <- gflowui:::gflowui_basin_reduce_state(
+    state,
+    gflowui:::gflowui_basin_state_event(
+      "control_change",
+      name = "coverage.target",
+      value = 0
+    )
+  )
+  status <- gflowui:::gflowui_basin_linked_display_status(retained)
+  expect_true(status$available)
+  expect_identical(status$display.source, "retained_last_valid")
+  expect_identical(status$active.outcome, "blocked")
+  expect_gt(status$active.attempt.id, status$displayed.attempt.id)
+  expect_match(status$text, "Retained proposal attempt")
+  expect_match(status$text, "active attempt")
+})
+
+test_that("Phase 7 recipe transport preserves strict field types", {
+  numeric.recipe <- list(
+    recipe.version = 1,
+    final.render.budget = 50,
+    sentinel.top.n = 2
+  )
+  normalized <- gflowui:::.gflowui_basin_recipe_from_transport(
+    numeric.recipe
+  )
+  expect_type(normalized$recipe.version, "integer")
+  expect_type(normalized$final.render.budget, "integer")
+  expect_type(normalized$sentinel.top.n, "integer")
+
+  adversarial <- numeric.recipe
+  adversarial$recipe.version <- "1"
+  adversarial$final.render.budget <- "50"
+  unchanged <- gflowui:::.gflowui_basin_recipe_from_transport(
+    adversarial
+  )
+  expect_identical(unchanged$recipe.version, "1")
+  expect_identical(unchanged$final.render.budget, "50")
 })

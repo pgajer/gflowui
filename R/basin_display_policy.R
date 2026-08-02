@@ -1295,6 +1295,30 @@ gflowui_basin_recipe <- function(controls, component.size) {
   values[.gflowui_basin_recipe_fields(controls$filter.mode)]
 }
 
+.gflowui_basin_recipe_from_transport <- function(recipe) {
+  if (!is.list(recipe)) {
+    return(recipe)
+  }
+  integer.fields <- c(
+    "recipe.version",
+    "final.render.budget",
+    "sentinel.top.n",
+    "core.branch.budget",
+    "top.k",
+    "important.label.n"
+  )
+  for (name in intersect(integer.fields, names(recipe))) {
+    value <- recipe[[name]]
+    if (is.numeric(value) &&
+        length(value) == 1L &&
+        is.finite(value) &&
+        value == floor(value)) {
+      recipe[[name]] <- as.integer(value)
+    }
+  }
+  recipe
+}
+
 .gflowui_basin_recipe_runtime <- function(recipe,
                                           bundle,
                                           context.generation = 1L) {

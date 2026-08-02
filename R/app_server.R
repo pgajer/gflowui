@@ -38,6 +38,7 @@ app_server <- function(input, output, session) {
   graph_solid_color_key <- "solid_color"
   graph_solid_color_default <- "#111827"
   reference_plotly_source <- "reference_plot_source"
+  basin_complete_tree_source <- "basin_complete_tree_source"
   reference_plot_camera_input_id <- "reference_plot_camera_state"
   reference_plot_camera_state <- shiny::reactiveVal(NULL)
   graph_selection_state <- shiny::reactiveValues(
@@ -81,6 +82,27 @@ app_server <- function(input, output, session) {
   basin_plot_next_id <- shiny::reactiveVal(0L)
   basin_default_plot_fingerprints <- shiny::reactiveVal(character())
   basin_plot_remove_observers <- new.env(parent = emptyenv())
+  basin_plot_click_observers <- new.env(parent = emptyenv())
+  reset_basin_plot_observers <- function() {
+    for (registry in list(
+        basin_plot_remove_observers,
+        basin_plot_click_observers
+    )) {
+      for (key in ls(registry, all.names = TRUE)) {
+        observer <- get(key, envir = registry, inherits = FALSE)
+        if (inherits(observer, "Observer")) {
+          try(observer$destroy(), silent = TRUE)
+        }
+        rm(list = key, envir = registry)
+      }
+    }
+    invisible(NULL)
+  }
+  basin_analysis_saved_recipe <- shiny::reactiveVal(NULL)
+  basin_analysis_recipe_request_id <- shiny::reactiveVal("")
+  basin_analysis_recipe_status <- shiny::reactiveVal(
+    "No Basin Analysis display recipe is saved in this session."
+  )
   basin_status <- shiny::reactiveVal(
     "Apply an occupation density or choose a conditional-expectation estimate."
   )
@@ -460,6 +482,7 @@ app_server <- function(input, output, session) {
     basin_selected_keys(character())
     basin_color_map(structure(character(), names = character()))
     basin_plot_specs(list())
+    reset_basin_plot_observers()
     basin_plot_next_id(0L)
     basin_default_plot_fingerprints(character())
     basin_status(
@@ -4612,7 +4635,7 @@ app_server <- function(input, output, session) {
     }
 
     reference_plotly_click_event <- shiny::reactive({
-      rr <- reference_renderer_state()
+      rr <- shiny::isolate(reference_renderer_state())
       if (!is.list(rr) || !identical(as.character(rr$effective %||% ""), "plotly")) {
         return(NULL)
       }
@@ -4634,6 +4657,7 @@ app_server <- function(input, output, session) {
         endpoint_vertex_state$source <- "plotly"
         endpoint_vertex_input_source_override("plotly")
         shiny::updateNumericInput(session, "endpoint_vertex_id", value = as.integer(vid))
+        apply_basin_linked_vertex_selection(vid)
       },
       ignoreInit = TRUE
     )
@@ -8668,6 +8692,7 @@ app_server <- function(input, output, session) {
     basin_complete_viewer_open(FALSE)
     basin_inspector_open(FALSE)
     basin_plot_specs(list())
+    reset_basin_plot_observers()
     basin_plot_next_id(0L)
     basin_default_plot_fingerprints(character())
     if (identical(
@@ -8750,6 +8775,103 @@ app_server <- function(input, output, session) {
       result$values_max
     }
     result
+  }
+
+  basin_linked_status_tag <- function(state, class = "") {
+    status <- gflowui_basin_linked_display_status(state)
+    shiny::div(
+      class = paste("gf-basin-linked-status", class),
+      role = "status",
+      `aria-live` = "polite",
+      `data-display-source` = status$display.source,
+      `data-active-outcome` = status$active.outcome,
+      `data-active-attempt-id` = status$active.attempt.id,
+      `data-displayed-attempt-id` = status$displayed.attempt.id,
+      status$text
+    )
+  }
+
+  apply_basin_linked_selection <- function(
+      canonical.ids,
+      toggle = FALSE,
+      activate.graph = FALSE) {
+    state <- shiny::isolate(basin_analysis_state())
+    result <- shiny::isolate(basin_result())
+    if (!is.list(state) || !is.list(result)) {
+      return(invisible(FALSE))
+    }
+    canonical.ids <- as.character(canonical.ids)
+    if (length(canonical.ids) != 1L ||
+        is.na(canonical.ids) ||
+        !nzchar(canonical.ids)) {
+      return(invisible(FALSE))
+    }
+    next.ids <- if (isTRUE(toggle) &&
+        canonical.ids %in% state$selected.ids) {
+      setdiff(state$selected.ids, canonical.ids)
+    } else if (isTRUE(toggle)) {
+      sort(unique(c(state$selected.ids, canonical.ids)), method = "radix")
+    } else {
+      canonical.ids
+    }
+    next.state <- gflowui_basin_reduce_state(
+      state,
+      gflowui_basin_state_event(
+        "selection_change",
+        ids = next.ids
+      )
+    )
+    if (identical(next.state$selected.ids, state$selected.ids) &&
+        !identical(next.ids, state$selected.ids)) {
+      return(invisible(FALSE))
+    }
+    context <- gflowui_basin_proposal_context_table(
+      result,
+      state = state,
+      selected_keys = shiny::isolate(basin_selected_keys())
+    )
+    component.maximum.keys <- as.character(context$key[
+      as.character(context$type) == "max" &
+        context$proposal.component
+    ])
+    preserved.keys <- setdiff(
+      as.character(shiny::isolate(basin_selected_keys())),
+      component.maximum.keys
+    )
+    next.keys <- unique(c(
+      preserved.keys,
+      gflowui_basin_canonical_ids_to_keys(
+        result,
+        next.state,
+        next.state$selected.ids
+      )
+    ))
+    basin_analysis_state(next.state)
+    basin_selected_keys(next.keys)
+    result <- update_basin_display_result(result)
+    basin_result(result)
+    if (isTRUE(activate.graph)) {
+      activate_basin_color_source(result)
+    }
+    invisible(TRUE)
+  }
+
+  apply_basin_linked_vertex_selection <- function(vertex) {
+    result <- shiny::isolate(basin_result())
+    state <- shiny::isolate(basin_analysis_state())
+    id <- gflowui_basin_vertex_canonical_id(
+      result,
+      state,
+      vertex
+    )
+    if (!length(id)) {
+      return(invisible(FALSE))
+    }
+    apply_basin_linked_selection(
+      id,
+      toggle = TRUE,
+      activate.graph = FALSE
+    )
   }
 
   basin_displayed_table <- function(
@@ -9121,6 +9243,9 @@ app_server <- function(input, output, session) {
         result$graph_set_id %||% "set",
         result$graph_k %||% "k"
       ),
+      `data-display-source` = as.character(
+        analysis$display.source %||% "none"
+      ),
       shiny::div(
         class = "gf-basin-inspector-header",
         shiny::h4("Basin Inspector"),
@@ -9129,6 +9254,10 @@ app_server <- function(input, output, session) {
           "Close",
           class = "btn-light btn-sm"
         )
+      ),
+      basin_linked_status_tag(
+        analysis,
+        "gf-basin-inspector-linked-status"
       ),
       shiny::div(
         class = "gf-basin-inspector-summary-controls",
@@ -9563,12 +9692,19 @@ app_server <- function(input, output, session) {
           )) {
         basin_complete_viewer_open(TRUE)
       }
-      graph_layout_state$color_by <- "basin_active"
-      shiny::updateSelectInput(
-        session,
-        "graph_layout_color_by",
-        selected = "basin_active"
-      )
+      if (identical(
+          as.character(
+            installed$state$active.attempt$cause %||% ""
+          ),
+          "recipe_restore"
+      )) {
+        basin_analysis_recipe_status(
+          paste(
+            "Applied the saved settings against the current scientific",
+            "bundle and recomputed component selection and proposal."
+          )
+        )
+      }
       basin_status(success.message)
     } else {
       detail <- paste(
@@ -9608,6 +9744,7 @@ app_server <- function(input, output, session) {
     )
     if (!identical(previous.fingerprint, fingerprint)) {
       basin_plot_specs(list())
+      reset_basin_plot_observers()
       basin_plot_next_id(0L)
       basin_default_plot_fingerprints(character())
     }
@@ -9623,6 +9760,7 @@ app_server <- function(input, output, session) {
       basin_complete_viewer_open(FALSE)
       basin_inspector_open(FALSE)
       basin_plot_specs(list())
+      reset_basin_plot_observers()
       basin_plot_next_id(0L)
       basin_default_plot_fingerprints(character())
       message <- as.character(
@@ -9793,6 +9931,13 @@ app_server <- function(input, output, session) {
     }
     next.state <- started$state
     basin_analysis_state(next.state)
+    if (event$type %in% c("component_change", "recipe_restore")) {
+      basin_selected_keys(character())
+      result <- shiny::isolate(basin_result())
+      if (is.list(result)) {
+        basin_result(update_basin_display_result(result))
+      }
+    }
     basin_analysis_context_generation(max(
       shiny::isolate(basin_analysis_context_generation()),
       next.state$context.generation
@@ -9876,9 +10021,38 @@ app_server <- function(input, output, session) {
     assign(key, observer, envir = basin_plot_remove_observers)
     invisible(NULL)
   }
+  prune_basin_plot_observers <- function(registry, active.ids) {
+    registered <- ls(registry, all.names = TRUE)
+    stale <- setdiff(registered, as.character(active.ids))
+    for (key in stale) {
+      observer <- get(key, envir = registry, inherits = FALSE)
+      if (inherits(observer, "Observer")) {
+        observer$destroy()
+      }
+      rm(list = key, envir = registry)
+    }
+    invisible(stale)
+  }
+  shiny::observeEvent(basin_plot_specs(), {
+    specs <- basin_plot_specs()
+    active.ids <- if (length(specs)) {
+      vapply(specs, function(spec) as.character(spec$id), character(1))
+    } else {
+      character()
+    }
+    prune_basin_plot_observers(
+      basin_plot_remove_observers,
+      active.ids
+    )
+    prune_basin_plot_observers(
+      basin_plot_click_observers,
+      active.ids
+    )
+  }, ignoreInit = FALSE)
   basin_plot_card_ui <- function(spec, result) {
     card.id <- as.character(spec$id)
     output.id <- paste0("basin_plot_", card.id)
+    click.id <- paste0("basin_plot_click_", card.id)
     status.id <- paste0("basin_plot_status_", card.id)
     scope.id <- paste0("basin_plot_scope_", card.id)
     type.id <- paste0("basin_plot_type_", card.id)
@@ -9912,6 +10086,7 @@ app_server <- function(input, output, session) {
     local({
       card.spec <- spec
       card.stale <- stale
+      card.click.id <- click.id
       card.scope.id <- scope.id
       card.type.id <- type.id
       card.bins.id <- bins.id
@@ -10040,6 +10215,73 @@ app_server <- function(input, output, session) {
         }
         status
       })
+      if (!exists(
+          card.id,
+          envir = basin_plot_click_observers,
+          inherits = FALSE
+      )) {
+        click.observer <- shiny::observeEvent(input[[card.click.id]], {
+          if (!identical(as.character(card.spec$kind), "scatter")) {
+            return()
+          }
+          active <- shiny::isolate(basin_result())
+          state <- shiny::isolate(basin_analysis_state())
+          if (!is.list(active) || !is.list(state)) {
+            return()
+          }
+          active.fingerprint <- as.character(
+            active$construction_identity$fingerprint %||% ""
+          )
+          if (isTRUE(card.stale) ||
+              !identical(
+                as.character(
+                  card.spec$construction_fingerprint %||% ""
+                ),
+                active.fingerprint
+              )) {
+            return()
+          }
+          scope <- as.character(
+            input[[card.scope.id]] %||% card.spec$scope %||% "all"
+          )
+          type <- as.character(
+            input[[card.type.id]] %||% card.spec$type %||% "both"
+          )
+          data <- gflowui_basin_plot_data(
+            active,
+            scope = scope,
+            type = type,
+            selected_keys = shiny::isolate(basin_selected_keys()),
+            analysis_state = state
+          )
+          click <- input[[card.click.id]]
+          key <- gflowui_basin_plot_nearest_key(
+            data,
+            card.spec,
+            click.x = suppressWarnings(as.numeric(click$x)),
+            click.y = suppressWarnings(as.numeric(click$y)),
+            x_scale =
+              input[[card.x.scale.id]] %||% card.default.x.scale,
+            y_scale =
+              input[[card.y.scale.id]] %||% card.default.y.scale
+          )
+          if (length(key)) {
+            id <- gflowui_basin_selected_canonical_ids(
+              active,
+              state,
+              key
+            )
+            if (length(id)) {
+              apply_basin_linked_selection(id)
+            }
+          }
+        }, ignoreInit = TRUE)
+        assign(
+          card.id,
+          click.observer,
+          envir = basin_plot_click_observers
+        )
+      }
     })
     is.histogram <- identical(as.character(spec$kind), "histogram")
     is.matrix <- identical(as.character(spec$kind), "matrix")
@@ -10224,7 +10466,8 @@ app_server <- function(input, output, session) {
         shiny::plotOutput(
           output.id,
           width = "100%",
-          height = "100%"
+          height = "100%",
+          click = click.id
         )
       )
     )
@@ -10450,14 +10693,10 @@ app_server <- function(input, output, session) {
         `aria-live` = "polite",
         attempt.status
       ),
-      if (isTRUE(model$retained)) shiny::div(
-        class = "gf-basin-tree-retained",
-        role = "status",
-        paste(
-          "Showing the retained last valid proposal while the current",
-          "proposal attempt is unresolved."
-        )
-      ) else NULL,
+      basin_linked_status_tag(
+        state,
+        "gf-basin-tree-linked-status"
+      ),
       if (!is.null(coverage.text)) shiny::p(
         class = "gf-basin-tree-disclosure",
         coverage.text
@@ -10580,6 +10819,46 @@ app_server <- function(input, output, session) {
             "basin_tree_show_all",
             "Show all"
           )
+        ),
+        shiny::div(
+          class = "gf-basin-tree-recipe-controls",
+          shiny::h5("Display recipe"),
+          shiny::p(
+            paste(
+              "Recipes store validated display settings only.",
+              "They never store basins, component identity, pins, selection,",
+              "proposal results, or layout."
+            )
+          ),
+          shiny::div(
+            class = "gf-basin-tree-actions",
+            shiny::actionButton(
+              "basin_tree_recipe_save",
+              "Save current recipe"
+            ),
+            shiny::actionButton(
+              "basin_tree_recipe_apply",
+              "Apply saved recipe"
+            ),
+            shiny::downloadButton(
+              "basin_tree_recipe_download",
+              "Download recipe"
+            )
+          ),
+          shiny::fileInput(
+            "basin_tree_recipe_upload",
+            "Load recipe JSON",
+            accept = c(".json", "application/json")
+          ),
+          shiny::p(
+            class = "gf-basin-tree-recipe-status",
+            role = "status",
+            `aria-live` = "polite",
+            shiny::textOutput(
+              "basin_tree_recipe_status",
+              inline = TRUE
+            )
+          )
         )
       ),
       if (isTRUE(model$available) && !isTRUE(model$renderable)) {
@@ -10604,7 +10883,8 @@ app_server <- function(input, output, session) {
           shiny::plotOutput(
             "basin_merge_tree_plot",
             width = sprintf("%dpx", plot.width),
-            height = "780px"
+            height = "780px",
+            click = "basin_merge_tree_click"
           )
         )
       } else NULL,
@@ -10644,6 +10924,236 @@ app_server <- function(input, output, session) {
     "basin_merge_tree_ui",
     suspendWhenHidden = FALSE
   )
+  output$basin_tree_recipe_status <- shiny::renderText({
+    basin_analysis_recipe_status()
+  })
+  output$basin_recipe_status <- shiny::renderText({
+    basin_analysis_recipe_status()
+  })
+  shiny::outputOptions(
+    output,
+    "basin_tree_recipe_status",
+    suspendWhenHidden = FALSE
+  )
+  shiny::outputOptions(
+    output,
+    "basin_recipe_status",
+    suspendWhenHidden = FALSE
+  )
+  output$basin_tree_recipe_download <- shiny::downloadHandler(
+    filename = function() "basin-analysis-display-recipe-v1.json",
+    contentType = "application/json",
+    content = function(file) {
+      recipe <- shiny::isolate(basin_analysis_saved_recipe())
+      shiny::req(is.list(recipe))
+      jsonlite::write_json(
+        recipe,
+        path = file,
+        auto_unbox = TRUE,
+        pretty = TRUE,
+        null = "null"
+      )
+    }
+  )
+
+  shiny::observeEvent(input$basin_tree_recipe_save, {
+    state <- shiny::isolate(basin_analysis_state())
+    if (!is.list(state)) {
+      return()
+    }
+    component.size <- .gflowui_basin_component_size(
+      state$bundle,
+      state$context
+    )
+    recipe <- tryCatch(
+      gflowui_basin_recipe(state$controls, component.size),
+      error = function(error) error
+    )
+    if (inherits(recipe, "error")) {
+      basin_analysis_recipe_status(sprintf(
+        "The current display recipe is invalid: %s",
+        conditionMessage(recipe)
+      ))
+      return()
+    }
+    basin_analysis_saved_recipe(.gflowui_basin_copy(recipe))
+    request.id <- paste0(
+      basin_analysis_session_id,
+      "-save-",
+      format(Sys.time(), "%Y%m%d%H%M%OS6")
+    )
+    basin_analysis_recipe_request_id(request.id)
+    session$sendCustomMessage(
+      "gflowui-basin-recipe-save",
+      list(
+        request_id = request.id,
+        recipe = recipe
+      )
+    )
+    basin_analysis_recipe_status(sprintf(
+      paste(
+        "Saving version 1 %s settings-only recipe in browser storage;",
+        "a JSON download is also available."
+      ),
+      as.character(recipe$filter.mode)
+    ))
+  }, ignoreInit = TRUE)
+
+  shiny::observeEvent(input$basin_tree_recipe_upload, {
+    upload <- input$basin_tree_recipe_upload
+    path <- as.character(upload$datapath %||% "")
+    if (!nzchar(path)) {
+      return()
+    }
+    recipe <- tryCatch(
+      jsonlite::fromJSON(path, simplifyVector = TRUE),
+      error = function(error) error
+    )
+    if (inherits(recipe, "error") || !is.list(recipe)) {
+      basin_analysis_recipe_status(sprintf(
+        "Recipe JSON was not loaded%s.",
+        if (inherits(recipe, "error")) {
+          paste0(": ", conditionMessage(recipe))
+        } else {
+          ""
+        }
+      ))
+      return()
+    }
+    recipe <- .gflowui_basin_recipe_from_transport(recipe)
+    state <- shiny::isolate(basin_analysis_state())
+    checked <- tryCatch(
+      .gflowui_basin_recipe_runtime(
+        recipe,
+        state$bundle,
+        context.generation = state$context.generation
+      ),
+      error = function(error) error
+    )
+    if (inherits(checked, "error")) {
+      basin_analysis_recipe_status(sprintf(
+        "Recipe JSON is incompatible with the active analysis: %s",
+        conditionMessage(checked)
+      ))
+      return()
+    }
+    basin_analysis_saved_recipe(.gflowui_basin_copy(recipe))
+    basin_analysis_recipe_status(sprintf(
+      "Loaded version 1 %s recipe; use Apply saved recipe to recompute.",
+      as.character(recipe$filter.mode)
+    ))
+  }, ignoreInit = TRUE)
+
+  report_basin_recipe_application <- function(action) {
+    state <- shiny::isolate(basin_analysis_state())
+    if (is.list(state) &&
+        identical(state$active.attempt$outcome, "blocked")) {
+      detail <- paste(state$active.attempt$messages, collapse = " ")
+      basin_analysis_recipe_status(sprintf(
+        "The saved recipe is incompatible with the active analysis%s.",
+        if (nzchar(detail)) paste0(": ", detail) else ""
+      ))
+      return(invisible(FALSE))
+    }
+    basin_analysis_recipe_status(paste(
+      action,
+      "saved settings against the current scientific bundle;",
+      "component selection and proposal are being recomputed."
+    ))
+    invisible(TRUE)
+  }
+
+  shiny::observeEvent(input$basin_tree_recipe_apply, {
+    recipe <- shiny::isolate(basin_analysis_saved_recipe())
+    if (!is.list(recipe)) {
+      request.id <- paste0(
+        basin_analysis_session_id,
+        "-restore-",
+        format(Sys.time(), "%Y%m%d%H%M%OS6")
+      )
+      basin_analysis_recipe_request_id(request.id)
+      session$sendCustomMessage(
+        "gflowui-basin-recipe-request",
+        list(request_id = request.id)
+      )
+      basin_analysis_recipe_status(
+        "Requesting the saved settings-only recipe from browser storage."
+      )
+      return()
+    }
+    applied <- apply_basin_analysis_event(
+      gflowui_basin_state_event(
+        "recipe_restore",
+        recipe = .gflowui_basin_copy(recipe)
+      ),
+      "Applied the saved Basin Analysis display recipe."
+    )
+    if (isTRUE(applied)) {
+      report_basin_recipe_application("Applying")
+    } else {
+      basin_analysis_recipe_status(
+        "The saved recipe was not applied because an internal transition failed."
+      )
+    }
+  }, ignoreInit = TRUE)
+
+  shiny::observeEvent(input$basin_recipe_restore_event, {
+    event <- input$basin_recipe_restore_event
+    request.id <- as.character(event$request_id %||% "")
+    expected <- shiny::isolate(basin_analysis_recipe_request_id())
+    if (!nzchar(request.id) || !identical(request.id, expected)) {
+      return()
+    }
+    status <- as.character(event$status %||% "")
+    if (identical(status, "saved")) {
+      basin_analysis_recipe_status(
+        paste(
+          "Saved the version 1 settings-only recipe in browser storage;",
+          "no scientific result or canonical ID was persisted."
+        )
+      )
+      return()
+    }
+    if (identical(status, "missing")) {
+      basin_analysis_recipe_status(
+        "No Basin Analysis display recipe is present in browser storage."
+      )
+      return()
+    }
+    if (identical(status, "storage_error")) {
+      basin_analysis_recipe_status(sprintf(
+        "Browser recipe storage is unavailable: %s",
+        as.character(event$message %||% "unknown storage error")
+      ))
+      return()
+    }
+    recipe <- event$recipe
+    if (!identical(status, "available") || !is.list(recipe)) {
+      basin_analysis_recipe_status(
+        "The browser returned an unsupported recipe response."
+      )
+      return()
+    }
+    recipe <- .gflowui_basin_recipe_from_transport(recipe)
+    basin_analysis_saved_recipe(.gflowui_basin_copy(recipe))
+    applied <- apply_basin_analysis_event(
+      gflowui_basin_state_event(
+        "recipe_restore",
+        recipe = .gflowui_basin_copy(recipe)
+      ),
+      "Restored the saved Basin Analysis display recipe."
+    )
+    if (isTRUE(applied)) {
+      report_basin_recipe_application("Restoring")
+    } else {
+      basin_analysis_recipe_status(
+        paste(
+          "The browser recipe was not applied because an internal",
+          "transition failed."
+        )
+      )
+    }
+  }, ignoreInit = TRUE)
 
   output$basin_merge_tree_plot <- shiny::renderPlot({
     state <- basin_analysis_state()
@@ -10681,6 +11191,26 @@ app_server <- function(input, output, session) {
     "basin_merge_tree_plot",
     suspendWhenHidden = FALSE
   )
+
+  shiny::observeEvent(input$basin_merge_tree_click, {
+    state <- shiny::isolate(basin_analysis_state())
+    if (!is.list(state)) {
+      return()
+    }
+    model <- tryCatch(
+      gflowui_basin_merge_tree_model(state),
+      error = function(error) NULL
+    )
+    click <- input$basin_merge_tree_click
+    id <- gflowui_basin_tree_nearest_id(
+      model,
+      click.x = suppressWarnings(as.numeric(click$x)),
+      click.y = suppressWarnings(as.numeric(click$y))
+    )
+    if (length(id)) {
+      apply_basin_linked_selection(id)
+    }
+  }, ignoreInit = TRUE)
 
   output$basin_merge_tree_diagnostic_plot <- shiny::renderPlot({
     state <- basin_analysis_state()
@@ -10731,7 +11261,7 @@ app_server <- function(input, output, session) {
       ifelse(points$pinned, "#7C3AED", "#0F766E")
     )
     labels <- ifelse(points$selected, points$basin.id, "")
-    plot <- plotly::plot_ly()
+    plot <- plotly::plot_ly(source = basin_complete_tree_source)
     plot <- plotly::add_trace(
       plot,
       x = complete$vertical$x,
@@ -10761,6 +11291,7 @@ app_server <- function(input, output, session) {
       type = "scatter",
       mode = "markers+text",
       marker = list(color = colors, size = ifelse(points$selected, 9, 5)),
+      customdata = points$basin.id,
       text = labels,
       textposition = "top center",
       hovertext = hover,
@@ -10785,12 +11316,30 @@ app_server <- function(input, output, session) {
       branch.count = nrow(points)
     )
     basin_analysis_panel_metrics(metrics)
-    plot
+    plotly::event_register(plot, "plotly_click")
   })
   shiny::outputOptions(
     output,
     "basin_complete_tree_plot",
     suspendWhenHidden = FALSE
+  )
+
+  basin_complete_tree_click_event <- shiny::reactive({
+    parse_plotly_event_input(sprintf(
+      "plotly_click-%s",
+      basin_complete_tree_source
+    ))
+  })
+  shiny::observeEvent(
+    basin_complete_tree_click_event(),
+    {
+      event <- basin_complete_tree_click_event()
+      id <- as.character(event$customdata %||% "")
+      if (length(id) && nzchar(id[[1L]])) {
+        apply_basin_linked_selection(id[[1L]])
+      }
+    },
+    ignoreInit = TRUE
   )
 
   basin_tree_control_equal <- function(left, right) {
@@ -11034,6 +11583,7 @@ app_server <- function(input, output, session) {
 
   output$basin_plot_workspace_ui <- shiny::renderUI({
     result <- basin_result()
+    analysis <- basin_analysis_state()
     if (!isTRUE(basin_inspector_open()) || !is.list(result)) {
       return(NULL)
     }
@@ -11050,6 +11600,9 @@ app_server <- function(input, output, session) {
     shiny::tags$section(
       id = "gf_basin_plot_workspace",
       class = "gf-basin-plot-workspace",
+      `data-display-source` = as.character(
+        analysis$display.source %||% "none"
+      ),
       shiny::div(
         class = "gf-basin-plot-workspace-header",
         shiny::div(
@@ -11067,6 +11620,10 @@ app_server <- function(input, output, session) {
           "Clear plots",
           class = "btn-light btn-sm"
         )
+      ),
+      basin_linked_status_tag(
+        analysis,
+        "gf-basin-plot-linked-status"
       ),
       shiny::div(
         class = "gf-basin-plot-builder",
@@ -11272,6 +11829,7 @@ app_server <- function(input, output, session) {
       basin_complete_viewer_open(FALSE)
       basin_inspector_open(FALSE)
       basin_plot_specs(list())
+      reset_basin_plot_observers()
       basin_plot_next_id(0L)
       basin_default_plot_fingerprints(character())
       basin_status(sprintf(
@@ -11309,27 +11867,14 @@ app_server <- function(input, output, session) {
         ),
         current$source_label %||% request$source$label
       )
-      if (isTRUE(analysis.matches) &&
-          identical(
-            analysis$active.attempt$outcome,
-            "proposal_created"
-          )) {
-        seed_basin_analysis_default_plots(
-          request.identity,
-          analysis
-        )
-        graph_layout_state$color_by <- "basin_active"
-        shiny::updateSelectInput(
-          session,
-          "graph_layout_color_by",
-          selected = "basin_active"
-        )
-        basin_status(reopened.message)
-      } else if (isTRUE(analysis.matches) &&
-          identical(analysis$active.attempt$outcome, "pending")) {
-        basin_status(
-          "The current Basin Analysis proposal is already being prepared."
-        )
+      if (isTRUE(analysis.matches)) {
+        if (identical(analysis$active.attempt$outcome, "pending")) {
+          basin_status(
+            "The current Basin Analysis proposal is already being prepared."
+          )
+        } else {
+          basin_status(reopened.message)
+        }
       } else {
         start_basin_analysis_attempt(
           current,
@@ -11385,6 +11930,7 @@ app_server <- function(input, output, session) {
       basin_complete_viewer_open(FALSE)
       basin_inspector_open(FALSE)
       basin_plot_specs(list())
+      reset_basin_plot_observers()
       basin_plot_next_id(0L)
       basin_default_plot_fingerprints(character())
       basin_status(sprintf(
@@ -11611,7 +12157,6 @@ app_server <- function(input, output, session) {
       )))
       result <- update_basin_display_result(result)
       basin_result(result)
-      activate_basin_color_source(result)
     }
   }, ignoreInit = TRUE)
 
@@ -11627,7 +12172,6 @@ app_server <- function(input, output, session) {
     if (is.list(result)) {
       result <- update_basin_display_result(result)
       basin_result(result)
-      activate_basin_color_source(result)
     }
   }, ignoreInit = TRUE)
 
@@ -11637,7 +12181,6 @@ app_server <- function(input, output, session) {
     if (is.list(result)) {
       result <- update_basin_display_result(result)
       basin_result(result)
-      activate_basin_color_source(result)
     }
   }, ignoreInit = TRUE)
 
@@ -11650,7 +12193,6 @@ app_server <- function(input, output, session) {
       basin_color_map(colors)
       result <- update_basin_display_result(result)
       basin_result(result)
-      activate_basin_color_source(result)
     }
   }, ignoreInit = TRUE)
 
@@ -11662,7 +12204,6 @@ app_server <- function(input, output, session) {
       if (is.list(result)) {
         result <- update_basin_display_result(result)
         basin_result(result)
-        activate_basin_color_source(result)
       }
     }
   }, ignoreInit = TRUE)
@@ -11671,7 +12212,6 @@ app_server <- function(input, output, session) {
     opacity <- suppressWarnings(as.numeric(input$basin_global_opacity))
     if (is.finite(opacity)) {
       basin_display_settings$opacity <- max(0, min(1, opacity))
-      activate_basin_color_source()
     }
   }, ignoreInit = TRUE)
 
@@ -11679,7 +12219,6 @@ app_server <- function(input, output, session) {
     color <- as.character(input$basin_unselected_color %||% "")
     if (nzchar(color)) {
       basin_display_settings$unselected_color <- color
-      activate_basin_color_source()
     }
   }, ignoreInit = TRUE)
 
@@ -11687,7 +12226,6 @@ app_server <- function(input, output, session) {
     opacity <- suppressWarnings(as.numeric(input$basin_unselected_opacity))
     if (is.finite(opacity)) {
       basin_display_settings$unselected_opacity <- max(0, min(1, opacity))
-      activate_basin_color_source()
     }
   }, ignoreInit = TRUE)
 
@@ -11754,7 +12292,6 @@ app_server <- function(input, output, session) {
     basin_color_map(next.state$color_map)
     result <- update_basin_display_result(result)
     basin_result(result)
-    activate_basin_color_source(result)
   }, ignoreInit = TRUE)
 
   reference_renderer_state <- shiny::reactive({

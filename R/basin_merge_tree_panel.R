@@ -812,6 +812,76 @@ gflowui_basin_plot_merge_tree <- function(model) {
   gflowui_basin_draw_merge_tree(model$panel)
 }
 
+gflowui_basin_tree_nearest_id <- function(
+    model,
+    click.x,
+    click.y,
+    threshold = 0.045) {
+  if (!is.list(model) ||
+      !isTRUE(model$available) ||
+      !isTRUE(model$renderable) ||
+      !is.numeric(click.x) ||
+      !is.numeric(click.y) ||
+      length(click.x) != 1L ||
+      length(click.y) != 1L ||
+      !is.finite(click.x) ||
+      !is.finite(click.y) ||
+      !is.numeric(threshold) ||
+      length(threshold) != 1L ||
+      !is.finite(threshold) ||
+      threshold <= 0) {
+    return(character())
+  }
+  branches <- model$layout$coordinates$branches
+  if (!is.data.frame(branches) ||
+      !all(c(
+        "basin.id", "x", "birth.level", "death.level"
+      ) %in% names(branches)) ||
+      !nrow(branches)) {
+    return(character())
+  }
+  x <- suppressWarnings(as.numeric(branches$x))
+  birth <- suppressWarnings(as.numeric(branches$birth.level))
+  death <- suppressWarnings(as.numeric(branches$death.level))
+  finite <- is.finite(x) & is.finite(birth) & is.finite(death)
+  if (!any(finite)) {
+    return(character())
+  }
+  branches <- branches[finite, , drop = FALSE]
+  x <- x[finite]
+  birth <- birth[finite]
+  death <- death[finite]
+  x.range <- range(x, finite = TRUE)
+  y.range <- range(c(birth, death), finite = TRUE)
+  x.span <- diff(x.range)
+  y.span <- diff(y.range)
+  if (!is.finite(x.span) || x.span <= 0) x.span <- 1
+  if (!is.finite(y.span) || y.span <= 0) y.span <- 1
+  lower <- pmin(birth, death)
+  upper <- pmax(birth, death)
+  closest.y <- pmax(lower, pmin(upper, as.numeric(click.y)))
+  distance <- sqrt(
+    ((x - as.numeric(click.x)) / x.span)^2 +
+      ((closest.y - as.numeric(click.y)) / y.span)^2
+  )
+  finite.distance <- which(is.finite(distance))
+  if (!length(finite.distance)) {
+    return(character())
+  }
+  minimum <- min(distance[finite.distance])
+  candidates <- finite.distance[distance[finite.distance] == minimum]
+  nearest <- candidates[order(
+    as.character(branches$basin.id[candidates]),
+    method = "radix"
+  )][[1L]]
+  if (!length(nearest) ||
+      !is.finite(distance[[nearest]]) ||
+      distance[[nearest]] > threshold) {
+    return(character())
+  }
+  as.character(branches$basin.id[[nearest]])
+}
+
 gflowui_basin_plot_diagnostics <- function(model) {
   if (!is.list(model) || !isTRUE(model$available)) {
     .gflowui_basin_panel_stop(
@@ -1159,6 +1229,23 @@ gflowui_basin_complete_interactive_data <- function(
         "Show diagnostic",
         value = isTRUE(model$diagnostics.visible)
       )
+    ),
+    shiny::div(
+      class = "gf-basin-tree-actions gf-basin-recipe-actions",
+      shiny::actionButton(
+        "basin_tree_recipe_save",
+        "Save settings recipe",
+        class = "btn btn-sm btn-outline-secondary"
+      ),
+      shiny::actionButton(
+        "basin_tree_recipe_apply",
+        "Restore saved recipe",
+        class = "btn btn-sm btn-outline-secondary"
+      )
+    ),
+    shiny::p(
+      class = "gf-basin-recipe-status",
+      shiny::textOutput("basin_tree_recipe_status", inline = TRUE)
     )
   )
 }
@@ -1250,7 +1337,11 @@ gflowui_basin_merge_tree_panel_ui <- function(model) {
       shiny::plotOutput(
         "basin_merge_tree_plot",
         width = sprintf("%dpx", plot.width),
-        height = "760px"
+        height = "760px",
+        click = shiny::clickOpts(
+          id = "basin_merge_tree_click",
+          clip = TRUE
+        )
       )
     )
   } else {

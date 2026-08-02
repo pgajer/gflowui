@@ -681,6 +681,47 @@ test_that("basin plot helpers preserve all, listed, and selected scopes", {
   unlink(plot.file)
 })
 
+test_that("scatter clicks resolve the nearest complete canonical plot row", {
+  data <- data.frame(
+    key = c("max|a", "max|b", "max|c"),
+    type = "max",
+    mass_rank = c(1L, 10L, 100L),
+    support_rank = c(2L, 20L, 200L),
+    stringsAsFactors = FALSE
+  )
+  spec <- list(
+    kind = "scatter",
+    features = c("mass_rank", "support_rank")
+  )
+  expect_identical(
+    gflowui:::gflowui_basin_plot_nearest_key(
+      data,
+      spec,
+      click.x = 1,
+      click.y = log10(20),
+      x_scale = "log10",
+      y_scale = "log10"
+    ),
+    "max|b"
+  )
+  expect_length(gflowui:::gflowui_basin_plot_nearest_key(
+    data,
+    spec,
+    click.x = 20,
+    click.y = 20,
+    x_scale = "log10",
+    y_scale = "log10"
+  ), 0L)
+  histogram <- spec
+  histogram$kind <- "histogram"
+  expect_length(gflowui:::gflowui_basin_plot_nearest_key(
+    data,
+    histogram,
+    click.x = 1,
+    click.y = 1
+  ), 0L)
+})
+
 test_that("basin export bundles contain the complete raw table and provenance", {
   storage <- tempfile("gflowui-basin-index-test-")
   dir.create(storage)

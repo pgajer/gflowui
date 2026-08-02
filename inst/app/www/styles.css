@@ -1129,6 +1129,25 @@ body.gf-general-inspector-resizing {
   flex: 1 1 13rem;
 }
 
+.gf-basin-tree-recipe-controls {
+  margin-top: 0.8rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid #dbe3ea;
+}
+
+.gf-basin-tree-recipe-controls h5 {
+  margin: 0 0 0.3rem;
+}
+
+.gf-basin-tree-recipe-controls .form-group {
+  margin: 0.55rem 0 0;
+}
+
+.gf-basin-tree-recipe-status {
+  margin: 0.45rem 0 0;
+  color: #475569;
+}
+
 .gf-basin-tree-overflow {
   margin-top: 0.75rem;
   padding: 0.75rem;
