@@ -76,15 +76,16 @@ filtered:
 complete:
   prepare.elapsed.ms
   branch.count
-  event.count
 ```
 
 Measure proposal construction around `gflowui_basin_execute_pending()`.
 Report proposal, filtered layout, static render, and complete-view preparation
 separately, with component size, final displayed count, filter/render
-outcomes, platform, package commit, and pinned `gflow` commit. Also report
-perceptible UI latency because short CPU timings alone do not prove an
-event-loop-based app is responsive.
+outcomes, platform, package commit, and pinned `gflow` commit. Reconcile the
+complete event count directly against the pure complete-tree layout rather
+than treating it as stored telemetry. Also report perceptible UI latency
+because short CPU timings alone do not prove an event-loop-based app is
+responsive.
 
 ## Accessibility and responsive invariants
 
