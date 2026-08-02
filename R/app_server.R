@@ -9228,7 +9228,7 @@ app_server <- function(input, output, session) {
         as.character(attestation$evidence.fingerprint %||% "not supplied")
       )
     }
-    shiny::div(
+    shiny::tags$section(
       id = "gf_basin_inspector",
       class = paste(
         "gf-basin-inspector",
@@ -9246,9 +9246,14 @@ app_server <- function(input, output, session) {
       `data-display-source` = as.character(
         analysis$display.source %||% "none"
       ),
+      role = "region",
+      `aria-labelledby` = "gf_basin_inspector_heading",
       shiny::div(
         class = "gf-basin-inspector-header",
-        shiny::h4("Basin Inspector"),
+        shiny::h4(
+          id = "gf_basin_inspector_heading",
+          "Basin Inspector"
+        ),
         shiny::actionButton(
           "basin_inspector_close",
           "Close",
@@ -9447,6 +9452,13 @@ app_server <- function(input, output, session) {
           class = "table-responsive gf-basin-table-scroll",
           shiny::tags$table(
             class = "table table-sm gf-basin-table",
+            shiny::tags$caption(
+              class = "visually-hidden",
+              paste(
+                "Basin characteristics linked by stable canonical basin",
+                "identity."
+              )
+            ),
             shiny::tags$thead(header),
             shiny::tags$tbody(rows)
           )
@@ -11600,13 +11612,18 @@ app_server <- function(input, output, session) {
     shiny::tags$section(
       id = "gf_basin_plot_workspace",
       class = "gf-basin-plot-workspace",
+      role = "region",
+      `aria-labelledby` = "gf_basin_plot_workspace_heading",
       `data-display-source` = as.character(
         analysis$display.source %||% "none"
       ),
       shiny::div(
         class = "gf-basin-plot-workspace-header",
         shiny::div(
-          shiny::h4("Basin Plot Workspace"),
+          shiny::h4(
+            id = "gf_basin_plot_workspace_heading",
+            "Basin Plot Workspace"
+          ),
           shiny::p(
             paste(
               "The two default rank plots contain every maximum basin in",

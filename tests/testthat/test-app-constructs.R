@@ -821,6 +821,43 @@ test_that("basin server invalidates changed fields and graph identities", {
       'aria-live="polite"',
       fixed = TRUE
     )
+    plot.shell <- htmltools::renderTags(
+      output$basin_plot_workspace_ui
+    )$html
+    expect_match(plot.shell, 'role="region"', fixed = TRUE)
+    expect_match(
+      plot.shell,
+      'aria-labelledby="gf_basin_plot_workspace_heading"',
+      fixed = TRUE
+    )
+    expect_match(
+      plot.shell,
+      'id="gf_basin_plot_workspace_heading"',
+      fixed = TRUE
+    )
+    inspector.shell <- htmltools::renderTags(
+      output$basin_inspector_ui
+    )$html
+    expect_match(inspector.shell, 'role="region"', fixed = TRUE)
+    expect_match(
+      inspector.shell,
+      'aria-labelledby="gf_basin_inspector_heading"',
+      fixed = TRUE
+    )
+    expect_match(
+      inspector.shell,
+      'id="gf_basin_inspector_heading"',
+      fixed = TRUE
+    )
+    expect_match(
+      inspector.shell,
+      paste0(
+        '<caption class="visually-hidden">',
+        "Basin characteristics linked by stable canonical basin identity.",
+        "</caption>"
+      ),
+      fixed = TRUE
+    )
     expect_match(
       tree.shell,
       "Current maximum-basin proposal",
