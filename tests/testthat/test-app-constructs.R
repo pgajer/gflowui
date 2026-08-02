@@ -658,7 +658,7 @@ test_that("basin extrema defaults depend on estimate source type", {
   density <- gflowui:::gflowui_basin_extrema_defaults(
     "occupation_probability"
   )
-  expect_identical(density$maxima_scope, "listed")
+  expect_identical(density$maxima_scope, "initial_display")
   expect_true(density$label_maxima)
   expect_identical(density$minima_scope, "none")
   expect_false(density$label_minima)
@@ -714,9 +714,6 @@ test_that("basin server invalidates changed fields and graph identities", {
     expect_false(isTRUE(subject_state$show_overlay))
     session$setInputs(
       basin_source = "occupation_density_active",
-      basin_top_k_max = 1L,
-      basin_top_k_min = 1L,
-      basin_rank_by = "primary.support.mass",
       basin_compute = 1L
     )
     session$flushReact()
@@ -725,7 +722,7 @@ test_that("basin server invalidates changed fields and graph identities", {
     first <- basin_result()
     expect_true(is.list(first))
     expect_true(isTRUE(basin_inspector_open()))
-    expect_gte(nrow(first$all_table), nrow(first$table))
+    expect_equal(nrow(first$all_table), nrow(first$table))
     expect_true(all(is.finite(first$all_table$prominence)))
     expect_length(basin_selected_keys(), 0L)
     expect_false(any(first$table$selected))
@@ -755,15 +752,16 @@ test_that("basin server invalidates changed fields and graph identities", {
     expect_true(all(vapply(
       default.plots,
       function(spec) {
-        identical(spec$scope, "all") &&
+        identical(spec$scope, "component_maxima") &&
           identical(spec$type, "max") &&
+          identical(spec$point_color, "proposal") &&
           identical(spec$x_scale, "log10") &&
           identical(spec$y_scale, "log10") &&
           identical(spec$construction_fingerprint, first.identity)
       },
       logical(1)
     )))
-    expect_identical(basin_display_settings$maxima_scope, "listed")
+    expect_identical(basin_display_settings$maxima_scope, "initial_display")
     expect_true(isTRUE(basin_display_settings$show_maxima))
     expect_true(isTRUE(basin_display_settings$label_maxima))
     expect_identical(basin_display_settings$minima_scope, "none")
@@ -871,6 +869,24 @@ test_that("basin server invalidates changed fields and graph identities", {
     panel.model <- gflowui:::gflowui_basin_merge_tree_model(analysis)
     expect_identical(panel.model$direction.maximum.count, 352L)
     expect_identical(panel.model$component.maximum.count, 352L)
+    default.plot.data <- lapply(default.plots, function(spec) {
+      gflowui:::gflowui_basin_plot_data(
+        first,
+        scope = spec$scope,
+        type = spec$type,
+        analysis_state = analysis
+      )
+    })
+    expect_true(all(vapply(
+      default.plot.data,
+      nrow,
+      integer(1)
+    ) == panel.model$component.maximum.count))
+    expect_true(all(vapply(
+      default.plot.data,
+      function(data) all(data$type == "max"),
+      logical(1)
+    )))
     expect_identical(panel.model$proposal$core$outcome, "strong_gap")
     expect_identical(panel.model$counts$core, 17L)
     expect_identical(panel.model$counts$final, 17L)
@@ -983,27 +999,31 @@ test_that("basin server invalidates changed fields and graph identities", {
       basin_analysis_state()$current.proposal$pinned.ids)
     expect_true(hidden.id %in%
       basin_analysis_state()$current.proposal$final.ids)
+    basin_selected_keys(character())
+    session$flushReact()
+    expect_length(basin_analysis_state()$selected.ids, 0L)
     inspector <- htmltools::renderTags(output$basin_inspector_ui)$html
     expect_match(inspector, "Basin Inspector", fixed = TRUE)
-    expect_match(inspector, "Largest maximum basins", fixed = TRUE)
-    expect_match(inspector, "Largest minimum basins", fixed = TRUE)
-    expect_match(inspector, "Ranking measure", fixed = TRUE)
-    expect_false(grepl(">Auto</option>", inspector, fixed = TRUE))
+    expect_false(grepl("Largest maximum basins", inspector, fixed = TRUE))
+    expect_false(grepl("Largest minimum basins", inspector, fixed = TRUE))
+    expect_false(grepl("Ranking measure", inspector, fixed = TRUE))
+    expect_match(inspector, "Row scope", fixed = TRUE)
+    expect_match(inspector, "Row sort", fixed = TRUE)
     expect_match(
       inspector,
-      '<option value="primary.support.mass" selected>Mass</option>',
+      '<option value="mass" selected>Mass</option>',
       fixed = TRUE
     )
     expect_match(
       inspector,
-      '<option value="extremum.value">Peak value</option>',
+      '<option value="peak">Peak value</option>',
       fixed = TRUE
     )
     expect_match(inspector, "Maximum extrema", fixed = TRUE)
     expect_match(inspector, "Minimum extrema", fixed = TRUE)
     expect_match(
       inspector,
-      '<option value="listed" selected>Listed top-K</option>',
+      '<option value="initial_display" selected>Initial display</option>',
       fixed = TRUE
     )
     expect_match(
@@ -1012,7 +1032,11 @@ test_that("basin server invalidates changed fields and graph identities", {
       perl = TRUE
     )
     expect_match(inspector, "Selected basins", fixed = TRUE)
-    expect_match(inspector, "Listed top-K", fixed = TRUE)
+    expect_match(inspector, "All maximum basins", fixed = TRUE)
+    expect_match(inspector, "All minimum basins", fixed = TRUE)
+    expect_match(inspector, ">Core</option>", fixed = TRUE)
+    expect_match(inspector, ">Sentinels</option>", fixed = TRUE)
+    expect_match(inspector, ">Pinned</option>", fixed = TRUE)
     expect_match(inspector, "Basin characteristics", fixed = TRUE)
     expect_match(inspector, "Bundle directory", fixed = TRUE)
     expect_match(inspector, "Save full basin bundle", fixed = TRUE)
@@ -1021,14 +1045,16 @@ test_that("basin server invalidates changed fields and graph identities", {
     expect_match(inspector, "Reset basin colors", fixed = TRUE)
     expect_match(inspector, "Extremum / basin", fixed = TRUE)
     expect_match(inspector, "gf-basin-show-column", fixed = TRUE)
+    expect_match(inspector, "gf-basin-pin-column", fixed = TRUE)
     expect_match(inspector, "gf-basin-label-column", fixed = TRUE)
-    expect_match(inspector, ">M1<", fixed = TRUE)
-    expect_match(inspector, ">m1<", fixed = TRUE)
     expect_match(inspector, ">Extremum value</th>", fixed = TRUE)
     expect_match(inspector, ">Support</th>", fixed = TRUE)
     expect_match(inspector, ">Mass</th>", fixed = TRUE)
     expect_match(inspector, ">Prominence</th>", fixed = TRUE)
-    expect_match(inspector, "Ranking measure:", fixed = TRUE)
+    expect_match(inspector, ">Proposal class</th>", fixed = TRUE)
+    expect_match(inspector, ">Inclusion reasons</th>", fixed = TRUE)
+    expect_match(inspector, ">Tree state</th>", fixed = TRUE)
+    expect_match(inspector, "stable canonical labels", fixed = TRUE)
     expect_false(grepl(">Extremum vertex</th>", inspector, fixed = TRUE))
     expect_false(grepl(">Primary support</th>", inspector, fixed = TRUE))
     expect_false(grepl(">Primary mass</th>", inspector, fixed = TRUE))
@@ -1043,31 +1069,88 @@ test_that("basin server invalidates changed fields and graph identities", {
       fixed = TRUE
     )
     expect_false(grepl("basin_inspector_maximize", inspector, fixed = TRUE))
-    session$setInputs(basin_rank_by = "extremum.value")
-    session$flushReact()
-    expect_match(
-      basin_status(),
-      "Basin summary updated without reconstruction",
-      fixed = TRUE
+    labels.before.sort <- setNames(
+      first$all_table$display.label,
+      first$all_table$key
     )
-    peak.ranked <- basin_result()
+    session$setInputs(basin_inspector_sort = "peak")
+    session$flushReact()
     expect_identical(
-      unname(peak.ranked$ranking_resolved),
-      rep("extremum.value", 2L)
+      basin_display_settings$inspector_sort,
+      "peak"
+    )
+    expect_identical(
+      setNames(
+        basin_result()$all_table$display.label,
+        basin_result()$all_table$key
+      )[names(labels.before.sort)],
+      labels.before.sort
     )
     peak.inspector <- htmltools::renderTags(
       output$basin_inspector_ui
     )$html
     expect_match(
       peak.inspector,
-      "Peak value ranks maxima from highest to lowest",
+      '<option value="peak" selected>Peak value</option>',
       fixed = TRUE
     )
-    session$setInputs(basin_rank_by = "primary.support.mass")
+    session$setInputs(basin_inspector_scope = "all")
     session$flushReact()
+    all.inspector <- htmltools::renderTags(
+      output$basin_inspector_ui
+    )$html
+    expect_match(all.inspector, ">M1<", fixed = TRUE)
+    expect_match(all.inspector, ">m1<", fixed = TRUE)
     expect_identical(
-      unname(basin_result()$ranking_resolved),
-      rep("primary.support.mass", 2L)
+      nrow(gflowui:::gflowui_basin_inspector_rows(
+        basin_result(),
+        basin_analysis_state(),
+        scope = "all",
+        sort.by = "peak",
+        selected_keys = basin_selected_keys()
+      )),
+      nrow(first$all_table)
+    )
+    hidden.key <- paste(
+      "max",
+      hidden.row$trajectory.basin.id,
+      sep = "|"
+    )
+    selected.before.row.pin <- basin_analysis_state()$selected.ids
+    row.pin.attempt <- basin_analysis_state()$active.attempt$attempt.id
+    session$setInputs(basin_inspector_row_event = list(
+      key = hidden.key,
+      role = "pin",
+      checked = FALSE,
+      value = "",
+      nonce = 101
+    ))
+    session$flushReact()
+    finish_basin_analysis()
+    expect_gt(
+      basin_analysis_state()$active.attempt$attempt.id,
+      row.pin.attempt
+    )
+    expect_false(hidden.id %in% basin_analysis_state()$pinned.ids)
+    expect_identical(
+      basin_analysis_state()$selected.ids,
+      selected.before.row.pin
+    )
+    session$setInputs(basin_inspector_row_event = list(
+      key = hidden.key,
+      role = "pin",
+      checked = TRUE,
+      value = "",
+      nonce = 102
+    ))
+    session$flushReact()
+    finish_basin_analysis()
+    expect_true(hidden.id %in% basin_analysis_state()$pinned.ids)
+    expect_true(hidden.id %in%
+      basin_analysis_state()$current.proposal$final.ids)
+    expect_identical(
+      basin_analysis_state()$selected.ids,
+      selected.before.row.pin
     )
     session$setInputs(basin_export_directory = export.directory)
     session$flushReact()
@@ -1085,7 +1168,7 @@ test_that("basin server invalidates changed fields and graph identities", {
       stringsAsFactors = FALSE
     )
     expect_equal(nrow(exported.table), nrow(first$all_table))
-    expect_gt(nrow(exported.table), nrow(first$table))
+    expect_equal(nrow(exported.table), nrow(first$table))
     unlink(export.contents, recursive = TRUE, force = TRUE)
 
     plot.workspace <- htmltools::renderTags(
@@ -1509,7 +1592,7 @@ test_that("basin server invalidates changed fields and graph identities", {
       second.analysis$active.attempt$outcome,
       "proposal_created"
     )
-    expect_identical(basin_display_settings$maxima_scope, "listed")
+    expect_identical(basin_display_settings$maxima_scope, "initial_display")
     expect_true(isTRUE(basin_display_settings$label_maxima))
     expect_identical(basin_display_settings$minima_scope, "none")
     expect_false(isTRUE(basin_display_settings$label_minima))

@@ -978,11 +978,15 @@ gflowui_basin_complete_interactive_data <- function(
       "Selected maximum basin",
       choices = choices,
       selected = selected,
-      width = "min(100%, 24rem)"
+      width = "100%"
     ),
     shiny::p(class = "gf-basin-tree-selection-status", disclosure),
     shiny::actionButton(
-      "basin_tree_pin_selected",
+      if (state == "pinned") {
+        "basin_tree_unpin_selected"
+      } else {
+        "basin_tree_pin_selected"
+      },
       if (state == "pinned") "Unpin selected" else "Pin selected",
       class = "btn btn-sm btn-outline-secondary",
       title = if (state == "pinned") {

@@ -366,7 +366,7 @@ gflowui_basin_extrema_defaults <- function(source_type) {
     "occupation_probability"
   )
   list(
-    maxima_scope = if (is_density) "listed" else "none",
+    maxima_scope = if (is_density) "initial_display" else "none",
     label_maxima = is_density,
     minima_scope = "none",
     label_minima = FALSE,

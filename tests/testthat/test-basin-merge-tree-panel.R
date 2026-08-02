@@ -246,6 +246,55 @@ phase5_runtime_state <- function(runtime, controls) {
   )
 }
 
+phase6_inspector_result <- function(state) {
+  canonical <- gflowui:::gflowui_basin_bundle_snapshot(
+    state$bundle
+  )$canonical
+  maxima <- data.frame(
+    key = paste("max", canonical$trajectory.basin.id, sep = "|"),
+    type = "max",
+    basin.id = canonical$trajectory.basin.id,
+    extremum.vertex = canonical$extremum.vertex,
+    rank = rev(seq_len(nrow(canonical))),
+    primary.support.size = canonical$trajectory.flow.support,
+    primary.support.mass = canonical$trajectory.flow.mass,
+    extremum.value = canonical$peak.value,
+    prominence = canonical$persistence,
+    raw.support.size = canonical$trajectory.flow.support,
+    retained.support.size = canonical$trajectory.flow.support,
+    retained.support.mass = canonical$trajectory.flow.mass,
+    retention.status = "retained",
+    color = "#2563EB",
+    selected = FALSE,
+    display.label = paste0("rank-dependent-", seq_len(nrow(canonical))),
+    stringsAsFactors = FALSE
+  )
+  minimum <- data.frame(
+    key = "min|min_fixture",
+    type = "min",
+    basin.id = "min_fixture",
+    extremum.vertex = max(canonical$extremum.vertex) + 1L,
+    rank = 1L,
+    primary.support.size = 2,
+    primary.support.mass = 0.01,
+    extremum.value = -1,
+    prominence = 0.25,
+    raw.support.size = 2,
+    retained.support.size = 2,
+    retained.support.mass = 0.01,
+    retention.status = "retained",
+    color = "#06B6D4",
+    selected = FALSE,
+    display.label = "rank-dependent-minimum",
+    stringsAsFactors = FALSE
+  )
+  all.table <- rbind(maxima, minimum)
+  gflowui:::gflowui_basin_prepare_analysis_result(list(
+    all_table = all.table,
+    table = all.table[seq_len(min(2L, nrow(all.table))), , drop = FALSE]
+  ))
+}
+
 phase5_single_branch_bundle <- function() {
   adjacency <- list(integer())
   source <- stats::setNames(1, "v1")
@@ -391,6 +440,164 @@ test_that("tree terminology identifies density-value survival semantics", {
     gflowui:::.gflowui_basin_complete_viewer_title(),
     "Complete Interactive Density-Value Elder-Rule Basin Merge Tree"
   )
+})
+
+test_that("Phase 6 views preserve complete maxima and stable identities", {
+  records <- data.frame(
+    id = c("r", "a", "b", "c", "d", "e"),
+    parent = c(NA, "r", "r", "r", "r", "r"),
+    mass = c(0.5, 0.3, 0.19, 0.009, 0.0009, 0.0001),
+    support = c(20, 12, 8, 1, 2, 3),
+    peak = c(10, 8, 7, 100, 6, 5),
+    prominence = c(10, 4, 3, 2, 1, 0.5),
+    stringsAsFactors = FALSE
+  )
+  runtime <- phase5_records_runtime(records, "phase6-inspector")
+  controls <- gflowui:::gflowui_basin_default_controls(nrow(records))
+  controls$filter.mode <- "top_k"
+  controls$top.k <- 3L
+  controls$peak.sentinel.enabled <- FALSE
+  controls$prominence.sentinel.enabled <- FALSE
+  controls$support.sentinel.enabled <- FALSE
+  controls$sentinel.top.n <- 0L
+  state <- phase5_runtime_state(runtime, controls)
+  result <- phase6_inspector_result(state)
+
+  expect_equal(nrow(result$table), 7L)
+  expect_equal(nrow(result$all_table), 7L)
+  expect_setequal(
+    result$all_table$display.label[result$all_table$type == "max"],
+    paste0("M", seq_len(6L))
+  )
+  initial <- gflowui:::gflowui_basin_inspector_rows(
+    result,
+    state,
+    scope = "initial_display",
+    sort.by = "mass"
+  )
+  all.maxima <- gflowui:::gflowui_basin_inspector_rows(
+    result,
+    state,
+    scope = "all_maxima",
+    sort.by = "peak"
+  )
+  expect_equal(nrow(initial), 3L)
+  expect_equal(nrow(all.maxima), 6L)
+  expect_false("max|c" %in% initial$key)
+  expect_true("max|c" %in% all.maxima$key)
+  expect_identical(
+    all.maxima$proposal.visibility[all.maxima$key == "max|c"],
+    "hidden"
+  )
+  expect_true(all(c(
+    "proposal.membership.class",
+    "proposal.inclusion.reasons",
+    "proposal.core",
+    "proposal.sentinel",
+    "proposal.ancestor.only",
+    "proposal.pinned",
+    "proposal.selected",
+    "proposal.visibility"
+  ) %in% names(all.maxima)))
+
+  mass.sorted <- gflowui:::gflowui_basin_inspector_rows(
+    result,
+    state,
+    scope = "all_maxima",
+    sort.by = "mass"
+  )
+  peak.sorted <- gflowui:::gflowui_basin_inspector_rows(
+    result,
+    state,
+    scope = "all_maxima",
+    sort.by = "peak"
+  )
+  mass.labels <- stats::setNames(mass.sorted$canonical.label, mass.sorted$key)
+  peak.labels <- stats::setNames(peak.sorted$canonical.label, peak.sorted$key)
+  expect_identical(mass.labels[sort(names(mass.labels))],
+                   peak.labels[sort(names(peak.labels))])
+  expect_false(identical(mass.sorted$key, peak.sorted$key))
+
+  defaults <- gflowui:::gflowui_basin_default_plot_specs("phase6")
+  expect_true(all(vapply(defaults, function(spec) {
+    identical(spec$scope, "component_maxima") &&
+      identical(spec$type, "max") &&
+      identical(spec$point_color, "proposal")
+  }, logical(1))))
+  plot.data <- gflowui:::gflowui_basin_plot_data(
+    result,
+    scope = defaults[[1L]]$scope,
+    type = defaults[[1L]]$type,
+    analysis_state = state
+  )
+  expect_equal(nrow(plot.data), 6L)
+  expect_true("max|c" %in% plot.data$key)
+  expect_identical(plot.data$membership[plot.data$key == "max|c"], "hidden")
+  expect_equal(plot.data$extremum_value[plot.data$key == "max|c"], 100)
+
+  selected.id <- gflowui:::gflowui_basin_selected_canonical_ids(
+    result,
+    state,
+    "max|c"
+  )
+  expect_identical(selected.id, "c")
+  selected.state <- gflowui:::gflowui_basin_reduce_state(
+    state,
+    gflowui:::gflowui_basin_state_event("selection_change", ids = "c")
+  )
+  selected.row <- gflowui:::gflowui_basin_inspector_rows(
+    result,
+    selected.state,
+    scope = "selected"
+  )
+  expect_identical(selected.row$key, "max|c")
+  expect_true(selected.row$proposal.selected)
+  expect_true(selected.row$proposal.hidden)
+
+  pin.pending <- gflowui:::gflowui_basin_reduce_state(
+    selected.state,
+    gflowui:::gflowui_basin_state_event("pin", id = "c")
+  )
+  pin.result <- gflowui:::gflowui_basin_execute_pending(
+    pin.pending$pending.work,
+    layout.accessor = runtime$accessor
+  )
+  pinned.state <- gflowui:::gflowui_basin_reduce_state(
+    pin.pending,
+    gflowui:::gflowui_basin_state_event("result", result = pin.result)
+  )
+  pinned.row <- gflowui:::gflowui_basin_inspector_rows(
+    result,
+    pinned.state,
+    scope = "pinned"
+  )
+  pinned.core <- gflowui:::gflowui_basin_inspector_rows(
+    result,
+    pinned.state,
+    scope = "core"
+  )
+  expect_identical(pinned.row$key, "max|c")
+  expect_false("max|c" %in% pinned.core$key)
+  expect_true(pinned.row$proposal.pinned)
+  expect_true(pinned.row$proposal.visible)
+  expect_match(pinned.row$proposal.inclusion.reasons, "pinned", fixed = TRUE)
+  pinned.model <- gflowui:::gflowui_basin_merge_tree_model(
+    pinned.state,
+    layout.accessor = runtime$accessor
+  )
+  selection.ui <- htmltools::renderTags(
+    gflowui:::.gflowui_basin_panel_selection_ui(pinned.model$panel)
+  )$html
+  expect_match(selection.ui, 'id="basin_tree_unpin_selected"', fixed = TRUE)
+  expect_false(grepl(
+    'id="basin_tree_pin_selected"',
+    selection.ui,
+    fixed = TRUE
+  ))
+
+  exported <- gflowui:::gflowui_basin_export_characteristics(result)
+  expect_equal(nrow(exported), 7L)
+  expect_setequal(exported$extremum_basin, result$all_table$canonical.label)
 })
 
 test_that("sparse and absent label modes satisfy the canonical plot API", {

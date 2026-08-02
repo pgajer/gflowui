@@ -484,6 +484,8 @@ test_that("basin plot helpers preserve all, listed, and selected scopes", {
   table <- data.frame(
     key = c("max|a", "max|b", "min|c"),
     type = c("max", "max", "min"),
+    basin.id = c("a", "b", "c"),
+    extremum.vertex = c(1L, 2L, 3L),
     display.label = c("M1", "M2", "m1"),
     rank = c(1L, 2L, 1L),
     primary.support.size = c(8L, 5L, 7L),
@@ -535,6 +537,8 @@ test_that("basin plot helpers preserve all, listed, and selected scopes", {
   rank.table <- data.frame(
     key = c("max|a", "max|b", "min|c", "min|d"),
     type = c("max", "max", "min", "min"),
+    basin.id = c("a", "b", "c", "d"),
+    extremum.vertex = c(1L, 2L, 3L, 4L),
     display.label = c("M1", "M2", "m1", "m2"),
     rank = c(1L, 2L, 1L, 2L),
     primary.support.size = c(5L, 8L, 4L, 7L),

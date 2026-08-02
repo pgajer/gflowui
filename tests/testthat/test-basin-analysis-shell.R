@@ -233,8 +233,9 @@ test_that("Basin Analysis default workspace is exact and construction-scoped", {
     specs,
     function(spec) {
       identical(spec$kind, "scatter") &&
-        identical(spec$scope, "all") &&
+        identical(spec$scope, "component_maxima") &&
         identical(spec$type, "max") &&
+        identical(spec$point_color, "proposal") &&
         identical(spec$x_scale, "log10") &&
         identical(spec$y_scale, "log10") &&
         identical(
