@@ -371,11 +371,10 @@
   .gflowui_basin_prepare_active(state)
 }
 
-.gflowui_basin_start_context <- function(state,
-                                         cause,
-                                         bundle = state$bundle,
-                                         component = NULL) {
-  state <- .gflowui_basin_allocate_attempt(state, cause)
+.gflowui_basin_prepare_context_change <- function(
+    state,
+    bundle = state$bundle,
+    component = NULL) {
   state <- .gflowui_basin_advance_generation(
     state,
     bundle = bundle,
@@ -384,6 +383,88 @@
   .gflowui_basin_prepare_active(
     state,
     advance.on.scientific = FALSE
+  )
+}
+
+.gflowui_basin_block_invalid_context_change <- function(
+    state,
+    reason,
+    messages) {
+  component <- if (
+    identical(state$context$selection.rule, "explicit")
+  ) {
+    state$context$component
+  } else {
+    NULL
+  }
+  state <- .gflowui_basin_advance_generation(
+    state,
+    component = component
+  )
+  validation <- .gflowui_basin_attempt_validation(state)$validation
+  if (identical(reason, "bundle_invalid")) {
+    validation$bundle <- "bundle_invalid"
+  } else {
+    validation$identity <- "stale"
+  }
+  .gflowui_basin_block_active(
+    state,
+    validation,
+    reason,
+    messages
+  )
+}
+
+.gflowui_basin_start_bundle_change <- function(state, bundle) {
+  state <- .gflowui_basin_allocate_attempt(state, "bundle_change")
+  candidate <- tryCatch(
+    {
+      .gflowui_basin_assert_bundle(bundle)
+      next.state <- .gflowui_basin_prepare_context_change(
+        state,
+        bundle = bundle
+      )
+      .gflowui_basin_assert_runtime_state(next.state)
+      next.state
+    },
+    error = identity
+  )
+  if (!inherits(candidate, "error")) {
+    return(candidate)
+  }
+  .gflowui_basin_block_invalid_context_change(
+    state,
+    "bundle_invalid",
+    sprintf(
+      "Replacement scientific bundle is invalid: %s",
+      conditionMessage(candidate)
+    )
+  )
+}
+
+.gflowui_basin_start_component_change <- function(state, component) {
+  state <- .gflowui_basin_allocate_attempt(
+    state,
+    "component_change"
+  )
+  available <- gflowui_basin_bundle_snapshot(
+    state$bundle
+  )$component.ids
+  valid <- .gflowui_basin_whole_number_vector(component, 1L) &&
+    component %in% available
+  if (!valid) {
+    return(.gflowui_basin_block_invalid_context_change(
+      state,
+      "context_invalid",
+      paste(
+        "The requested basin-analysis component is malformed",
+        "or unavailable."
+      )
+    ))
+  }
+  .gflowui_basin_prepare_context_change(
+    state,
+    component = as.integer(component)
   )
 }
 
@@ -639,17 +720,14 @@ gflowui_basin_reduce_state <- function(state, event) {
       remove = TRUE
     )
   } else if (event$type == "bundle_change") {
-    .gflowui_basin_assert_bundle(event$bundle)
-    next.state <- .gflowui_basin_start_context(
+    next.state <- .gflowui_basin_start_bundle_change(
       next.state,
-      "bundle_change",
-      bundle = event$bundle
+      event$bundle
     )
   } else if (event$type == "component_change") {
-    next.state <- .gflowui_basin_start_context(
+    next.state <- .gflowui_basin_start_component_change(
       next.state,
-      "component_change",
-      component = event$component
+      event$component
     )
   } else if (event$type == "selection_change") {
     next.state <- .gflowui_basin_apply_selection(

@@ -429,6 +429,172 @@ test_that("scientifically invalid replacements clear retained display", {
   }
 })
 
+test_that("malformed context changes allocate, invalidate, and block atomically", {
+  bundle <- phase3_bundle(
+    phase3_graph_case(disconnected = TRUE),
+    "invalid-context-events"
+  )
+  prepared <- function(pending = FALSE) {
+    state <- phase3_current_state(bundle)
+    id <- state$current.proposal$component$ids[[1L]]
+    state <- phase3_reduce(state, "pin", id = id)
+    state <- phase3_install_pending(state)$state
+    state <- phase3_reduce(
+      state,
+      "selection_change",
+      ids = id
+    )
+    state$caches <- list(layout = "context-owned")
+    old.result <- NULL
+    if (pending) {
+      state <- phase3_reduce(
+        state,
+        "control_change",
+        name = "coverage.target",
+        value = 0.9
+      )
+      old.result <- gflowui:::gflowui_basin_execute_pending(
+        state$pending.work
+      )
+    }
+    list(state = state, old.result = old.result)
+  }
+  expect_invalidated <- function(state,
+                                 before,
+                                 reason,
+                                 validation.field,
+                                 cause) {
+    expect_identical(
+      state$active.attempt$attempt.id,
+      before$next.attempt.id
+    )
+    expect_identical(
+      state$next.attempt.id,
+      before$next.attempt.id + 1L
+    )
+    expect_identical(
+      state$context.generation,
+      before$context.generation + 1L
+    )
+    expect_identical(state$bundle.id, before$bundle.id)
+    expect_identical(
+      state$context$component,
+      before$context$component
+    )
+    expect_identical(state$active.attempt$cause, cause)
+    expect_identical(state$active.attempt$outcome, "blocked")
+    expect_identical(state$active.attempt$reason, reason)
+    expect_identical(
+      state$active.attempt$validation[[validation.field]],
+      if (validation.field == "bundle") {
+        "bundle_invalid"
+      } else {
+        "stale"
+      }
+    )
+    expect_length(state$active.attempt$messages, 1L)
+    expect_null(state$current.proposal)
+    expect_null(state$retained.last.valid.proposal)
+    expect_identical(state$pinned.ids, character())
+    expect_identical(state$selected.ids, character())
+    expect_identical(state$caches, list())
+    expect_null(state$pending.work)
+    expect_identical(state$display.source, "none")
+    expect_null(gflowui:::gflowui_basin_displayed_proposal(state))
+  }
+
+  fake.bundle <- new.env(parent = emptyenv())
+  class(fake.bundle) <- c(
+    "runtime.scientific.bundle",
+    "gflowui_basin_scientific_bundle",
+    "environment"
+  )
+  fake.bundle$bundle.id <- "bundle-malformed-envelope"
+  fake.bundle$data <- list()
+  lockEnvironment(fake.bundle, bindings = TRUE)
+  malformed.bundles <- list(
+    missing = NULL,
+    null = NULL,
+    list = list(bundle.id = "not-a-bundle"),
+    malformed_locked_envelope = fake.bundle
+  )
+  for (name in names(malformed.bundles)) {
+    prior <- prepared(pending = name %in% c("null", "list"))
+    before <- prior$state
+    prior.display <- before$display.source
+    prior.pending <- before$pending.work
+    event <- if (name == "missing") {
+      phase3_event("bundle_change")
+    } else {
+      phase3_event(
+        "bundle_change",
+        bundle = malformed.bundles[[name]]
+      )
+    }
+    state <- gflowui:::gflowui_basin_reduce_state(before, event)
+    expect_invalidated(
+      state,
+      before,
+      "bundle_invalid",
+      "bundle",
+      "bundle_change"
+    )
+    expect_identical(before$display.source, prior.display, info = name)
+    expect_identical(before$pending.work, prior.pending, info = name)
+    if (!is.null(prior$old.result)) {
+      expect_identical(
+        phase3_reduce(state, "result", result = prior$old.result),
+        state,
+        info = name
+      )
+    }
+  }
+
+  invalid.components <- list(
+    missing = NULL,
+    null = NULL,
+    character = "2",
+    logical = TRUE,
+    list = list(2L),
+    fractional = 1.5,
+    missing_numeric = NA_real_,
+    positive_infinite = Inf,
+    negative_infinite = -Inf,
+    not_a_number = NaN,
+    below_range = 0,
+    unavailable = .Machine$integer.max
+  )
+  for (name in names(invalid.components)) {
+    prior <- prepared(pending = TRUE)
+    before <- prior$state
+    old.result <- prior$old.result
+    event <- if (name == "missing") {
+      phase3_event("component_change")
+    } else {
+      phase3_event(
+        "component_change",
+        component = invalid.components[[name]]
+      )
+    }
+    state <- gflowui:::gflowui_basin_reduce_state(before, event)
+    expect_invalidated(
+      state,
+      before,
+      "context_invalid",
+      "identity",
+      "component_change"
+    )
+    expect_identical(before$display.source, "retained_last_valid")
+    expect_false(is.null(before$retained.last.valid.proposal))
+    expect_false(is.null(before$pending.work))
+    expect_identical(
+      phase3_reduce(state, "result", result = old.result),
+      state,
+      info = name
+    )
+  }
+})
+
 test_that("proposal and presentation events allocate on distinct boundaries [38,50-54]", {
   bundle <- phase3_bundle(phase3_graph_case(), "event-types")
   state <- phase3_current_state(bundle)
