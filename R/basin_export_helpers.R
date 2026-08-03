@@ -19,7 +19,7 @@ gflowui_basin_export_characteristics <- function(result) {
   }
   table <- result$all_table
   required <- c(
-    "display.label", "type", "rank", "extremum.vertex",
+    "display.label", "type", "label.rank", "label.basis", "extremum.vertex",
     "extremum.value", "primary.support.size", "primary.support.mass",
     "prominence"
   )
@@ -39,7 +39,8 @@ gflowui_basin_export_characteristics <- function(result) {
   data.frame(
     extremum_basin = as.character(table$display.label),
     extremum_type = type,
-    rank = suppressWarnings(as.integer(table$rank)),
+    rank = suppressWarnings(as.integer(table$label.rank)),
+    label_basis = as.character(table$label.basis),
     extremum_vertex = suppressWarnings(as.integer(table$extremum.vertex)),
     extremum_value = suppressWarnings(as.numeric(table$extremum.value)),
     support = suppressWarnings(as.integer(table$primary.support.size)),
@@ -85,6 +86,13 @@ gflowui_basin_export_internal_mapping <- function(result) {
   table <- result$all_table
   data.frame(
     extremum_basin = as.character(table$display.label),
+    label_rank = suppressWarnings(as.integer(
+      gflowui_basin_export_column(table, "label.rank", NA_integer_)
+    )),
+    label_basis = as.character(gflowui_basin_export_column(
+      table,
+      "label.basis"
+    )),
     internal_key = as.character(gflowui_basin_export_column(table, "key")),
     basin_id = as.character(gflowui_basin_export_column(table, "basin.id")),
     extremum_id = as.character(gflowui_basin_export_column(
@@ -116,7 +124,8 @@ gflowui_basin_export_internal_mapping <- function(result) {
 gflowui_basin_export_column_definitions <- function() {
   data.frame(
     column = c(
-      "extremum_basin", "extremum_type", "rank", "extremum_vertex",
+      "extremum_basin", "extremum_type", "rank", "label_basis",
+      "extremum_vertex",
       "extremum_value", "support", "mass", "prominence", "raw_support",
       "raw_mass", "retained_support", "retained_mass", "allocated_mass",
       "assignment_status", "retention_status"
@@ -124,7 +133,14 @@ gflowui_basin_export_column_definitions <- function() {
     definition = c(
       "Readable direction-specific label: M for maxima and m for minima.",
       "Whether the basin is associated with a local maximum or minimum.",
-      "Direction-specific rank under the recorded ranking measure.",
+      paste(
+        "Direction-specific rank used in the readable basin label under",
+        "label_basis."
+      ),
+      paste(
+        "Characteristic used to assign the direction-specific readable",
+        "basin label."
+      ),
       "Internal integer index of the representative extremum vertex.",
       "Raw field value at the representative extremum.",
       "Number of vertices uniquely assigned to the basin.",
@@ -251,6 +267,17 @@ gflowui_basin_export_provenance <- function(
       ),
       maximum = as.character(ranking[["max"]] %||% ""),
       minimum = as.character(ranking[["min"]] %||% "")
+    ),
+    labeling = list(
+      basis = as.character(
+        result$label_basis %||% "primary.support.mass"
+      ),
+      basis_label = as.character(
+        result$label_basis_label %||%
+          gflowui_basin_label_basis_name(result$label_basis)
+      ),
+      scope = "complete basin complex, ranked separately by direction",
+      tie_breaker = "canonical extremum-vertex index, then basin ID"
     ),
     mass_provenance = result$summary$mass.provenance %||% NULL,
     data_fingerprint = gflowui_basin_sha256(characteristics),
@@ -422,6 +449,12 @@ gflowui_write_basin_export_bundle <- function(
         "Coordinates: all numeric values are raw.",
         "Log10 settings in the plot workspace are display-only."
       ),
+      sprintf(
+        "Basin labels: %s (%s).",
+        result$label_basis_label %||%
+          gflowui_basin_label_basis_name(result$label_basis),
+        result$label_basis %||% "primary.support.mass"
+      ),
       "",
       "Files:",
       "- basin_characteristics.csv: readable analysis table.",
@@ -466,6 +499,9 @@ gflowui_write_basin_export_bundle <- function(
     target,
     expected_fingerprint = as.character(
       result$construction_identity$fingerprint %||% ""
+    ),
+    expected_label_basis = as.character(
+      result$label_basis %||% "primary.support.mass"
     )
   )
   list(

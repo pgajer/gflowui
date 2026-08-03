@@ -556,10 +556,10 @@ test_that("basin plot helpers preserve all, listed, and selected scopes", {
   expect_equal(ranked.plot.data$support_rank, c(2L, 1L, 2L, 1L))
   expect_equal(ranked.plot.data$mass_rank, c(2L, 1L, 2L, 1L))
   expect_equal(ranked.plot.data$prominence_rank, c(2L, 1L, 2L, 1L))
-  expect_equal(ranked.plot.data$rank, c(1L, 2L, 1L, 2L))
+  expect_equal(ranked.plot.data$rank, c(2L, 1L, 2L, 1L))
   expect_equal(
     gflowui:::gflowui_basin_plot_label_rows(ranked.plot.data, 1L),
-    c(1L, 3L)
+    c(2L, 4L)
   )
   expect_length(
     gflowui:::gflowui_basin_plot_label_rows(ranked.plot.data, 0L),
@@ -811,6 +811,10 @@ test_that("basin export bundles contain the complete raw table and provenance", 
     ),
     summary = list(mass.provenance = NULL)
   )
+  result <- gflowui:::gflowui_basin_apply_label_basis(
+    result,
+    "primary.support.mass"
+  )
   characteristics <- gflowui:::gflowui_basin_export_characteristics(result)
   expect_equal(nrow(characteristics), 3L)
   expect_equal(
@@ -868,8 +872,13 @@ test_that("basin export bundles contain the complete raw table and provenance", 
   expect_equal(provenance$counts$total, 3L)
   expect_true(isTRUE(provenance$export_scope$top_k_ignored))
   expect_identical(provenance$export_scope$coordinate_scale, "raw")
+  expect_identical(
+    provenance$labeling$basis,
+    "primary.support.mass"
+  )
   matched <- gflowui:::gflowui_find_basin_export(
-    result$construction_identity$fingerprint
+    result$construction_identity$fingerprint,
+    label_basis = "primary.support.mass"
   )
   expect_true(isTRUE(matched$found))
   expect_identical(matched$path, saved$path)
@@ -881,6 +890,10 @@ test_that("basin export bundles contain the complete raw table and provenance", 
   expect_false(isTRUE(gflowui:::gflowui_validate_basin_export_bundle(
     saved$path,
     expected_sha256 = paste(rep("0", 64L), collapse = "")
+  )$valid))
+  expect_false(isTRUE(gflowui:::gflowui_validate_basin_export_bundle(
+    saved$path,
+    expected_label_basis = "primary.support.size"
   )$valid))
 
   second <- gflowui:::gflowui_write_basin_export_bundle(

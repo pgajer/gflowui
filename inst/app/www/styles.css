@@ -1047,6 +1047,39 @@ body.gf-general-inspector-resizing {
   flex: 0 0 auto;
 }
 
+.gf-basin-labeling {
+  min-width: 0;
+  margin: 0;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid rgba(15, 139, 119, 0.34);
+  border-radius: 6px;
+  background: rgba(240, 253, 250, 0.76);
+  box-shadow: 0 6px 20px rgba(26, 47, 51, 0.05);
+}
+
+.gf-basin-labeling h4 {
+  margin: 0 0 0.55rem;
+  font-size: 1rem;
+}
+
+.gf-basin-labeling .form-group {
+  margin: 0;
+}
+
+.gf-basin-labeling-description,
+.gf-basin-labeling-contract,
+.gf-basin-labeling-unavailable,
+.gf-basin-labeling-fallback {
+  margin: 0.45rem 0 0;
+  color: #475569;
+  font-size: 0.8rem;
+}
+
+.gf-basin-labeling-unavailable,
+.gf-basin-labeling-fallback {
+  color: #9a3412;
+}
+
 .gf-basin-merge-tree {
   min-width: 0;
   margin: 0;

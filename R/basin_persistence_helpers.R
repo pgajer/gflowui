@@ -63,6 +63,7 @@ gflowui_empty_basin_export_entries <- function() {
     project_id = character(),
     estimate_label = character(),
     data_fingerprint = character(),
+    label_basis = character(),
     stringsAsFactors = FALSE
   )
 }
@@ -148,7 +149,8 @@ gflowui_read_basin_zip_provenance <- function(path) {
 gflowui_validate_basin_export_bundle <- function(
     path,
     expected_fingerprint = NULL,
-    expected_sha256 = NULL) {
+    expected_sha256 = NULL,
+    expected_label_basis = NULL) {
   path <- path.expand(as.character(path %||% ""))
   invalid <- function(reason) {
     list(
@@ -208,20 +210,33 @@ gflowui_validate_basin_export_bundle <- function(
       "The ZIP reconstruction fingerprint does not match the active complex."
     ))
   }
+  label.basis <- as.character(provenance$labeling$basis %||% "")
+  expected.label.basis <- as.character(expected_label_basis %||% "")
+  if (nzchar(expected.label.basis) &&
+      !identical(label.basis, expected.label.basis)) {
+    return(invalid(
+      "The ZIP basin-label basis does not match the active label setting."
+    ))
+  }
   list(
     valid = TRUE,
     reason = "",
     path = path,
     zip_sha256 = tolower(sha256),
     reconstruction_fingerprint = tolower(fingerprint),
+    label_basis = label.basis,
     provenance = provenance
   )
 }
 
-gflowui_index_basin_export <- function(path, expected_fingerprint = NULL) {
+gflowui_index_basin_export <- function(
+    path,
+    expected_fingerprint = NULL,
+    expected_label_basis = NULL) {
   validation <- gflowui_validate_basin_export_bundle(
     path,
-    expected_fingerprint = expected_fingerprint
+    expected_fingerprint = expected_fingerprint,
+    expected_label_basis = expected_label_basis
   )
   if (!isTRUE(validation$valid)) {
     stop(
@@ -258,6 +273,9 @@ gflowui_index_basin_export <- function(path, expected_fingerprint = NULL) {
     data_fingerprint = as.character(
       provenance$data_fingerprint %||% ""
     ),
+    label_basis = as.character(
+      provenance$labeling$basis %||% ""
+    ),
     stringsAsFactors = FALSE
   )
   index$entries <- rbind(entries, record)
@@ -265,7 +283,9 @@ gflowui_index_basin_export <- function(path, expected_fingerprint = NULL) {
   c(validation, list(indexed = TRUE))
 }
 
-gflowui_find_basin_export <- function(reconstruction_fingerprint) {
+gflowui_find_basin_export <- function(
+    reconstruction_fingerprint,
+    label_basis = NULL) {
   fingerprint <- tolower(as.character(
     reconstruction_fingerprint %||% ""
   ))
@@ -285,6 +305,12 @@ gflowui_find_basin_export <- function(reconstruction_fingerprint) {
   candidates <- which(
     tolower(entries$reconstruction_fingerprint) == fingerprint
   )
+  label.basis <- as.character(label_basis %||% "")
+  if (nzchar(label.basis)) {
+    candidates <- candidates[
+      entries$label_basis[candidates] == label.basis
+    ]
+  }
   if (length(candidates) < 1L) {
     return(not_found())
   }
@@ -295,7 +321,12 @@ gflowui_find_basin_export <- function(reconstruction_fingerprint) {
     validation <- gflowui_validate_basin_export_bundle(
       entries$path[[row]],
       expected_fingerprint = fingerprint,
-      expected_sha256 = entries$zip_sha256[[row]]
+      expected_sha256 = entries$zip_sha256[[row]],
+      expected_label_basis = if (nzchar(label.basis)) {
+        label.basis
+      } else {
+        NULL
+      }
     )
     if (isTRUE(validation$valid)) {
       match <- validation

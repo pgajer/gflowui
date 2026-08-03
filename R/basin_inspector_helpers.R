@@ -6,6 +6,9 @@
     canonical.basin.id = character(),
     canonical.label = character(),
     canonical.label.rank = integer(),
+    label.basis = character(),
+    label.rank = integer(),
+    display.label = character(),
     stringsAsFactors = FALSE
   )
 }
@@ -50,7 +53,9 @@ gflowui_basin_stable_labels <- function(table) {
   table
 }
 
-gflowui_basin_prepare_analysis_result <- function(result) {
+gflowui_basin_prepare_analysis_result <- function(
+    result,
+    label_basis = "primary.support.mass") {
   if (!is.list(result) || !is.data.frame(result$all_table)) {
     return(result)
   }
@@ -60,7 +65,7 @@ gflowui_basin_prepare_analysis_result <- function(result) {
   ## the complete table as the selection/color authority; the Inspector view
   ## is a non-mutating projection of it.
   result$table <- all.table
-  result
+  gflowui_basin_apply_label_basis(result, label_basis)
 }
 
 .gflowui_basin_inspector_pair <- function(result, state) {
@@ -129,6 +134,20 @@ gflowui_basin_proposal_context_table <- function(
     return(.gflowui_basin_inspector_empty())
   }
   table <- gflowui_basin_stable_labels(result$all_table)
+  label.availability <- gflowui_basin_label_basis_availability(table)
+  if (any(label.availability)) {
+    table <- gflowui_basin_apply_label_basis_table(
+      table,
+      result$label_basis %||% "primary.support.mass"
+    )
+  } else {
+    ## Identity-only internal adapters can carry no scientific measures.
+    ## Preserve their canonical labels without treating them as a user-facing
+    ## labeling fallback.
+    table$label.basis <- "canonical.extremum.vertex"
+    table$label.rank <- table$canonical.label.rank
+    table$display.label <- table$canonical.label
+  }
   table$canonical.basin.id <- as.character(table$basin.id)
   table$proposal.component <- FALSE
   table$proposal.initial.display <- FALSE
@@ -221,7 +240,7 @@ gflowui_basin_inspector_sort_choices <- function() {
     "Support" = "support",
     "Peak value" = "peak",
     "Prominence" = "prominence",
-    "Canonical label" = "canonical_label"
+    "Basin label" = "basin_label"
   )
 }
 
@@ -263,11 +282,11 @@ gflowui_basin_inspector_rows <- function(
     support = suppressWarnings(as.numeric(table$primary.support.size)),
     peak = suppressWarnings(as.numeric(table$extremum.value)),
     prominence = suppressWarnings(as.numeric(table$prominence)),
-    canonical_label = suppressWarnings(as.numeric(table$canonical.label.rank)),
+    basin_label = suppressWarnings(as.numeric(table$label.rank)),
     suppressWarnings(as.numeric(table$primary.support.mass))
   )
   direction.order <- match(as.character(table$type), c("max", "min"))
-  decreasing <- !identical(sort.by, "canonical_label")
+  decreasing <- !identical(sort.by, "basin_label")
   order.value <- if (decreasing) -value else value
   if (identical(sort.by, "peak")) {
     minima <- as.character(table$type) == "min"
@@ -277,6 +296,7 @@ gflowui_basin_inspector_rows <- function(
     direction.order,
     !is.finite(value),
     order.value,
+    table$label.rank,
     table$canonical.label.rank,
     method = "radix"
   )
