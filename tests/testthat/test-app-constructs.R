@@ -755,6 +755,10 @@ test_that("basin server invalidates changed fields and graph identities", {
       vapply(default.plots, `[[`, character(1), "kind"),
       c("histogram", "ranked", "cumulative")
     )
+    expect_identical(
+      vapply(default.plots, `[[`, character(1), "y_scale"),
+      c("raw", "log10", "log10")
+    )
     expect_true(all(vapply(
       default.plots,
       function(spec) {
@@ -1253,18 +1257,29 @@ test_that("basin server invalidates changed fields and graph identities", {
     expect_length(race$jobs, 1L)
     retained.id <- first.pending$retained.last.valid.proposal$attempt.id
     retained.text <- sprintf("Retained proposal attempt %d", retained.id)
+    tree.pending.html <- htmltools::renderTags(
+      output$basin_merge_tree_ui
+    )$html
+    plot.pending.html <- htmltools::renderTags(
+      output$basin_plot_workspace_ui
+    )$html
+    inspector.pending.html <- htmltools::renderTags(
+      output$basin_inspector_ui
+    )$html
     for (panel.html in list(
-        htmltools::renderTags(output$basin_merge_tree_ui)$html,
-        htmltools::renderTags(output$basin_plot_workspace_ui)$html,
-        htmltools::renderTags(output$basin_inspector_ui)$html
+        tree.pending.html,
+        plot.pending.html,
+        inspector.pending.html
     )) {
       expect_match(
         panel.html,
         'data-display-source="retained_last_valid"',
         fixed = TRUE
       )
-      expect_match(panel.html, retained.text, fixed = TRUE)
     }
+    expect_match(tree.pending.html, retained.text, fixed = TRUE)
+    expect_match(inspector.pending.html, retained.text, fixed = TRUE)
+    expect_false(grepl(retained.text, plot.pending.html, fixed = TRUE))
 
     session$setInputs(basin_tree_final_budget = race.budget + 2L)
     session$flushReact()
@@ -1760,6 +1775,18 @@ test_that("basin server invalidates changed fields and graph identities", {
     expect_match(plot.workspace, "Positive log10 mass", fixed = TRUE)
     expect_match(plot.workspace, "Ranked positive mass", fixed = TRUE)
     expect_match(plot.workspace, "Cumulative positive mass", fixed = TRUE)
+    expect_match(
+      plot.workspace,
+      '<option value="log10" selected>Remaining share (log10)</option>',
+      fixed = TRUE
+    )
+    expect_match(
+      plot.workspace,
+      "A value of -2 corresponds to 99% coverage",
+      fixed = TRUE
+    )
+    expect_match(plot.workspace, 'data-max="100"', fixed = TRUE)
+    expect_match(plot.workspace, 'data-from="80"', fixed = TRUE)
     expect_equal(
       lengths(regmatches(
         plot.workspace,

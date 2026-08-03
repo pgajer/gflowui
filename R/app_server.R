@@ -10334,7 +10334,7 @@ app_server <- function(input, output, session) {
         gflowui_draw_basin_plot(
           data = data,
           spec = card.spec,
-          bins = input[[card.bins.id]] %||% 20L,
+          bins = input[[card.bins.id]] %||% 80L,
           histogram_color =
             input[[card.histogram.color.id]] %||% "#2563EB",
           point_color = input[[card.point.color.id]] %||%
@@ -10549,11 +10549,24 @@ app_server <- function(input, output, session) {
               )
             )
           } else NULL,
-          if (is.scatter || is.ranked) {
+          if (is.scatter || is.ranked || is.cumulative) {
             shiny::selectInput(
               y.scale.id,
-              if (is.ranked) "Value scale" else "Y-axis scale",
-              choices = basin_plot_scale_choices,
+              if (is.ranked) {
+                "Value scale"
+              } else if (is.cumulative) {
+                "Cumulative-mass view"
+              } else {
+                "Y-axis scale"
+              },
+              choices = if (is.cumulative) {
+                c(
+                  "Remaining share (log10)" = "log10",
+                  "Cumulative share (linear)" = "raw"
+                )
+              } else {
+                basin_plot_scale_choices
+              },
               selected = basin_plot_input_value(
                 y.scale.id,
                 default.y.scale
@@ -10576,10 +10589,10 @@ app_server <- function(input, output, session) {
               bins.id,
               "Histogram bins",
               min = 3L,
-              max = 80L,
+              max = 100L,
               step = 1L,
               value = suppressWarnings(as.integer(
-                basin_plot_input_value(bins.id, 20L)
+                basin_plot_input_value(bins.id, 80L)
               ))
             )
           } else NULL,
@@ -10658,7 +10671,15 @@ app_server <- function(input, output, session) {
               step = 1L
             )
           } else NULL
-        )
+        ),
+        if (is.cumulative) shiny::p(
+          class = "gf-basin-plot-scale-note",
+          paste(
+            "The log10 view plots log10(1 - cumulative share); the zero",
+            "remainder at complete coverage is omitted. A value of -2",
+            "corresponds to 99% coverage and -3 to 99.9%."
+          )
+        ) else NULL
       ),
       shiny::div(
         class = "gf-basin-plot-frame",

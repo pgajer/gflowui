@@ -28,6 +28,11 @@ test_that("ranked and cumulative plot specifications are scientifically scoped",
     function(spec) identical(spec$kind, "cumulative"),
     logical(1)
   )))
+  expect_true(all(vapply(
+    cumulative,
+    function(spec) identical(spec$y_scale, "log10"),
+    logical(1)
+  )))
 })
 
 test_that("ranked and cumulative curves are direction-specific and tie-complete", {
@@ -57,9 +62,37 @@ test_that("ranked and cumulative curves are direction-specific and tie-complete"
   maxima <- cumulative[cumulative$type == "max", , drop = FALSE]
   expect_identical(maxima$position, c(1L, 3L, 4L))
   expect_equal(maxima$value, c(0.5, 0.9, 1))
+  linear <- gflowui:::gflowui_basin_cumulative_display_curve(
+    cumulative,
+    "raw"
+  )
+  expect_equal(linear$plot.value, cumulative$value)
+  log.remaining <- gflowui:::gflowui_basin_cumulative_display_curve(
+    cumulative,
+    "log10"
+  )
+  expect_equal(
+    log.remaining$plot.value[log.remaining$type == "max"],
+    log10(c(0.5, 0.1))
+  )
+  expect_identical(
+    log.remaining$position[log.remaining$type == "max"],
+    c(1L, 3L)
+  )
   expect_identical(
     nrow(gflowui:::gflowui_basin_cumulative_curve(data, "prominence")),
     0L
+  )
+})
+
+test_that("histograms default to 80 bins", {
+  expect_identical(
+    formals(gflowui:::gflowui_basin_histogram_geometry)$bins,
+    80L
+  )
+  expect_identical(
+    formals(gflowui:::gflowui_draw_basin_plot)$bins,
+    80L
   )
 })
 
@@ -96,6 +129,10 @@ test_that("proposal-aware default plot cards render with threshold overlays", {
     core.budget = 4L
   )
   specs <- gflowui:::gflowui_basin_default_plot_specs("render-defaults")
+  expect_identical(
+    vapply(specs, `[[`, character(1), "y_scale"),
+    c("raw", "log10", "log10")
+  )
   output <- tempfile(fileext = ".pdf")
   grDevices::pdf(output, width = 8, height = 6)
   on.exit({
