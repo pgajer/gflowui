@@ -972,36 +972,169 @@ gflowui_basin_complete_interactive_data <- function(
   )
 }
 
-.gflowui_basin_panel_percent <- function(value) {
-  if (is.null(value) ||
-      length(value) != 1L ||
-      is.na(value) ||
-      !is.finite(value)) {
-    return("Unavailable")
+.gflowui_basin_panel_core_outcome_label <- function(outcome) {
+  labels <- c(
+    strong_gap = "Automatic: strong mass gap",
+    coverage = "Mass-coverage target",
+    coverage_capped = "Mass coverage capped by the core budget",
+    single_positive = "Single positive-mass branch",
+    complete = "No filtering",
+    minimum_mass = "Minimum-mass threshold",
+    threshold_empty = "Minimum-mass threshold selected no branches",
+    top_k = "Top K"
+  )
+  outcome <- as.character(outcome %||% "")
+  label <- unname(labels[[outcome]])
+  if (is.null(label)) {
+    gsub("_", " ", outcome, fixed = TRUE)
+  } else {
+    label
   }
-  sprintf(
-    "%.6f%% (%s)",
-    100 * value,
-    formatC(value, digits = 15L, format = "fg")
-  )
 }
 
-.gflowui_basin_panel_summary_item <- function(label, value) {
+.gflowui_basin_panel_render_outcome_label <- function(outcome) {
+  labels <- c(
+    renderable = "Ready",
+    core_overflow = "Paused: initial selection exceeds the render budget",
+    sentinel_overflow = "Paused: required sentinels exceed the render budget",
+    closure_overflow = "Paused: ancestor closure exceeds the render budget"
+  )
+  outcome <- as.character(outcome %||% "")
+  label <- unname(labels[[outcome]])
+  if (is.null(label)) {
+    gsub("_", " ", outcome, fixed = TRUE)
+  } else {
+    label
+  }
+}
+
+.gflowui_basin_panel_summary_ui <- function(
+    total.maximum.count,
+    component.count,
+    component.id,
+    component.maximum.count,
+    core.count,
+    final.count,
+    core.outcome,
+    render.outcome) {
+  summary.line <- function(label, value) {
+    shiny::tags$li(
+      shiny::strong(paste0(label, ": ")),
+      as.character(value)
+    )
+  }
+  component.line <- if (as.integer(component.count) > 1L) {
+    summary.line(
+      "Graph component",
+      sprintf(
+        "%d of %d (%d maximum basins)",
+        as.integer(component.id),
+        as.integer(component.count),
+        as.integer(component.maximum.count)
+      )
+    )
+  } else {
+    NULL
+  }
   shiny::div(
-    class = "gf-basin-tree-summary-item",
-    shiny::span(class = "gf-basin-tree-summary-label", label),
-    shiny::span(class = "gf-basin-tree-summary-value", value)
+    class = "gf-basin-tree-summary-list",
+    role = "status",
+    `aria-live` = "polite",
+    shiny::tags$ul(
+      summary.line("Maximum basins", as.integer(total.maximum.count)),
+      component.line,
+      summary.line(
+        "Initially selected for display",
+        sprintf(
+          "%d (%s)",
+          as.integer(core.count),
+          .gflowui_basin_panel_core_outcome_label(core.outcome)
+        )
+      ),
+      summary.line("Final branches displayed", as.integer(final.count)),
+      summary.line(
+        "Static rendering",
+        .gflowui_basin_panel_render_outcome_label(render.outcome)
+      )
+    )
   )
 }
 
-.gflowui_basin_panel_rule_disclosure <- function() {
-  shiny::p(
-    class = "gf-basin-tree-disclosure gf-basin-tree-rule-disclosure",
-    paste(
-      "Canonical continuation follows the density-value elder rule:",
-      "the branch with the greater birth density survives each merge.",
-      "Trajectory-flow mass and support are annotations and filtering",
-      "quantities; they do not change tree parentage."
+.gflowui_basin_panel_controls_help <- function() {
+  shiny::div(
+    class = "gf-basin-tree-controls-help",
+    shiny::h5("How the tree and controls work"),
+    shiny::p(
+      paste(
+        "The tree is built from graph superlevel sets as the density",
+        "threshold is lowered. Each local maximum starts a branch.",
+        "When two branches meet, the density-value elder rule keeps the",
+        "branch born at the higher density. If the birth densities tie,",
+        "the branch with the smaller canonical extremum-vertex index",
+        "survives. The merge level and losing branch are recorded in the tree."
+      )
+    ),
+    shiny::p(
+      paste(
+        "Trajectory-flow mass and support rank or filter branches for",
+        "display; they do not change branch continuation, parentage,",
+        "or merge levels."
+      )
+    ),
+    shiny::tags$dl(
+      shiny::tags$dt("Component"),
+      shiny::tags$dd(
+        paste(
+          "Appears only when the graph has multiple connected components;",
+          "it selects which component's maximum-basin tree is displayed."
+        )
+      ),
+      shiny::tags$dt("Filter"),
+      shiny::tags$dd(
+        paste(
+          "Chooses the initial display subset. Auto looks for a strong",
+          "trajectory-flow mass gap after reaching the requested mass",
+          "coverage and within the core branch budget. The other modes use",
+          "cumulative mass, a minimum mass, Top K, or no filtering."
+        )
+      ),
+      shiny::tags$dt("Final render budget"),
+      shiny::tags$dd(
+        paste(
+          "Limits the static plot after required sentinels, pins, and",
+          "canonical ancestors are added. The plot pauses instead of",
+          "silently removing required branches."
+        )
+      ),
+      shiny::tags$dt("Sentinels"),
+      shiny::tags$dd(
+        paste(
+          "Keep the top requested branches by peak value, prominence,",
+          "or support even when the main filter would omit them."
+        )
+      ),
+      shiny::tags$dt("Labels and diagnostic"),
+      shiny::tags$dd(
+        paste(
+          "Control which branch labels are drawn and whether the",
+          "trajectory-flow mass diagnostic is shown."
+        )
+      ),
+      shiny::tags$dt("Tree actions"),
+      shiny::tags$dd(
+        paste(
+          "Open complete interactive tree keeps the current proposal and",
+          "opens all branches for the selected component. Show all changes",
+          "the filter to None and recomputes the displayed proposal."
+        )
+      ),
+      shiny::tags$dt("Display recipe"),
+      shiny::tags$dd(
+        paste(
+          "Saves or restores display settings only; it does not save",
+          "basins, selections, pins, or a computed proposal."
+        )
+      )
     )
   )
 }
@@ -1013,11 +1146,7 @@ gflowui_basin_complete_interactive_data <- function(
 .gflowui_basin_panel_selection_ui <- function(model) {
   ids <- model$selected$ids
   if (!length(ids)) {
-    return(shiny::div(
-      class = "gf-basin-tree-selection gf-basin-tree-selection-empty",
-      `data-selection-state` = "none",
-      shiny::span("No maximum basin selected.")
-    ))
+    return(NULL)
   }
   selected <- ids[[1L]]
   choices <- stats::setNames(ids, ids)
@@ -1148,14 +1277,15 @@ gflowui_basin_complete_interactive_data <- function(
   )
   shiny::div(
     class = "gf-basin-tree-controls",
+    .gflowui_basin_panel_controls_help(),
     shiny::div(
       class = "gf-basin-tree-control-grid",
-      shiny::selectInput(
+      if (length(component.choices) > 1L) shiny::selectInput(
         "basin_tree_component",
         "Component",
         choices = component.choices,
         selected = as.character(model$component$id)
-      ),
+      ) else NULL,
       shiny::selectInput(
         "basin_tree_filter_mode",
         "Filter",
@@ -1296,7 +1426,6 @@ gflowui_basin_merge_tree_panel_ui <- function(model) {
           if (nzchar(detail)) paste0(": ", detail) else ""
         )
       ),
-      .gflowui_basin_panel_rule_disclosure(),
       if (has.state) {
         .gflowui_basin_panel_controls_ui(model)
       } else {
@@ -1310,15 +1439,6 @@ gflowui_basin_merge_tree_panel_ui <- function(model) {
     ))
   }
   proposal <- model$proposal
-  primary.counts <- model$counts$primary.reason.counts
-  primary.text <- paste(
-    sprintf(
-      "%s %d",
-      names(primary.counts),
-      as.integer(primary.counts)
-    ),
-    collapse = "; "
-  )
   warnings <- unique(c(
     model$status$warnings,
     model$labels$warning
@@ -1422,61 +1542,15 @@ gflowui_basin_merge_tree_panel_ui <- function(model) {
     } else {
       NULL
     },
-    .gflowui_basin_panel_rule_disclosure(),
-    shiny::div(
-      class = "gf-basin-tree-summary",
-      .gflowui_basin_panel_summary_item(
-        "All maximum basins",
-        model$total.maximum.count
-      ),
-      .gflowui_basin_panel_summary_item(
-        "Components",
-        model$component$count
-      ),
-      .gflowui_basin_panel_summary_item(
-        "Selected component",
-        sprintf(
-          "%d (%d maxima)",
-          model$component$id,
-          model$component$maximum.count
-        )
-      ),
-      .gflowui_basin_panel_summary_item(
-        "Mass core",
-        sprintf(
-          "%d (%s)",
-          model$counts$core,
-          proposal$core$outcome
-        )
-      ),
-      .gflowui_basin_panel_summary_item(
-        "Final display",
-        sprintf(
-          "%d (%s)",
-          model$counts$final,
-          proposal$render.outcome
-        )
-      ),
-      .gflowui_basin_panel_summary_item(
-        "Positive-mass coverage",
-        .gflowui_basin_panel_percent(model$coverage)
-      ),
-      .gflowui_basin_panel_summary_item(
-        "Sentinel-only",
-        sprintf("%d; %s", model$counts$sentinel.only, primary.text)
-      ),
-      .gflowui_basin_panel_summary_item(
-        "Ancestor-only",
-        model$counts$ancestor.only
-      ),
-      .gflowui_basin_panel_summary_item(
-        "Mass ownership",
-        model$status$mass.owner
-      ),
-      .gflowui_basin_panel_summary_item(
-        "Display source",
-        model$display.source
-      )
+    .gflowui_basin_panel_summary_ui(
+      total.maximum.count = model$total.maximum.count,
+      component.count = model$component$count,
+      component.id = model$component$id,
+      component.maximum.count = model$component$maximum.count,
+      core.count = model$counts$core,
+      final.count = model$counts$final,
+      core.outcome = proposal$core$outcome,
+      render.outcome = proposal$render.outcome
     ),
     if (length(warnings)) {
       shiny::div(

@@ -860,33 +860,88 @@ test_that("basin server invalidates changed fields and graph identities", {
     )
     expect_match(
       tree.shell,
-      "Current maximum-basin proposal",
+      "Maximum basins",
       fixed = TRUE
     )
     expect_match(
       tree.shell,
-      "Canonical continuation follows the density-value elder rule",
+      "The tree is built from graph superlevel sets",
       fixed = TRUE
     )
     expect_match(
       tree.shell,
-      "greater birth density survives each merge",
+      "Each local maximum starts a branch",
       fixed = TRUE
     )
     expect_match(
       tree.shell,
-      "mass and support are annotations and filtering quantities",
+      "the branch with the smaller canonical extremum-vertex index survives",
       fixed = TRUE
     )
-    expect_match(tree.shell, "do not change tree parentage", fixed = TRUE)
+    expect_match(
+      tree.shell,
+      "mass and support rank or filter branches for display",
+      fixed = TRUE
+    )
+    expect_match(
+      tree.shell,
+      "do not change branch continuation",
+      fixed = TRUE
+    )
+    expect_match(
+      tree.shell,
+      "Tree construction and display controls",
+      fixed = TRUE
+    )
+    expect_match(
+      tree.shell,
+      "Initially selected for display",
+      fixed = TRUE
+    )
+    expect_match(
+      tree.shell,
+      "17 (Automatic: strong mass gap)",
+      fixed = TRUE
+    )
+    expect_match(
+      tree.shell,
+      "Final branches displayed",
+      fixed = TRUE
+    )
+    expect_match(tree.shell, "Static rendering", fixed = TRUE)
+    expect_match(tree.shell, "Ready", fixed = TRUE)
     expect_match(
       tree.shell,
       'data-render-outcome="renderable"',
       fixed = TRUE
     )
-    expect_match(tree.shell, "Current proposal attempt", fixed = TRUE)
+    expect_false(grepl(
+      "Current proposal attempt",
+      tree.shell,
+      fixed = TRUE
+    ))
+    expect_false(grepl(
+      "Positive-mass coverage",
+      tree.shell,
+      fixed = TRUE
+    ))
+    expect_false(grepl("Sentinel-only", tree.shell, fixed = TRUE))
+    expect_false(grepl(
+      "mass owner trajectory-flow",
+      tree.shell,
+      fixed = TRUE
+    ))
+    expect_false(grepl(
+      "No basin is transiently selected",
+      tree.shell,
+      fixed = TRUE
+    ))
+    expect_false(grepl(
+      'id="basin_tree_component"',
+      tree.shell,
+      fixed = TRUE
+    ))
     for (control.id in c(
-      "basin_tree_component",
       "basin_tree_filter_mode",
       "basin_tree_coverage",
       "basin_tree_strong_gap",

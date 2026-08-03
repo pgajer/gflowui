@@ -429,13 +429,55 @@ test_that("tree terminology identifies density-value survival semantics", {
   ui <- htmltools::renderTags(
     gflowui:::gflowui_basin_merge_tree_panel_ui(model$panel)
   )$html
-  expect_match(ui, "greater birth density survives each merge", fixed = TRUE)
   expect_match(
     ui,
-    "mass and support are annotations and filtering quantities",
+    "The tree is built from graph superlevel sets",
     fixed = TRUE
   )
-  expect_match(ui, "do not change tree parentage", fixed = TRUE)
+  expect_match(ui, "Each local maximum starts a branch", fixed = TRUE)
+  expect_match(
+    ui,
+    "the branch with the smaller canonical extremum-vertex index survives",
+    fixed = TRUE
+  )
+  expect_match(
+    ui,
+    "mass and support rank or filter branches for display",
+    fixed = TRUE
+  )
+  expect_match(ui, "do not change branch continuation", fixed = TRUE)
+  expect_match(ui, "How the tree and controls work", fixed = TRUE)
+  expect_match(ui, "Initially selected for display", fixed = TRUE)
+  expect_match(ui, "Final branches displayed", fixed = TRUE)
+  expect_match(ui, "Static rendering", fixed = TRUE)
+  expect_false(grepl("Positive-mass coverage", ui, fixed = TRUE))
+  expect_false(grepl("Sentinel-only", ui, fixed = TRUE))
+  expect_false(grepl("Mass ownership", ui, fixed = TRUE))
+  expect_false(grepl("Display source", ui, fixed = TRUE))
+  expect_false(grepl('id="basin_tree_component"', ui, fixed = TRUE))
+
+  multi.component.summary <- htmltools::renderTags(
+    gflowui:::.gflowui_basin_panel_summary_ui(
+      total.maximum.count = 9L,
+      component.count = 2L,
+      component.id = 2L,
+      component.maximum.count = 4L,
+      core.count = 3L,
+      final.count = 4L,
+      core.outcome = "coverage",
+      render.outcome = "renderable"
+    )
+  )$html
+  expect_match(
+    multi.component.summary,
+    "Graph component",
+    fixed = TRUE
+  )
+  expect_match(
+    multi.component.summary,
+    "2 of 2 (4 maximum basins)",
+    fixed = TRUE
+  )
   expect_identical(
     gflowui:::.gflowui_basin_complete_viewer_title(),
     "Complete Interactive Density-Value Elder-Rule Basin Merge Tree"
