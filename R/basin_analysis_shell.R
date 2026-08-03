@@ -613,7 +613,7 @@ gflowui_basin_default_plot_specs <- function(
       } else {
         "raw"
       },
-      y_scale = if (identical(kinds[[index]], "ranked")) {
+      y_scale = if (kinds[[index]] %in% c("ranked", "cumulative")) {
         "log10"
       } else {
         "raw"

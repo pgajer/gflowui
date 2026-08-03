@@ -1718,6 +1718,12 @@ body.gf-general-inspector-resizing {
   margin-bottom: 0;
 }
 
+.gf-basin-plot-scale-note {
+  margin: 0.45rem 0 0;
+  color: #5b6472;
+  font-size: 0.78rem;
+}
+
 .gf-basin-plot-frame {
   width: 100%;
   min-width: 360px;

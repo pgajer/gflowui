@@ -417,6 +417,11 @@ gflowui_basin_new_plot_specs <- function(
       features = selected,
       scope = as.character(scope),
       type = as.character(type),
+      y_scale = if (kind %in% c("ranked", "cumulative")) {
+        "log10"
+      } else {
+        NULL
+      },
       construction_fingerprint = as.character(construction_fingerprint)
     )
   })
@@ -576,6 +581,30 @@ gflowui_basin_cumulative_curve <- function(data, feature) {
   if (length(pieces) < 1L) data.frame() else do.call(rbind, pieces)
 }
 
+gflowui_basin_cumulative_display_curve <- function(
+    curve,
+    scale = c("raw", "log10")) {
+  scale <- match.arg(scale)
+  if (!is.data.frame(curve) ||
+      nrow(curve) < 1L ||
+      !all(c("type", "value") %in% names(curve))) {
+    return(data.frame())
+  }
+  curve$plot.value <- suppressWarnings(as.numeric(curve$value))
+  if (identical(scale, "raw")) {
+    return(curve[is.finite(curve$plot.value), , drop = FALSE])
+  }
+  remaining <- 1 - curve$plot.value
+  for (direction in unique(as.character(curve$type))) {
+    rows <- which(as.character(curve$type) == direction)
+    if (length(rows)) remaining[utils::tail(rows, 1L)] <- 0
+  }
+  keep <- is.finite(remaining) & remaining > 0
+  curve <- curve[keep, , drop = FALSE]
+  curve$plot.value <- log10(remaining[keep])
+  curve
+}
+
 gflowui_basin_plot_selection_overlay <- function(
     data,
     analysis_state,
@@ -676,9 +705,13 @@ gflowui_basin_plot_selection_overlay <- function(
   colors <- colors[keep]
   lines <- lines[keep]
   if (length(labels) < 1L) return(invisible(NULL))
+  plot.region <- graphics::par("usr")
+  x.span <- diff(plot.region[1:2])
   graphics::legend(
-    "topright",
-    inset = c(-0.3, 0),
+    x = plot.region[[2L]] + 0.035 * x.span,
+    y = plot.region[[4L]],
+    xjust = 0,
+    yjust = 1,
     legend = labels,
     col = colors,
     lty = lines,
@@ -705,9 +738,9 @@ gflowui_basin_plot_complete_rows <- function(data, features) {
   data[keep, , drop = FALSE]
 }
 
-gflowui_basin_histogram_geometry <- function(x, bins = 20L) {
+gflowui_basin_histogram_geometry <- function(x, bins = 80L) {
   bins <- suppressWarnings(as.integer(bins))
-  if (!is.finite(bins) || bins < 1L) bins <- 20L
+  if (!is.finite(bins) || bins < 1L) bins <- 80L
   histogram <- graphics::hist(x, breaks = bins, plot = FALSE)
   heights <- histogram$counts
   if (length(heights) > 0L && max(heights) > 0) {
@@ -724,7 +757,7 @@ gflowui_basin_histogram_geometry <- function(x, bins = 20L) {
 gflowui_draw_basin_plot <- function(
     data,
     spec,
-    bins = 20L,
+    bins = 80L,
     histogram_color = "#2563EB",
     point_color = "type",
     point_glyph = 19L,
@@ -755,7 +788,7 @@ gflowui_draw_basin_plot <- function(
     return(invisible(data))
   }
   bins <- suppressWarnings(as.integer(bins))
-  if (!is.finite(bins) || bins < 1L) bins <- 20L
+  if (!is.finite(bins) || bins < 1L) bins <- 80L
   point_glyph <- suppressWarnings(as.integer(point_glyph))
   if (!is.finite(point_glyph)) point_glyph <- 19L
   point_size <- suppressWarnings(as.numeric(point_size))
@@ -803,7 +836,7 @@ gflowui_draw_basin_plot <- function(
       original.mar[[1L]],
       original.mar[[2L]],
       original.mar[[3L]],
-      max(original.mar[[4L]], 8)
+      max(original.mar[[4L]], 12)
     ))
   }
 
@@ -981,13 +1014,42 @@ gflowui_draw_basin_plot <- function(
       graphics::text(0.5, 0.5, "No positive additive values.")
       return(invisible(data))
     }
+    remaining.log10 <- identical(as.character(y_scale), "log10")
+    curve <- gflowui_basin_cumulative_display_curve(
+      curve,
+      scale = if (remaining.log10) "log10" else "raw"
+    )
+    if (nrow(curve) < 1L) {
+      graphics::plot.new()
+      graphics::text(
+        0.5,
+        0.5,
+        "No positive remaining share before complete coverage."
+      )
+      return(invisible(data))
+    }
+    y.limits <- if (remaining.log10) {
+      range(c(0, curve$plot.value), finite = TRUE)
+    } else {
+      c(0, 1)
+    }
+    start.value <- 0
+    remaining.label <- if (identical(feature, "mass")) {
+      "positive-mass"
+    } else {
+      tolower(gflowui_basin_plot_feature_label(feature))
+    }
     graphics::plot(
       NA_real_,
       NA_real_,
-      xlim = c(1, max(curve$position)),
-      ylim = c(0, 1),
+      xlim = c(0, max(curve$position)),
+      ylim = y.limits,
       xlab = "Complete-tie group endpoint",
-      ylab = "Cumulative share",
+      ylab = if (remaining.log10) {
+        sprintf("log10 remaining %s share", remaining.label)
+      } else {
+        "Cumulative share"
+      },
       main = sprintf("%s (n=%d)", gflowui_basin_plot_title(spec), nrow(data))
     )
     graphics::grid(col = "#D9DEE2", lty = 3)
@@ -1007,15 +1069,15 @@ gflowui_draw_basin_plot <- function(
       }
       if (proposal.diagnostic) color <- "#94A3B8"
       graphics::lines(
-        c(1, curve$position[rows]),
-        c(0, curve$value[rows]),
+        c(0, curve$position[rows]),
+        c(start.value, curve$plot.value[rows]),
         type = "s",
         col = color,
         lwd = 2
       )
       graphics::points(
         curve$position[rows],
-        curve$value[rows],
+        curve$plot.value[rows],
         col = color,
         pch = point_glyph,
         cex = point_size
@@ -1034,8 +1096,8 @@ gflowui_draw_basin_plot <- function(
         ]
         if (nrow(selected)) {
           graphics::lines(
-            c(1, selected$position),
-            c(0, selected$value),
+            c(0, selected$position),
+            c(start.value, selected$plot.value),
             type = "s",
             col = "#2563EB",
             lwd = 2.5
@@ -1062,15 +1124,27 @@ gflowui_draw_basin_plot <- function(
     }
     if (overlay.available && identical(feature, "mass")) {
       if (is.finite(selection_overlay$coverage.target)) {
-        graphics::abline(
-          h = selection_overlay$coverage.target,
-          col = "#7C3AED",
-          lty = 3,
-          lwd = 1.5
-        )
-        legend.labels <- c(legend.labels, "Mass-coverage target")
-        legend.colors <- c(legend.colors, "#7C3AED")
-        legend.lines <- c(legend.lines, 3L)
+        coverage.line <- selection_overlay$coverage.target
+        if (remaining.log10) {
+          remaining.target <- 1 - coverage.line
+          coverage.line <- if (is.finite(remaining.target) &&
+              remaining.target > 0) {
+            log10(remaining.target)
+          } else {
+            NA_real_
+          }
+        }
+        if (is.finite(coverage.line)) {
+          graphics::abline(
+            h = coverage.line,
+            col = "#7C3AED",
+            lty = 3,
+            lwd = 1.5
+          )
+          legend.labels <- c(legend.labels, "Mass-coverage target")
+          legend.colors <- c(legend.colors, "#7C3AED")
+          legend.lines <- c(legend.lines, 3L)
+        }
       }
       if (is.finite(selection_overlay$core.budget) &&
           !identical(
