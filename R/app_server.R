@@ -142,7 +142,8 @@ app_server <- function(input, output, session) {
     inspector_columns = "compact",
     inspector_show_extremum_vertex = FALSE,
     inspector_width = 620,
-    plot_builder_type = "both"
+    plot_builder_type = "both",
+    plot_show_thresholds = TRUE
   )
   graph_vertex_color_choices <- function() {
     c(
@@ -536,6 +537,11 @@ app_server <- function(input, output, session) {
     if (type %in% c("both", "max", "min")) {
       basin_display_settings$plot_builder_type <- type
     }
+  }, ignoreInit = FALSE, ignoreNULL = TRUE)
+  shiny::observeEvent(input$basin_plot_show_thresholds, {
+    basin_display_settings$plot_show_thresholds <- isTRUE(
+      input$basin_plot_show_thresholds
+    )
   }, ignoreInit = FALSE, ignoreNULL = TRUE)
 
   shiny::observe({
@@ -10229,6 +10235,14 @@ app_server <- function(input, output, session) {
   }, ignoreInit = FALSE)
   basin_plot_card_ui <- function(spec, result) {
     card.id <- as.character(spec$id)
+    card.kind <- as.character(spec$kind)
+    is.histogram <- identical(card.kind, "histogram")
+    is.scatter <- identical(card.kind, "scatter")
+    is.matrix <- identical(card.kind, "matrix")
+    is.ranked <- identical(card.kind, "ranked")
+    is.cumulative <- identical(card.kind, "cumulative")
+    is.line.plot <- is.ranked || is.cumulative
+    is.proposal.diagnostic <- isTRUE(spec$proposal_diagnostic)
     output.id <- paste0("basin_plot_", card.id)
     click.id <- paste0("basin_plot_click_", card.id)
     status.id <- paste0("basin_plot_status_", card.id)
@@ -10246,7 +10260,7 @@ app_server <- function(input, output, session) {
     y.scale.id <- paste0("basin_plot_y_scale_", card.id)
     default.x.scale <- as.character(spec$x_scale %||% "log10")
     default.y.scale <- as.character(spec$y_scale %||% if (
-      identical(as.character(spec$kind), "scatter")
+      is.scatter || is.ranked
     ) {
       "log10"
     } else {
@@ -10312,6 +10326,11 @@ app_server <- function(input, output, session) {
           selected_keys = basin_selected_keys(),
           analysis_state = basin_analysis_state()
         )
+        selection.overlay <- gflowui_basin_plot_selection_overlay(
+          data,
+          basin_analysis_state(),
+          visible = TRUE
+        )
         gflowui_draw_basin_plot(
           data = data,
           spec = card.spec,
@@ -10330,7 +10349,11 @@ app_server <- function(input, output, session) {
             0L
           },
           x_scale = input[[card.x.scale.id]] %||% card.default.x.scale,
-          y_scale = input[[card.y.scale.id]] %||% card.default.y.scale
+          y_scale = input[[card.y.scale.id]] %||% card.default.y.scale,
+          selection_overlay = selection.overlay,
+          show_selection_thresholds = isTRUE(
+            input$basin_plot_show_thresholds
+          )
         )
       }, res = 110)
       output[[status.id]] <- shiny::renderText({
@@ -10461,8 +10484,6 @@ app_server <- function(input, output, session) {
         )
       }
     })
-    is.histogram <- identical(as.character(spec$kind), "histogram")
-    is.matrix <- identical(as.character(spec$kind), "matrix")
     shiny::div(
       id = paste0("gf_basin_plot_card_", card.id),
       class = paste(
@@ -10488,7 +10509,7 @@ app_server <- function(input, output, session) {
         shiny::tags$summary("Plot controls"),
         shiny::div(
           class = "gf-basin-plot-control-grid",
-          shiny::selectInput(
+          if (!is.proposal.diagnostic) shiny::selectInput(
             scope.id,
             "Data scope",
             choices = basin_plot_scope_choices,
@@ -10496,8 +10517,8 @@ app_server <- function(input, output, session) {
               scope.id,
               spec$scope %||% "all"
             )
-          ),
-          shiny::selectInput(
+          ) else NULL,
+          if (!is.proposal.diagnostic) shiny::selectInput(
             type.id,
             "Extrema",
             choices = basin_plot_type_choices,
@@ -10505,7 +10526,7 @@ app_server <- function(input, output, session) {
               type.id,
               spec$type %||% "both"
             )
-          ),
+          ) else NULL,
           if (is.histogram) {
             shiny::selectInput(
               x.scale.id,
@@ -10517,7 +10538,7 @@ app_server <- function(input, output, session) {
               )
             )
           } else NULL,
-          if (!is.histogram && !is.matrix) {
+          if (is.scatter) {
             shiny::selectInput(
               x.scale.id,
               "X-axis scale",
@@ -10528,10 +10549,10 @@ app_server <- function(input, output, session) {
               )
             )
           } else NULL,
-          if (!is.histogram && !is.matrix) {
+          if (is.scatter || is.ranked) {
             shiny::selectInput(
               y.scale.id,
-              "Y-axis scale",
+              if (is.ranked) "Value scale" else "Y-axis scale",
               choices = basin_plot_scale_choices,
               selected = basin_plot_input_value(
                 y.scale.id,
@@ -10573,7 +10594,7 @@ app_server <- function(input, output, session) {
               )
             )
           } else NULL,
-          if (!is.histogram) {
+          if (is.scatter || is.line.plot || is.matrix) {
             shiny::selectInput(
               glyph.id,
               "Glyph",
@@ -10583,10 +10604,10 @@ app_server <- function(input, output, session) {
               )
             )
           } else NULL,
-          if (!is.histogram) {
+          if (is.scatter || is.line.plot || is.matrix) {
             shiny::selectInput(
               point.color.id,
-              "Glyph color",
+              if (is.line.plot) "Line and point color" else "Glyph color",
               choices = basin_plot_point_color_choices,
               selected = basin_plot_input_value(
                 point.color.id,
@@ -10594,7 +10615,7 @@ app_server <- function(input, output, session) {
               )
             )
           } else NULL,
-          if (!is.histogram) {
+          if (is.scatter || is.line.plot || is.matrix) {
             shiny::sliderInput(
               size.id,
               "Glyph size",
@@ -10606,7 +10627,7 @@ app_server <- function(input, output, session) {
               ))
             )
           } else NULL,
-          if (!is.histogram) {
+          if (is.scatter || is.line.plot || is.matrix) {
             shiny::sliderInput(
               opacity.id,
               "Glyph opacity",
@@ -10618,14 +10639,14 @@ app_server <- function(input, output, session) {
               ))
             )
           } else NULL,
-          if (!is.histogram && !is.matrix) {
+          if (is.scatter || is.ranked) {
             shiny::checkboxInput(
               labels.id,
               "Label top-ranked basins",
               value = isTRUE(basin_plot_input_value(labels.id, TRUE))
             )
           } else NULL,
-          if (!is.histogram && !is.matrix) {
+          if (is.scatter || is.ranked) {
             shiny::numericInput(
               label.k.id,
               "Labels per extremum type (K)",
@@ -10672,7 +10693,7 @@ app_server <- function(input, output, session) {
         `data-analysis-state` = "internal_failure",
         shiny::h4(
           id = "gf_basin_merge_tree_heading",
-          "Basin Superlevel-Set Merge Tree"
+          "Basin Structure, Selection, and Merge Tree"
         ),
         shiny::p(
           class = "gf-basin-analysis-shell-status gf-status-error",
@@ -10835,7 +10856,7 @@ app_server <- function(input, output, session) {
         class = "gf-basin-merge-tree-header",
         shiny::h4(
           id = "gf_basin_merge_tree_heading",
-          "Basin Superlevel-Set Merge Tree"
+          "Basin Structure, Selection, and Merge Tree"
         )
       ),
       if (!is.null(attempt.status)) shiny::p(
@@ -10845,6 +10866,7 @@ app_server <- function(input, output, session) {
         attempt.status
       ) else NULL,
       proposal.summary,
+      shiny::uiOutput("basin_plot_workspace_ui"),
       if (!identical(model$display.source, "current")) basin_linked_status_tag(
         state,
         "gf-basin-tree-linked-status"
@@ -10930,11 +10952,6 @@ app_server <- function(input, output, session) {
               "All" = "all"
             ),
             selected = model$presentation$label.mode
-          ),
-          shiny::checkboxInput(
-            "basin_tree_show_diagnostic",
-            "Show diagnostic",
-            value = isTRUE(model$presentation$diagnostics.visible)
           )
         ),
         if (length(selected.choices)) shiny::div(
@@ -11032,35 +11049,6 @@ app_server <- function(input, output, session) {
             click = "basin_merge_tree_click"
           )
         )
-      } else NULL,
-      if (isTRUE(model$available) &&
-          isTRUE(model$presentation$diagnostics.visible)) {
-        if (isTRUE(model$diagnostics$available)) {
-          shiny::div(
-            class = "gf-basin-tree-diagnostic-frame",
-            shiny::plotOutput(
-              "basin_merge_tree_diagnostic_plot",
-              width = "100%",
-              height = "720px"
-            ),
-            shiny::p(
-              class = "gf-basin-tree-zero-count",
-              sprintf(
-                "%d exact zero-mass branch%s excluded from logarithmic diagnostics.",
-                model$diagnostics$zero.count,
-                if (model$diagnostics$zero.count == 1L) " was" else "es were"
-              )
-            )
-          )
-        } else {
-          shiny::p(
-            class = "gf-basin-tree-warning",
-            sprintf(
-              "Mass diagnostic unavailable: %s.",
-              model$diagnostics$unavailable.reason
-            )
-          )
-        }
       } else NULL
     )
   })
@@ -11362,24 +11350,6 @@ app_server <- function(input, output, session) {
     }
   }, ignoreInit = TRUE)
 
-  output$basin_merge_tree_diagnostic_plot <- shiny::renderPlot({
-    state <- basin_analysis_state()
-    result <- basin_result()
-    shiny::req(is.list(state), is.list(result))
-    model <- basin_merge_tree_model_for_state(state, result)
-    shiny::req(
-      isTRUE(model$available),
-      isTRUE(model$presentation$diagnostics.visible),
-      isTRUE(model$diagnostics$available)
-    )
-    gflowui_basin_plot_diagnostics(model)
-  }, width = 960L, height = 720L, res = 96)
-  shiny::outputOptions(
-    output,
-    "basin_merge_tree_diagnostic_plot",
-    suspendWhenHidden = FALSE
-  )
-
   output$basin_complete_tree_plot <- plotly::renderPlotly({
     started <- unname(proc.time()[["elapsed"]])
     state <- basin_analysis_state()
@@ -11615,22 +11585,6 @@ app_server <- function(input, output, session) {
     )
   }, ignoreInit = TRUE)
 
-  shiny::observeEvent(input$basin_tree_show_diagnostic, {
-    state <- shiny::isolate(basin_analysis_state())
-    visible <- isTRUE(input$basin_tree_show_diagnostic)
-    if (!is.list(state) ||
-        identical(visible, state$presentation$diagnostics.visible)) {
-      return()
-    }
-    apply_basin_analysis_event(
-      gflowui_basin_state_event(
-        "diagnostic_visibility",
-        visible = visible
-      ),
-      "Updated Basin Analysis diagnostic visibility."
-    )
-  }, ignoreInit = TRUE)
-
   shiny::observeEvent(input$basin_tree_show_all, {
     state <- shiny::isolate(basin_analysis_state())
     if (!is.list(state)) {
@@ -11751,7 +11705,7 @@ app_server <- function(input, output, session) {
     feature.choices <- gflowui_basin_plot_feature_choices()
     selected.features <- basin_plot_input_value(
       "basin_plot_features",
-      c("support", "mass")
+      character()
     )
     builder.scope <- basin_plot_input_value("basin_plot_builder_scope", "all")
     builder.type <- as.character(
@@ -11769,15 +11723,16 @@ app_server <- function(input, output, session) {
       shiny::div(
         class = "gf-basin-plot-workspace-header",
         shiny::div(
-          shiny::h4(
+          shiny::h5(
             id = "gf_basin_plot_workspace_heading",
-            "Basin Plot Workspace"
+            "Selection Diagnostics and Metric Plots"
           ),
           shiny::p(
             paste(
-              "The two default rank plots contain every maximum basin in",
-              "the selected component; proposal membership changes styling,",
-              "not point inclusion. Plot cards persist until removed or cleared."
+              "The three default mass plots contain every maximum basin in",
+              "the selected component and explain the initial display",
+              "selection. Build additional plots below; cards persist until",
+              "removed or cleared."
             )
           )
         ),
@@ -11787,9 +11742,22 @@ app_server <- function(input, output, session) {
           class = "btn-light btn-sm"
         )
       ),
-      basin_linked_status_tag(
-        analysis,
-        "gf-basin-plot-linked-status"
+      shiny::div(
+        class = "gf-basin-plot-threshold-toggle",
+        shiny::checkboxInput(
+          "basin_plot_show_thresholds",
+          "Show initial-selection thresholds",
+          value = isTRUE(basin_plot_input_value(
+            "basin_plot_show_thresholds",
+            basin_display_settings$plot_show_thresholds %||% TRUE
+          ))
+        ),
+        shiny::p(
+          paste(
+            "Dotted overlays identify the active mass cutoff, selected",
+            "complete-tie boundary, coverage target, and applicable budget."
+          )
+        )
       ),
       shiny::div(
         class = "gf-basin-plot-builder",
@@ -11797,7 +11765,7 @@ app_server <- function(input, output, session) {
           class = "gf-basin-plot-characteristics",
           shiny::checkboxGroupInput(
             "basin_plot_features",
-            "Characteristics",
+            "Choose characteristics for new plots",
             choices = feature.choices,
             selected = selected.features,
             inline = FALSE
@@ -11834,6 +11802,16 @@ app_server <- function(input, output, session) {
             class = "btn-light btn-sm"
           ),
           shiny::actionButton(
+            "basin_plot_add_ranked",
+            "Add ranked plots",
+            class = "btn-light btn-sm"
+          ),
+          shiny::actionButton(
+            "basin_plot_add_cumulative",
+            "Add cumulative-share plots",
+            class = "btn-light btn-sm"
+          ),
+          shiny::actionButton(
             "basin_plot_add_pairs",
             "Add pair plots",
             class = "btn-light btn-sm"
@@ -11849,8 +11827,8 @@ app_server <- function(input, output, session) {
         shiny::p(
           class = "gf-basin-plot-empty",
           paste(
-            "Choose characteristics and add histograms, pair plots,",
-            "or a combined matrix."
+            "Choose characteristics and add histograms, ranked plots,",
+            "cumulative-share plots, pair plots, or a combined matrix."
           )
         )
       } else {
@@ -11873,7 +11851,9 @@ app_server <- function(input, output, session) {
       return(invisible(NULL))
     }
     features <- as.character(input$basin_plot_features %||% character())
-    needed <- if (identical(mode, "histograms")) 1L else 2L
+    needed <- if (mode %in% c(
+      "histograms", "ranked", "cumulative"
+    )) 1L else 2L
     if (length(unique(features)) < needed) {
       shiny::showNotification(
         if (needed == 1L) {
@@ -11884,6 +11864,30 @@ app_server <- function(input, output, session) {
         type = "warning"
       )
       return(invisible(NULL))
+    }
+    if (identical(mode, "cumulative")) {
+      additive <- intersect(unique(features), c("support", "mass"))
+      ignored <- setdiff(unique(features), additive)
+      if (length(additive) < 1L) {
+        shiny::showNotification(
+          paste(
+            "Cumulative-share plots require an additive characteristic:",
+            "Support or Mass."
+          ),
+          type = "warning"
+        )
+        return(invisible(NULL))
+      }
+      features <- additive
+      if (length(ignored) > 0L) {
+        shiny::showNotification(
+          paste(
+            "Cumulative-share plots were not created for non-additive",
+            "characteristics."
+          ),
+          type = "message"
+        )
+      }
     }
     first.id <- basin_plot_next_id() + 1L
     candidates <- gflowui_basin_new_plot_specs(
@@ -11931,6 +11935,12 @@ app_server <- function(input, output, session) {
 
   shiny::observeEvent(input$basin_plot_add_histograms, {
     add_basin_plot_specs("histograms")
+  }, ignoreInit = TRUE)
+  shiny::observeEvent(input$basin_plot_add_ranked, {
+    add_basin_plot_specs("ranked")
+  }, ignoreInit = TRUE)
+  shiny::observeEvent(input$basin_plot_add_cumulative, {
+    add_basin_plot_specs("cumulative")
   }, ignoreInit = TRUE)
   shiny::observeEvent(input$basin_plot_add_pairs, {
     add_basin_plot_specs("pairs")
@@ -17998,7 +18008,6 @@ app_server <- function(input, output, session) {
             class = "gf-general-inspector-stack",
             shiny::uiOutput("basin_labeling_ui"),
             shiny::uiOutput("basin_merge_tree_ui"),
-            shiny::uiOutput("basin_plot_workspace_ui"),
             shiny::uiOutput("basin_inspector_ui")
           )
         )

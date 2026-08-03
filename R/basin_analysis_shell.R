@@ -589,25 +589,37 @@ gflowui_basin_default_plot_specs <- function(
     minimum = 1L
   )
   if (!first.id$valid ||
-      first.id$value >= .Machine$integer.max) {
+      first.id$value > .Machine$integer.max - 2L) {
     .gflowui_basin_shell_stop(
-      "Two supported default plot IDs are required."
+      "Three supported default plot IDs are required."
     )
   }
-  features <- list(
-    c("extremum_value_rank", "support_rank"),
-    c("extremum_value_rank", "mass_rank")
+  roles <- c(
+    "positive_mass_distribution",
+    "ranked_positive_mass",
+    "cumulative_positive_mass"
   )
-  lapply(seq_along(features), function(index) {
+  kinds <- c("histogram", "ranked", "cumulative")
+  lapply(seq_along(roles), function(index) {
     list(
       id = as.integer(first.id$value + index - 1L),
-      kind = "scatter",
-      features = features[[index]],
+      kind = kinds[[index]],
+      features = "mass",
       scope = "component_maxima",
       type = "max",
       point_color = "proposal",
-      x_scale = "log10",
-      y_scale = "log10",
+      x_scale = if (identical(kinds[[index]], "histogram")) {
+        "log10"
+      } else {
+        "raw"
+      },
+      y_scale = if (identical(kinds[[index]], "ranked")) {
+        "log10"
+      } else {
+        "raw"
+      },
+      proposal_diagnostic = TRUE,
+      diagnostic_role = roles[[index]],
       construction_fingerprint = fingerprint,
       seeded.default = TRUE
     )
@@ -644,7 +656,7 @@ gflowui_basin_seed_default_plots <- function(
     specs = c(existing, defaults),
     seeded.fingerprints = c(seeded.fingerprints, fingerprint),
     next.id = max(vapply(defaults, `[[`, integer(1), "id")),
-    added = 2L
+    added = 3L
   )
 }
 

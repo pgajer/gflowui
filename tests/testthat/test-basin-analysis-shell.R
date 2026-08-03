@@ -220,24 +220,31 @@ test_that("Basin Analysis default workspace is exact and construction-scoped", {
     first_id = 7L
   )
 
-  expect_length(specs, 2L)
-  expect_identical(vapply(specs, `[[`, integer(1), "id"), 7:8)
+  expect_length(specs, 3L)
+  expect_identical(vapply(specs, `[[`, integer(1), "id"), 7:9)
   expect_identical(
     lapply(specs, `[[`, "features"),
-    list(
-      c("extremum_value_rank", "support_rank"),
-      c("extremum_value_rank", "mass_rank")
+    list("mass", "mass", "mass")
+  )
+  expect_identical(
+    vapply(specs, `[[`, character(1), "kind"),
+    c("histogram", "ranked", "cumulative")
+  )
+  expect_identical(
+    vapply(specs, `[[`, character(1), "diagnostic_role"),
+    c(
+      "positive_mass_distribution",
+      "ranked_positive_mass",
+      "cumulative_positive_mass"
     )
   )
   expect_true(all(vapply(
     specs,
     function(spec) {
-      identical(spec$kind, "scatter") &&
-        identical(spec$scope, "component_maxima") &&
+      identical(spec$scope, "component_maxima") &&
         identical(spec$type, "max") &&
         identical(spec$point_color, "proposal") &&
-        identical(spec$x_scale, "log10") &&
-        identical(spec$y_scale, "log10") &&
+        isTRUE(spec$proposal_diagnostic) &&
         identical(
           spec$construction_fingerprint,
           "construction-alpha"
@@ -272,7 +279,7 @@ test_that("Basin Analysis default workspace is exact and construction-scoped", {
     construction.fingerprint = "construction-beta",
     next.id = 0L
   )
-  expect_length(replacement$specs, 2L)
+  expect_length(replacement$specs, 3L)
   expect_true(all(vapply(
     replacement$specs,
     function(spec) {

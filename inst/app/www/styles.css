@@ -1558,6 +1558,7 @@ body.gf-general-inspector-resizing {
 
 .gf-basin-plot-workspace {
   min-width: 0;
+  margin-top: 0.8rem;
   padding: 0.8rem 0.9rem;
   border: 1px solid rgba(37, 99, 235, 0.22);
   border-radius: 0.9rem;
@@ -1573,7 +1574,7 @@ body.gf-general-inspector-resizing {
   gap: 0.7rem;
 }
 
-.gf-basin-plot-workspace-header h4,
+.gf-basin-plot-workspace-header h5,
 .gf-basin-plot-card-header h5 {
   margin: 0;
 }
@@ -1582,6 +1583,29 @@ body.gf-general-inspector-resizing {
   margin: 0.12rem 0 0;
   color: var(--gf-muted);
   font-size: 0.82rem;
+}
+
+.gf-basin-plot-threshold-toggle {
+  display: grid;
+  grid-template-columns: minmax(0, max-content) minmax(0, 1fr);
+  align-items: start;
+  gap: 0.4rem 0.75rem;
+  margin-top: 0.65rem;
+  padding: 0.55rem 0.65rem;
+  border-left: 3px solid #7c3aed;
+  border-radius: 0.35rem;
+  background: rgba(245, 243, 255, 0.78);
+}
+
+.gf-basin-plot-threshold-toggle .form-group,
+.gf-basin-plot-threshold-toggle .checkbox {
+  margin: 0;
+}
+
+.gf-basin-plot-threshold-toggle p {
+  margin: 0.12rem 0 0;
+  color: #5b6472;
+  font-size: 0.8rem;
 }
 
 .gf-basin-plot-builder {
@@ -1705,4 +1729,10 @@ body.gf-general-inspector-resizing {
   width: 100% !important;
   height: 100% !important;
   max-width: 100%;
+}
+
+@media (max-width: 760px) {
+  .gf-basin-plot-threshold-toggle {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
