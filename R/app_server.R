@@ -10535,47 +10535,18 @@ app_server <- function(input, output, session) {
         if (nzchar(detail)) paste0(": ", detail) else ""
       )
     } else {
-      sprintf(
-        paste(
-          "Current maximum-basin proposal: %d maximum basins across",
-          "%d component%s; component %d has %d;",
-          "core %d, final display %d; core outcome %s; render %s."
-        ),
-        model$direction.maximum.count,
-        length(model$component.ids),
-        if (length(model$component.ids) == 1L) "" else "s",
-        model$component,
-        model$component.maximum.count,
-        model$counts$core,
-        model$counts$final,
-        model$proposal$core$outcome,
-        model$proposal$render.outcome
-      )
-    }
-    coverage.text <- if (isTRUE(model$available) &&
-        isTRUE(model$mass$available)) {
-      sprintf(
-        "Positive-mass coverage: core %.6f; final %.6f.",
-        model$mass$core.coverage,
-        model$mass$final.coverage
-      )
-    } else if (isTRUE(model$available)) {
-      sprintf(
-        "Positive-mass coverage unavailable: %s.",
-        model$mass$unavailable.reason
-      )
-    } else {
       NULL
     }
-    disclosure <- if (isTRUE(model$available)) {
-      sprintf(
-        paste(
-          "Sentinel-only %d; ancestor-only %d; display source %s;",
-          "mass owner trajectory-flow primary.support.mass."
-        ),
-        model$counts$sentinel.only,
-        model$counts$ancestor.only,
-        gsub("_", " ", model$display.source)
+    proposal.summary <- if (isTRUE(model$available)) {
+      .gflowui_basin_panel_summary_ui(
+        total.maximum.count = model$direction.maximum.count,
+        component.count = length(model$component.ids),
+        component.id = model$component,
+        component.maximum.count = model$component.maximum.count,
+        core.count = model$counts$core,
+        final.count = model$counts$final,
+        core.outcome = model$proposal$core$outcome,
+        render.outcome = model$proposal$render.outcome
       )
     } else {
       NULL
@@ -10609,7 +10580,7 @@ app_server <- function(input, output, session) {
         if (length(model$selected.visible) == 1L) " is" else "s are"
       )
     } else {
-      "No basin is transiently selected."
+      NULL
     }
     selected.choices <- unique(c(
       model$selected.hidden,
@@ -10698,45 +10669,38 @@ app_server <- function(input, output, session) {
           "Basin Superlevel-Set Merge Tree"
         )
       ),
-      .gflowui_basin_panel_rule_disclosure(),
-      shiny::p(
+      if (!is.null(attempt.status)) shiny::p(
         class = "gf-basin-analysis-shell-status",
         role = "status",
         `aria-live` = "polite",
         attempt.status
-      ),
-      basin_linked_status_tag(
+      ) else NULL,
+      proposal.summary,
+      if (!identical(model$display.source, "current")) basin_linked_status_tag(
         state,
         "gf-basin-tree-linked-status"
-      ),
-      if (!is.null(coverage.text)) shiny::p(
-        class = "gf-basin-tree-disclosure",
-        coverage.text
-      ) else NULL,
-      if (!is.null(disclosure)) shiny::p(
-        class = "gf-basin-tree-disclosure",
-        disclosure
       ) else NULL,
       if (!is.null(warning.text)) shiny::p(
         class = "gf-basin-tree-warning",
         warning.text
       ) else NULL,
-      shiny::p(
+      if (!is.null(selected.text)) shiny::p(
         class = "gf-basin-tree-selection-status",
         selected.text
-      ),
+      ) else NULL,
       shiny::tags$details(
         class = "gf-basin-tree-controls",
         open = NA,
-        shiny::tags$summary("Merge-tree display controls"),
+        shiny::tags$summary("Tree construction and display controls"),
+        .gflowui_basin_panel_controls_help(),
         shiny::div(
           class = "gf-basin-tree-control-grid",
-          shiny::selectInput(
+          if (length(component.choices) > 1L) shiny::selectInput(
             "basin_tree_component",
             "Component",
             choices = component.choices,
             selected = as.character(model$component)
-          ),
+          ) else NULL,
           shiny::selectInput(
             "basin_tree_filter_mode",
             "Filter",

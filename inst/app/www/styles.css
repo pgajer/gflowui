@@ -1083,6 +1083,24 @@ body.gf-general-inspector-resizing {
   font-weight: 600;
 }
 
+.gf-basin-tree-summary-list {
+  margin-top: 0.55rem;
+  padding: 0.55rem 0.7rem;
+  border-left: 3px solid rgba(15, 139, 119, 0.45);
+  background: rgba(240, 253, 250, 0.58);
+  color: #334155;
+  font-size: 0.82rem;
+}
+
+.gf-basin-tree-summary-list ul {
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
+.gf-basin-tree-summary-list li + li {
+  margin-top: 0.22rem;
+}
+
 .gf-basin-tree-controls {
   margin-top: 0.75rem;
   padding: 0.65rem 0;
@@ -1097,6 +1115,43 @@ body.gf-general-inspector-resizing {
   cursor: pointer;
   color: #164e43;
   font-weight: 650;
+}
+
+.gf-basin-tree-controls-help {
+  margin-top: 0.65rem;
+  padding: 0.65rem 0.7rem;
+  border-radius: 5px;
+  background: rgba(241, 245, 249, 0.72);
+  color: #475569;
+  font-size: 0.8rem;
+}
+
+.gf-basin-tree-controls-help h5 {
+  margin: 0 0 0.4rem;
+  color: #164e43;
+  font-size: 0.88rem;
+}
+
+.gf-basin-tree-controls-help p {
+  margin: 0;
+}
+
+.gf-basin-tree-controls-help p + p {
+  margin-top: 0.45rem;
+}
+
+.gf-basin-tree-controls-help dl {
+  margin: 0.65rem 0 0;
+}
+
+.gf-basin-tree-controls-help dt {
+  margin-top: 0.42rem;
+  color: #334155;
+  font-weight: 650;
+}
+
+.gf-basin-tree-controls-help dd {
+  margin: 0.12rem 0 0;
 }
 
 .gf-basin-tree-control-grid {
