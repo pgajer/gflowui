@@ -132,6 +132,7 @@ app_server <- function(input, output, session) {
     top_k_max = 6L,
     top_k_min = 6L,
     rank_by = "primary.support.mass",
+    label_basis = "primary.support.mass",
     display_mode = "both",
     opacity = 0.85,
     unselected_color = "#D1D5DB",
@@ -275,6 +276,9 @@ app_server <- function(input, output, session) {
       )),
       rank_by = as.character(
         basin_display_settings$rank_by %||% "primary.support.mass"
+      ),
+      label_basis = as.character(
+        basin_display_settings$label_basis %||% "primary.support.mass"
       ),
       display_mode = as.character(
         basin_display_settings$display_mode %||% "both"
@@ -8777,6 +8781,159 @@ app_server <- function(input, output, session) {
     result
   }
 
+  basin_label_map <- function(
+      result = shiny::isolate(basin_result()),
+      state = shiny::isolate(basin_analysis_state())) {
+    if (!is.list(result) || !is.list(state)) {
+      return(structure(character(), names = character()))
+    }
+    gflowui_basin_canonical_label_map(result, state)
+  }
+
+  basin_label_for_canonical_id <- function(
+      id,
+      result = shiny::isolate(basin_result()),
+      state = shiny::isolate(basin_analysis_state())) {
+    id <- as.character(id %||% "")
+    labels <- basin_label_map(result, state)
+    value <- unname(labels[id])
+    if (length(value) == 1L && !is.na(value) && nzchar(value)) {
+      value
+    } else {
+      id
+    }
+  }
+
+  basin_merge_tree_model_for_state <- function(
+      state,
+      result = shiny::isolate(basin_result())) {
+    gflowui_basin_merge_tree_model(
+      state,
+      display.labels = basin_label_map(result, state)
+    )
+  }
+
+  output$basin_labeling_ui <- shiny::renderUI({
+    result <- basin_result()
+    if (!isTRUE(basin_inspector_open()) ||
+        !is.list(result) ||
+        !is.data.frame(result$all_table)) {
+      return(NULL)
+    }
+    choices <- gflowui_basin_label_basis_choices()
+    availability <- result$label_basis_availability %||%
+      gflowui_basin_label_basis_availability(result$all_table)
+    selected <- gflowui_basin_normalize_label_basis(
+      result$label_basis %||%
+        basin_display_settings$label_basis %||%
+        "primary.support.mass"
+    )
+    options <- lapply(seq_along(choices), function(index) {
+      value <- unname(choices[[index]])
+      shiny::tags$option(
+        value = value,
+        selected = if (identical(value, selected)) NA else NULL,
+        disabled = if (!isTRUE(availability[[value]])) NA else NULL,
+        names(choices)[[index]]
+      )
+    })
+    unavailable <- names(choices)[
+      !vapply(
+        unname(choices),
+        function(value) isTRUE(availability[[value]]),
+        logical(1)
+      )
+    ]
+    shiny::tags$section(
+      id = "gf_basin_labeling",
+      class = "gf-basin-labeling",
+      role = "region",
+      `aria-labelledby` = "gf_basin_labeling_heading",
+      shiny::h4(id = "gf_basin_labeling_heading", "Basin labeling"),
+      shiny::div(
+        class = "form-group shiny-input-container",
+        shiny::tags$label(
+          class = "control-label",
+          `for` = "basin_label_basis",
+          "Label basins by"
+        ),
+        shiny::tags$select(
+          id = "basin_label_basis",
+          class = "shiny-input-select form-control",
+          `aria-describedby` = "gf_basin_labeling_description",
+          options
+        )
+      ),
+      shiny::p(
+        id = "gf_basin_labeling_description",
+        class = "gf-basin-labeling-description",
+        gflowui_basin_label_basis_description(selected)
+      ),
+      shiny::p(
+        class = "gf-basin-labeling-contract",
+        paste(
+          "Ranks are computed separately for maxima and minima from the",
+          "complete, unfiltered basin complex. Changing labels does not",
+          "change tree parentage, filtering, proposal membership, or selection."
+        )
+      ),
+      if (length(unavailable)) shiny::p(
+        class = "gf-basin-labeling-unavailable",
+        sprintf(
+          "Unavailable for this complex: %s.",
+          paste(unavailable, collapse = ", ")
+        )
+      ) else NULL,
+      if (nzchar(as.character(result$label_basis_message %||% ""))) {
+        shiny::p(
+          class = "gf-basin-labeling-fallback",
+          role = "status",
+          as.character(result$label_basis_message)
+        )
+      } else NULL
+    )
+  })
+  shiny::outputOptions(
+    output,
+    "basin_labeling_ui",
+    suspendWhenHidden = FALSE
+  )
+
+  shiny::observeEvent(input$basin_label_basis, {
+    requested <- gflowui_basin_normalize_label_basis(
+      input$basin_label_basis
+    )
+    current <- shiny::isolate(basin_result())
+    if (!is.list(current) || !is.data.frame(current$all_table)) {
+      return()
+    }
+    available <- gflowui_basin_label_basis_availability(current$all_table)
+    if (!isTRUE(available[[requested]])) {
+      shiny::showNotification(
+        sprintf(
+          "%s is unavailable for this basin complex.",
+          gflowui_basin_label_basis_name(requested)
+        ),
+        type = "warning"
+      )
+      return()
+    }
+    if (identical(
+        requested,
+        as.character(current$label_basis %||% "")
+    )) {
+      return()
+    }
+    current <- gflowui_basin_apply_label_basis(current, requested)
+    basin_display_settings$label_basis <- current$label_basis
+    current <- update_basin_display_result(current)
+    basin_result(current)
+    basin_status(sprintf(
+      "Basin labels now use %s; reconstruction and display membership are unchanged.",
+      current$label_basis_label
+    ))
+  }, ignoreInit = TRUE)
+
   basin_linked_status_tag <- function(state, class = "") {
     status <- gflowui_basin_linked_display_status(state)
     shiny::div(
@@ -8914,7 +9071,7 @@ app_server <- function(input, output, session) {
       } else {
         "initial_display"
       },
-      sort.by = "canonical_label",
+      sort.by = "basin_label",
       selected_keys = basin_selected_keys()
     )
     table <- table[
@@ -8929,7 +9086,7 @@ app_server <- function(input, output, session) {
         if (identical(direction, "max")) "maximum" else "minimum",
         nrow(table)
       ),
-      rank = suppressWarnings(as.integer(table$canonical.label.rank)),
+      rank = suppressWarnings(as.integer(table$label.rank)),
       label = as.character(table$display.label),
       stringsAsFactors = FALSE
     )
@@ -8965,8 +9122,11 @@ app_server <- function(input, output, session) {
     }
     ranking.description <- paste(
       "Rows are sorted for viewing only; the default row sort is Mass.",
-      "M/m labels are stable canonical labels assigned by extremum-vertex",
-      "order and never change with row scope or sorting."
+      sprintf(
+        "M/m labels use %s and never change with row scope or sorting.",
+        result$label_basis_label %||%
+          gflowui_basin_label_basis_name(result$label_basis)
+      )
     )
     show.extremum.vertex <- isTRUE(
       basin_display_settings$inspector_show_extremum_vertex
@@ -8987,8 +9147,12 @@ app_server <- function(input, output, session) {
         class = "gf-basin-label-column",
         title = paste(
           "M denotes a maximum basin and m denotes a minimum basin.",
-          "The number is stable canonical extremum-vertex order and does",
-          "not change when rows are sorted."
+          sprintf(
+            "The number is its direction-specific rank by %s and does",
+            result$label_basis_label %||%
+              gflowui_basin_label_basis_name(result$label_basis)
+          ),
+          "not change when rows are filtered or sorted."
         ),
         "Extremum / basin"
       ),
@@ -9140,13 +9304,15 @@ app_server <- function(input, output, session) {
           class = "gf-basin-label-column",
           title = if (row$type == "max") {
             sprintf(
-              "Maximum basin, canonical label rank %d",
-              as.integer(row$canonical.label.rank)
+              "Maximum basin, %s rank %d",
+              result$label_basis_label,
+              as.integer(row$label.rank)
             )
           } else {
             sprintf(
-              "Minimum basin, canonical label rank %d",
-              as.integer(row$canonical.label.rank)
+              "Minimum basin, %s rank %d",
+              result$label_basis_label,
+              as.integer(row$label.rank)
             )
           },
           as.character(row$display.label)
@@ -10494,7 +10660,7 @@ app_server <- function(input, output, session) {
       return(NULL)
     }
     model <- tryCatch(
-      gflowui_basin_merge_tree_model(state),
+      basin_merge_tree_model_for_state(state, result),
       error = function(error) error
     )
     if (inherits(model, "error")) {
@@ -10582,12 +10748,15 @@ app_server <- function(input, output, session) {
     } else {
       NULL
     }
-    selected.choices <- unique(c(
+    selected.ids <- unique(c(
       model$selected.hidden,
       model$selected.visible,
       model$pinned.ids
     ))
-    selected.choices <- stats::setNames(selected.choices, selected.choices)
+    selected.labels <- unname(model$labels$text[selected.ids])
+    missing.labels <- is.na(selected.labels) | !nzchar(selected.labels)
+    selected.labels[missing.labels] <- selected.ids[missing.labels]
+    selected.choices <- stats::setNames(selected.ids, selected.labels)
     mode.controls <- switch(
       mode,
       auto = shiny::tagList(
@@ -11133,8 +11302,9 @@ app_server <- function(input, output, session) {
 
   output$basin_merge_tree_plot <- shiny::renderPlot({
     state <- basin_analysis_state()
-    shiny::req(is.list(state))
-    model <- gflowui_basin_merge_tree_model(state)
+    result <- basin_result()
+    shiny::req(is.list(state), is.list(result))
+    model <- basin_merge_tree_model_for_state(state, result)
     shiny::req(isTRUE(model$available), isTRUE(model$renderable))
     rendered <- gflowui_basin_plot_merge_tree(model)
     metrics <- shiny::isolate(basin_analysis_panel_metrics())
@@ -11147,11 +11317,12 @@ app_server <- function(input, output, session) {
     invisible(rendered)
   }, width = function() {
     state <- basin_analysis_state()
-    if (!is.list(state)) {
+    result <- basin_result()
+    if (!is.list(state) || !is.list(result)) {
       return(920L)
     }
     model <- tryCatch(
-      gflowui_basin_merge_tree_model(state),
+      basin_merge_tree_model_for_state(state, result),
       error = function(error) NULL
     )
     if (!is.list(model) || !isTRUE(model$available)) {
@@ -11174,7 +11345,10 @@ app_server <- function(input, output, session) {
       return()
     }
     model <- tryCatch(
-      gflowui_basin_merge_tree_model(state),
+      basin_merge_tree_model_for_state(
+        state,
+        shiny::isolate(basin_result())
+      ),
       error = function(error) NULL
     )
     click <- input$basin_merge_tree_click
@@ -11190,8 +11364,9 @@ app_server <- function(input, output, session) {
 
   output$basin_merge_tree_diagnostic_plot <- shiny::renderPlot({
     state <- basin_analysis_state()
-    shiny::req(is.list(state))
-    model <- gflowui_basin_merge_tree_model(state)
+    result <- basin_result()
+    shiny::req(is.list(state), is.list(result))
+    model <- basin_merge_tree_model_for_state(state, result)
     shiny::req(
       isTRUE(model$available),
       isTRUE(model$presentation$diagnostics.visible),
@@ -11208,9 +11383,13 @@ app_server <- function(input, output, session) {
   output$basin_complete_tree_plot <- plotly::renderPlotly({
     started <- unname(proc.time()[["elapsed"]])
     state <- basin_analysis_state()
-    shiny::req(is.list(state))
+    result <- basin_result()
+    shiny::req(is.list(state), is.list(result))
     shiny::req(!is.null(gflowui_basin_displayed_proposal(state)))
-    complete <- gflowui_basin_complete_interactive_data(state)
+    complete <- gflowui_basin_complete_interactive_data(
+      state,
+      label.text = basin_label_map(result, state)
+    )
     points <- complete$points
     hover <- sprintf(
       paste(
@@ -11223,7 +11402,7 @@ app_server <- function(input, output, session) {
         "Pinned: %s",
         sep = "<br>"
       ),
-      points$basin.id,
+      points$display.label,
       points$peak.value,
       points$prominence,
       points$trajectory.flow.mass,
@@ -11236,7 +11415,7 @@ app_server <- function(input, output, session) {
       "#DC2626",
       ifelse(points$pinned, "#7C3AED", "#0F766E")
     )
-    labels <- ifelse(points$selected, points$basin.id, "")
+    labels <- ifelse(points$selected, points$display.label, "")
     plot <- plotly::plot_ly(source = basin_complete_tree_source)
     plot <- plotly::add_trace(
       plot,
@@ -11480,7 +11659,10 @@ app_server <- function(input, output, session) {
     }
     apply_basin_analysis_event(
       gflowui_basin_state_event("pin", id = id),
-      sprintf("Pinned %s and updated Basin Analysis.", id)
+      sprintf(
+        "Pinned %s and updated Basin Analysis.",
+        basin_label_for_canonical_id(id, state = state)
+      )
     )
   }, ignoreInit = TRUE)
 
@@ -11492,7 +11674,10 @@ app_server <- function(input, output, session) {
     }
     apply_basin_analysis_event(
       gflowui_basin_state_event("unpin", id = id),
-      sprintf("Unpinned %s and updated Basin Analysis.", id)
+      sprintf(
+        "Unpinned %s and updated Basin Analysis.",
+        basin_label_for_canonical_id(id, state = state)
+      )
     )
   }, ignoreInit = TRUE)
 
@@ -11830,7 +12015,12 @@ app_server <- function(input, output, session) {
     if (is.list(current) &&
         nzchar(current.identity) &&
         identical(current.identity, request.identity)) {
-      current <- gflowui_basin_prepare_analysis_result(current)
+      current <- gflowui_basin_prepare_analysis_result(
+        current,
+        label_basis = basin_display_settings$label_basis %||%
+          "primary.support.mass"
+      )
+      current <- update_basin_display_result(current)
       basin_result(current)
       analysis <- shiny::isolate(basin_analysis_state())
       analysis.matches <- is.list(analysis) &&
@@ -11932,7 +12122,11 @@ app_server <- function(input, output, session) {
     ))
     result$construction_identity <- request$construction_identity
     result$alignment_validation <- request$alignment
-    result <- gflowui_basin_prepare_analysis_result(result)
+    result <- gflowui_basin_prepare_analysis_result(
+      result,
+      label_basis = basin_display_settings$label_basis %||%
+        "primary.support.mass"
+    )
     colors <- stats::setNames(result$table$color, result$table$key)
     old.colors <- basin_color_map()
     colors[names(old.colors)] <- old.colors
@@ -11988,7 +12182,11 @@ app_server <- function(input, output, session) {
       return()
     }
     match <- tryCatch(
-      gflowui_find_basin_export(fingerprint),
+      gflowui_find_basin_export(
+        fingerprint,
+        label_basis = result$label_basis %||%
+          "primary.support.mass"
+      ),
       error = function(e) NULL
     )
     if (is.list(match) && isTRUE(match$found)) {
@@ -17798,6 +17996,7 @@ app_server <- function(input, output, session) {
           ),
           shiny::div(
             class = "gf-general-inspector-stack",
+            shiny::uiOutput("basin_labeling_ui"),
             shiny::uiOutput("basin_merge_tree_ui"),
             shiny::uiOutput("basin_plot_workspace_ui"),
             shiny::uiOutput("basin_inspector_ui")

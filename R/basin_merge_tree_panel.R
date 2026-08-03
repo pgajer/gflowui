@@ -226,7 +226,8 @@ gflowui_basin_start_panel_event <- function(
 
 gflowui_basin_merge_tree_panel_model <- function(
     state,
-    layout.accessor = gflow::get.basin.merge.tree.layout) {
+    layout.accessor = gflow::get.basin.merge.tree.layout,
+    display.labels = NULL) {
   if (is.null(state)) {
     return(.gflowui_basin_panel_empty_model())
   }
@@ -308,6 +309,22 @@ gflowui_basin_merge_tree_panel_model <- function(
     component.data$basin.id,
     component.data$basin.id
   )
+  if (!is.null(display.labels)) {
+    if (!is.character(display.labels) ||
+        is.null(names(display.labels)) ||
+        anyNA(display.labels) ||
+        anyNA(names(display.labels)) ||
+        any(!nzchar(display.labels)) ||
+        any(!nzchar(names(display.labels))) ||
+        anyDuplicated(names(display.labels))) {
+      .gflowui_basin_panel_stop(
+        "Readable basin labels must be a uniquely named character vector."
+      )
+    }
+    matched <- match(names(label.text), names(display.labels))
+    valid <- !is.na(matched)
+    label.text[valid] <- unname(display.labels[matched[valid]])
+  }
   coverage <- if (isTRUE(mass$available)) {
     as.numeric(mass$final.coverage)
   } else {
@@ -712,10 +729,12 @@ gflowui_basin_panel_plot_width <- function(
 
 gflowui_basin_merge_tree_model <- function(
     state,
-    layout.accessor = gflow::get.basin.merge.tree.layout) {
+    layout.accessor = gflow::get.basin.merge.tree.layout,
+    display.labels = NULL) {
   panel <- gflowui_basin_merge_tree_panel_model(
     state,
-    layout.accessor = layout.accessor
+    layout.accessor = layout.accessor,
+    display.labels = display.labels
   )
   if (!isTRUE(panel$ready)) {
     return(list(
@@ -917,7 +936,8 @@ gflowui_basin_plot_diagnostics <- function(model) {
 
 gflowui_basin_complete_interactive_data <- function(
     state,
-    layout.accessor = gflow::get.basin.merge.tree.layout) {
+    layout.accessor = gflow::get.basin.merge.tree.layout,
+    label.text = NULL) {
   .gflowui_basin_assert_runtime_state(state)
   proposal <- gflowui_basin_displayed_proposal(state)
   data <- if (is.null(proposal)) {
@@ -947,6 +967,17 @@ gflowui_basin_complete_interactive_data <- function(
     data$canonical$trajectory.flow.mass[index]
   points$trajectory.flow.support <-
     data$canonical$trajectory.flow.support[index]
+  points$display.label <- points$basin.id
+  if (!is.null(label.text)) {
+    if (!is.character(label.text) || is.null(names(label.text))) {
+      .gflowui_basin_panel_stop(
+        "Complete-tree labels must be a named character vector."
+      )
+    }
+    matched.labels <- unname(label.text[points$basin.id])
+    valid.labels <- !is.na(matched.labels) & nzchar(matched.labels)
+    points$display.label[valid.labels] <- matched.labels[valid.labels]
+  }
   points$selected <- points$basin.id %in% state$selected.ids
   points$pinned <- points$basin.id %in% state$pinned.ids
   vertical <- .gflowui_basin_panel_segment_rows(
@@ -1117,7 +1148,8 @@ gflowui_basin_complete_interactive_data <- function(
       shiny::tags$dd(
         paste(
           "Control which branch labels are drawn and whether the",
-          "trajectory-flow mass diagnostic is shown."
+          "trajectory-flow mass diagnostic is shown. Label text follows",
+          "the Basin labeling method selected at the top of General Inspector."
         )
       ),
       shiny::tags$dt("Tree actions"),

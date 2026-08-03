@@ -773,11 +773,17 @@ test_that("basin server invalidates changed fields and graph identities", {
     expect_false(isTRUE(basin_display_settings$show_minima))
     expect_false(isTRUE(basin_display_settings$label_minima))
     expect_identical(basin_display_settings$plot_builder_type, "max")
+    expect_identical(first$label_basis, "primary.support.mass")
 
     workspace <- htmltools::renderTags(output$workspace_view)$html
     expect_match(workspace, "gf_reference_split", fixed = TRUE)
     expect_match(workspace, "General Inspector", fixed = TRUE)
     expect_match(workspace, "Resize General Inspector", fixed = TRUE)
+    labeling.position <- regexpr(
+      "basin_labeling_ui",
+      workspace,
+      fixed = TRUE
+    )[[1L]]
     tree.position <- regexpr(
       "basin_merge_tree_ui",
       workspace,
@@ -794,9 +800,30 @@ test_that("basin server invalidates changed fields and graph identities", {
       fixed = TRUE
     )[[1L]]
     expect_true(
-      tree.position > 0L &&
+      labeling.position > 0L &&
+        labeling.position < tree.position &&
         tree.position < plot.position &&
         plot.position < inspector.position
+    )
+    labeling.shell <- htmltools::renderTags(
+      output$basin_labeling_ui
+    )$html
+    expect_match(labeling.shell, "Basin labeling", fixed = TRUE)
+    expect_match(labeling.shell, "Label basins by", fixed = TRUE)
+    expect_match(
+      labeling.shell,
+      '<option value="primary.support.mass" selected>',
+      fixed = TRUE
+    )
+    expect_match(
+      labeling.shell,
+      "complete, unfiltered basin complex",
+      fixed = TRUE
+    )
+    expect_match(
+      labeling.shell,
+      "does not change tree parentage",
+      fixed = TRUE
     )
     tree.shell <- htmltools::renderTags(
       output$basin_merge_tree_ui
@@ -968,9 +995,87 @@ test_that("basin server invalidates changed fields and graph identities", {
         info = control.id
       )
     }
-    panel.model <- gflowui:::gflowui_basin_merge_tree_model(analysis)
+    panel.model <- basin_merge_tree_model_for_state(analysis, first)
     expect_identical(panel.model$direction.maximum.count, 352L)
     expect_identical(panel.model$component.maximum.count, 352L)
+    label.map <- basin_label_map(first, analysis)
+    expect_identical(
+      unname(panel.model$labels$text[names(label.map)]),
+      unname(label.map)
+    )
+    proposal.before.labels <- gflowui:::gflowui_basin_displayed_proposal(
+      analysis
+    )
+    attempt.before.labels <- analysis$active.attempt$attempt.id
+    session$setInputs(basin_label_basis = "primary.support.size")
+    session$flushReact()
+    support.labels <- basin_result()
+    support.analysis <- basin_analysis_state()
+    expect_identical(
+      support.labels$label_basis,
+      "primary.support.size"
+    )
+    expect_identical(
+      support.labels$construction_identity$fingerprint,
+      first.identity
+    )
+    expect_identical(
+      support.analysis$active.attempt$attempt.id,
+      attempt.before.labels
+    )
+    expect_identical(
+      gflowui:::gflowui_basin_displayed_proposal(
+        support.analysis
+      )$final.ids,
+      proposal.before.labels$final.ids
+    )
+    support.map <- basin_label_map(support.labels, support.analysis)
+    support.model <- basin_merge_tree_model_for_state(
+      support.analysis,
+      support.labels
+    )
+    expect_identical(
+      unname(support.model$labels$text[names(support.map)]),
+      unname(support.map)
+    )
+    support.plot <- gflowui:::gflowui_basin_plot_data(
+      support.labels,
+      scope = "component_maxima",
+      type = "max",
+      analysis_state = support.analysis
+    )
+    support.table <- gflowui:::gflowui_basin_inspector_rows(
+      support.labels,
+      support.analysis,
+      scope = "all_maxima",
+      sort.by = "basin_label"
+    )
+    expect_identical(
+      stats::setNames(support.plot$label, support.plot$key)[
+        support.table$key
+      ],
+      stats::setNames(support.table$display.label, support.table$key)[
+        support.table$key
+      ]
+    )
+    expect_identical(
+      stats::setNames(support.plot$rank, support.plot$key)[
+        support.table$key
+      ],
+      stats::setNames(support.table$label.rank, support.table$key)[
+        support.table$key
+      ]
+    )
+    session$setInputs(basin_label_basis = "primary.support.mass")
+    session$flushReact()
+    first <- basin_result()
+    analysis <- basin_analysis_state()
+    panel.model <- basin_merge_tree_model_for_state(analysis, first)
+    expect_identical(first$label_basis, "primary.support.mass")
+    expect_identical(
+      analysis$active.attempt$attempt.id,
+      attempt.before.labels
+    )
     default.plot.data <- lapply(default.plots, function(spec) {
       gflowui:::gflowui_basin_plot_data(
         first,
@@ -1437,7 +1542,11 @@ test_that("basin server invalidates changed fields and graph identities", {
     expect_match(inspector, ">Proposal class</th>", fixed = TRUE)
     expect_match(inspector, ">Inclusion reasons</th>", fixed = TRUE)
     expect_match(inspector, ">Tree state</th>", fixed = TRUE)
-    expect_match(inspector, "stable canonical labels", fixed = TRUE)
+    expect_match(
+      inspector,
+      "M/m labels use Trajectory-flow basin mass",
+      fixed = TRUE
+    )
     expect_false(grepl(">Extremum vertex</th>", inspector, fixed = TRUE))
     expect_false(grepl(">Primary support</th>", inspector, fixed = TRUE))
     expect_false(grepl(">Primary mass</th>", inspector, fixed = TRUE))

@@ -191,7 +191,7 @@ gflowui_basin_plot_data <- function(
       result,
       state = analysis_state,
       scope = scope,
-      sort.by = "canonical_label",
+      sort.by = "basin_label",
       selected_keys = selected_keys
     )
     keep <- as.character(table$key) %in% as.character(scoped$key)
@@ -248,7 +248,7 @@ gflowui_basin_plot_data <- function(
     key = as.character(table$key),
     type = as.character(table$type),
     label = as.character(table$display.label),
-    rank = suppressWarnings(as.integer(table$rank)),
+    rank = suppressWarnings(as.integer(table$label.rank)),
     support = support,
     mass = mass,
     extremum_value = extremum.value,

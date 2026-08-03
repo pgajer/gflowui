@@ -639,7 +639,58 @@ test_that("Phase 6 views preserve complete maxima and stable identities", {
 
   exported <- gflowui:::gflowui_basin_export_characteristics(result)
   expect_equal(nrow(exported), 7L)
-  expect_setequal(exported$extremum_basin, result$all_table$canonical.label)
+  expect_identical(
+    exported$extremum_basin,
+    result$all_table$display.label
+  )
+  expect_identical(exported$rank, result$all_table$label.rank)
+})
+
+test_that("merge-tree labels use the global readable basin map", {
+  records <- data.frame(
+    id = c("root", "a", "b"),
+    parent = c(NA, "root", "root"),
+    mass = c(0.2, 0.7, 0.1),
+    support = c(8, 3, 5),
+    peak = c(10, 8, 7),
+    prominence = c(10, 4, 3),
+    stringsAsFactors = FALSE
+  )
+  runtime <- phase5_records_runtime(records, "readable-label-map")
+  controls <- gflowui:::gflowui_basin_default_controls(nrow(records))
+  controls$filter.mode <- "none"
+  state <- phase5_runtime_state(runtime, controls)
+  result <- phase6_inspector_result(state)
+  label.map <- gflowui:::gflowui_basin_canonical_label_map(result, state)
+  model <- gflowui:::gflowui_basin_merge_tree_model(
+    state,
+    layout.accessor = runtime$accessor,
+    display.labels = label.map
+  )
+  expect_identical(
+    unname(model$labels$text[names(label.map)]),
+    unname(label.map)
+  )
+  expect_true(all(grepl("^M[0-9]+$", unname(label.map))))
+
+  real.bundle <- phase5_panel_bundle("readable-complete-labels")
+  real.state <- phase5_panel_state(real.bundle)
+  real.result <- phase6_inspector_result(real.state)
+  real.map <- gflowui:::gflowui_basin_canonical_label_map(
+    real.result,
+    real.state
+  )
+  complete <- gflowui:::gflowui_basin_complete_interactive_data(
+    real.state,
+    label.text = real.map
+  )
+  expect_identical(
+    unname(stats::setNames(
+      complete$points$display.label,
+      complete$points$basin.id
+    )[names(real.map)]),
+    unname(real.map)
+  )
 })
 
 test_that("sparse and absent label modes satisfy the canonical plot API", {
