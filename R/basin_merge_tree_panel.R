@@ -1144,11 +1144,10 @@ gflowui_basin_complete_interactive_data <- function(
           "or support even when the main filter would omit them."
         )
       ),
-      shiny::tags$dt("Labels and diagnostic"),
+      shiny::tags$dt("Labels"),
       shiny::tags$dd(
         paste(
-          "Control which branch labels are drawn and whether the",
-          "trajectory-flow mass diagnostic is shown. Label text follows",
+          "Control which branch labels are drawn. Label text follows",
           "the Basin labeling method selected at the top of General Inspector."
         )
       ),
@@ -1385,11 +1384,6 @@ gflowui_basin_complete_interactive_data <- function(
           "All" = "all"
         ),
         selected = model$presentation$label.mode
-      ),
-      shiny::checkboxInput(
-        "basin_tree_show_diagnostic",
-        "Show diagnostic",
-        value = isTRUE(model$diagnostics.visible)
       )
     ),
     shiny::div(
@@ -1418,7 +1412,7 @@ gflowui_basin_merge_tree_panel_ui <- function(model) {
   }
   heading <- shiny::h4(
     id = "gf_basin_merge_tree_heading",
-    "Basin Superlevel-Set Merge Tree"
+    "Basin Structure, Selection, and Merge Tree"
   )
   if (!isTRUE(model$ready)) {
     detail <- paste(model$messages, collapse = " ")
@@ -1515,25 +1509,6 @@ gflowui_basin_merge_tree_panel_ui <- function(model) {
       ))
     )
   }
-  diagnostics.ui <- if (isTRUE(model$diagnostics.visible)) {
-    shiny::div(
-      class = "gf-basin-tree-diagnostics",
-      shiny::plotOutput(
-        "basin_merge_tree_diagnostic_plot",
-        width = "100%",
-        height = "300px"
-      ),
-      shiny::p(
-        class = "gf-basin-tree-diagnostic-note",
-        sprintf(
-          "%d exact-zero masses are excluded from logarithms.",
-          as.integer(model$diagnostics$zero.count %||% 0L)
-        )
-      )
-    )
-  } else {
-    NULL
-  }
   shiny::tags$section(
     id = "gf_basin_merge_tree",
     class = "gf-basin-merge-tree",
@@ -1603,7 +1578,6 @@ gflowui_basin_merge_tree_panel_ui <- function(model) {
     },
     .gflowui_basin_panel_controls_ui(model),
     .gflowui_basin_panel_selection_ui(model),
-    plot.ui,
-    diagnostics.ui
+    plot.ui
   )
 }

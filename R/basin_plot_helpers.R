@@ -44,11 +44,16 @@ gflowui_basin_plot_scale_map <- function(
     "raw"
   }
   scales <- stats::setNames(rep("raw", length(features)), features)
-  if (identical(as.character(spec$kind), "histogram")) {
+  kind <- as.character(spec$kind)
+  if (identical(kind, "histogram")) {
     scales[[features[[1L]]]] <- x_scale
-  } else if (identical(as.character(spec$kind), "scatter")) {
+  } else if (identical(kind, "scatter")) {
     scales[[features[[1L]]]] <- x_scale
     scales[[features[[2L]]]] <- y_scale
+  } else if (identical(kind, "ranked")) {
+    scales[[features[[1L]]]] <- y_scale
+  } else if (identical(kind, "cumulative")) {
+    scales[] <- "raw"
   } else {
     scales[] <- x_scale
   }
@@ -362,7 +367,7 @@ gflowui_basin_plot_nearest_key <- function(
 
 gflowui_basin_new_plot_specs <- function(
     features,
-    mode = c("histograms", "pairs", "matrix"),
+    mode = c("histograms", "ranked", "cumulative", "pairs", "matrix"),
     first_id = 1L,
     scope = "all",
     type = "both",
@@ -377,6 +382,8 @@ gflowui_basin_new_plot_specs <- function(
   feature.sets <- switch(
     mode,
     histograms = as.list(features),
+    ranked = as.list(features),
+    cumulative = as.list(intersect(features, c("support", "mass"))),
     pairs = if (length(features) >= 2L) {
       unname(utils::combn(features, 2L, simplify = FALSE))
     } else {
@@ -395,6 +402,10 @@ gflowui_basin_new_plot_specs <- function(
     selected <- as.character(feature.sets[[index]])
     kind <- if (identical(mode, "histograms")) {
       "histogram"
+    } else if (identical(mode, "ranked")) {
+      "ranked"
+    } else if (identical(mode, "cumulative")) {
+      "cumulative"
     } else if (identical(mode, "pairs")) {
       "scatter"
     } else {
@@ -461,6 +472,16 @@ gflowui_basin_filter_new_plot_specs <- function(existing, candidates) {
 }
 
 gflowui_basin_plot_title <- function(spec) {
+  diagnostic.role <- as.character(spec$diagnostic_role %||% "")
+  if (identical(diagnostic.role, "positive_mass_distribution")) {
+    return("Positive log10 mass")
+  }
+  if (identical(diagnostic.role, "ranked_positive_mass")) {
+    return("Ranked positive mass")
+  }
+  if (identical(diagnostic.role, "cumulative_positive_mass")) {
+    return("Cumulative positive mass")
+  }
   labels <- vapply(
     spec$features,
     gflowui_basin_plot_feature_label,
@@ -469,10 +490,204 @@ gflowui_basin_plot_title <- function(spec) {
   switch(
     as.character(spec$kind),
     histogram = sprintf("%s distribution", labels[[1L]]),
+    ranked = sprintf("Ranked %s", labels[[1L]]),
+    cumulative = sprintf("Cumulative %s share", labels[[1L]]),
     scatter = paste(labels, collapse = " \u00d7 "),
     matrix = sprintf("Basin metric matrix (%s)", paste(labels, collapse = ", ")),
     "Basin plot"
   )
+}
+
+gflowui_basin_ranked_curve <- function(data, feature) {
+  feature <- as.character(feature)
+  if (!is.data.frame(data) ||
+      length(feature) != 1L ||
+      !feature %in% names(data) ||
+      !all(c("type", "canonical_basin_id") %in% names(data))) {
+    return(data.frame())
+  }
+  value <- suppressWarnings(as.numeric(data[[feature]]))
+  keep <- is.finite(value)
+  data <- data[keep, , drop = FALSE]
+  value <- value[keep]
+  if (nrow(data) < 1L) {
+    return(data.frame())
+  }
+  pieces <- lapply(unique(as.character(data$type)), function(direction) {
+    rows <- which(as.character(data$type) == direction)
+    if (length(rows) < 1L) return(NULL)
+    order.value <- if (grepl("_rank$", feature)) {
+      value[rows]
+    } else if (identical(feature, "extremum_value") &&
+        identical(direction, "min")) {
+      value[rows]
+    } else {
+      -value[rows]
+    }
+    ordered <- rows[order(
+      order.value,
+      as.character(data$canonical_basin_id[rows]),
+      method = "radix"
+    )]
+    data.frame(
+      key = as.character(data$key[ordered]),
+      type = direction,
+      label = as.character(data$label[ordered]),
+      canonical_basin_id =
+        as.character(data$canonical_basin_id[ordered]),
+      membership = as.character(data$membership[ordered]),
+      selected = as.logical(data$selected[ordered]),
+      position = seq_along(ordered),
+      value = value[ordered],
+      stringsAsFactors = FALSE
+    )
+  })
+  pieces <- Filter(Negate(is.null), pieces)
+  if (length(pieces) < 1L) data.frame() else do.call(rbind, pieces)
+}
+
+gflowui_basin_cumulative_curve <- function(data, feature) {
+  feature <- as.character(feature)
+  if (!feature %in% c("support", "mass")) {
+    return(data.frame())
+  }
+  ranked <- gflowui_basin_ranked_curve(data, feature)
+  if (!is.data.frame(ranked) || nrow(ranked) < 1L) {
+    return(data.frame())
+  }
+  pieces <- lapply(unique(ranked$type), function(direction) {
+    rows <- which(ranked$type == direction & ranked$value > 0)
+    if (length(rows) < 1L) return(NULL)
+    current <- ranked[rows, , drop = FALSE]
+    values <- current$value
+    denominator <- sum(values)
+    if (!is.finite(denominator) || denominator <= 0) return(NULL)
+    run <- rle(values)
+    endpoints <- cumsum(run$lengths)
+    cumulative <- cumsum(run$values * run$lengths) / denominator
+    data.frame(
+      type = direction,
+      position = endpoints,
+      value = cumulative,
+      stringsAsFactors = FALSE
+    )
+  })
+  pieces <- Filter(Negate(is.null), pieces)
+  if (length(pieces) < 1L) data.frame() else do.call(rbind, pieces)
+}
+
+gflowui_basin_plot_selection_overlay <- function(
+    data,
+    analysis_state,
+    visible = TRUE) {
+  unavailable <- function(reason) {
+    list(available = FALSE, reason = as.character(reason))
+  }
+  if (!isTRUE(visible)) {
+    return(unavailable("Selection thresholds are hidden."))
+  }
+  if (!is.data.frame(data) ||
+      nrow(data) < 1L ||
+      !all(c("mass", "canonical_basin_id", "type") %in% names(data)) ||
+      !is.list(analysis_state)) {
+    return(unavailable("No active maximum-basin proposal is available."))
+  }
+  proposal <- tryCatch(
+    gflowui_basin_displayed_proposal(analysis_state),
+    error = function(error) NULL
+  )
+  if (!is.list(proposal)) {
+    return(unavailable("No active maximum-basin proposal is available."))
+  }
+  maxima <- data[
+    as.character(data$type) == "max" &
+      is.finite(suppressWarnings(as.numeric(data$mass))),
+    ,
+    drop = FALSE
+  ]
+  if (nrow(maxima) < 1L) {
+    return(unavailable("No finite maximum-basin masses are available."))
+  }
+  mass <- suppressWarnings(as.numeric(maxima$mass))
+  ids <- as.character(maxima$canonical_basin_id)
+  positive <- is.finite(mass) & mass > 0
+  ranked <- which(positive)[order(
+    -mass[positive],
+    ids[positive],
+    method = "radix"
+  )]
+  if (length(ranked) < 1L) {
+    return(unavailable("No positive maximum-basin masses are available."))
+  }
+  ranked.mass <- mass[ranked]
+  ranked.ids <- ids[ranked]
+  runs <- rle(ranked.mass)
+  endpoints <- cumsum(runs$lengths)
+  cumulative <- cumsum(runs$values * runs$lengths) / sum(ranked.mass)
+  parameters <- proposal$accepted.parameters %||% list()
+  core.ids <- as.character(proposal$core$ids %||% character())
+  core.rows <- which(ranked.ids %in% core.ids)
+  boundary <- suppressWarnings(as.integer(
+    proposal$core$boundary %||%
+      if (length(core.rows)) max(core.rows) else NA_integer_
+  ))
+  if (length(boundary) != 1L || !is.finite(boundary)) {
+    boundary <- NA_integer_
+  }
+  mass.cutoff <- suppressWarnings(as.numeric(
+    proposal$core$informational.cutoff %||% NA_real_
+  ))
+  if (!is.finite(mass.cutoff) && length(core.rows) > 0L) {
+    mass.cutoff <- min(ranked.mass[core.rows])
+  }
+  scalar <- function(name, integer = FALSE) {
+    value <- parameters[[name]]
+    value <- if (integer) {
+      suppressWarnings(as.integer(value))
+    } else {
+      suppressWarnings(as.numeric(value))
+    }
+    if (length(value) == 1L && is.finite(value)) value else NA
+  }
+  list(
+    available = TRUE,
+    reason = "",
+    filter.mode = as.character(parameters$filter.mode %||% ""),
+    core.outcome = as.character(proposal$core$outcome %||% ""),
+    core.ids = core.ids,
+    ranked.ids = ranked.ids,
+    ranked.mass = ranked.mass,
+    tie.endpoints = endpoints,
+    cumulative = cumulative,
+    zero.count = as.integer(sum(mass == 0)),
+    boundary = boundary,
+    mass.cutoff = mass.cutoff,
+    coverage.target = scalar("coverage.target"),
+    minimum.mass = scalar("minimum.mass"),
+    top.k = scalar("top.k", integer = TRUE),
+    core.budget = scalar("core.branch.budget", integer = TRUE),
+    final.budget = scalar("final.render.budget", integer = TRUE)
+  )
+}
+
+.gflowui_basin_threshold_legend <- function(labels, colors, lines) {
+  keep <- !is.na(labels) & nzchar(labels)
+  labels <- labels[keep]
+  colors <- colors[keep]
+  lines <- lines[keep]
+  if (length(labels) < 1L) return(invisible(NULL))
+  graphics::legend(
+    "topright",
+    inset = c(-0.3, 0),
+    legend = labels,
+    col = colors,
+    lty = lines,
+    lwd = 1.5,
+    xpd = NA,
+    bty = "n",
+    cex = 0.72
+  )
+  invisible(NULL)
 }
 
 gflowui_basin_plot_complete_rows <- function(data, features) {
@@ -517,8 +732,11 @@ gflowui_draw_basin_plot <- function(
     point_opacity = 0.75,
     label_top_k = 0L,
     x_scale = "raw",
-    y_scale = "raw") {
+    y_scale = "raw",
+    selection_overlay = NULL,
+    show_selection_thresholds = TRUE) {
   features <- as.character(spec$features)
+  kind <- as.character(spec$kind)
   data <- gflowui_basin_plot_scaled_data(
     data,
     spec,
@@ -572,12 +790,33 @@ gflowui_draw_basin_plot <- function(
     alpha.f = point_opacity
   )
 
-  if (identical(as.character(spec$kind), "histogram")) {
+  proposal.diagnostic <- isTRUE(spec$proposal_diagnostic)
+  proposal.overlay.available <- proposal.diagnostic &&
+    is.list(selection_overlay) &&
+    isTRUE(selection_overlay$available)
+  overlay.available <- proposal.overlay.available &&
+    isTRUE(show_selection_thresholds)
+  if (proposal.overlay.available) {
+    original.mar <- graphics::par("mar")
+    on.exit(graphics::par(mar = original.mar), add = TRUE)
+    graphics::par(mar = c(
+      original.mar[[1L]],
+      original.mar[[2L]],
+      original.mar[[3L]],
+      max(original.mar[[4L]], 8)
+    ))
+  }
+
+  if (identical(kind, "histogram")) {
     feature <- features[[1L]]
-    graphics::hist(
+    histogram <- graphics::hist(
       data[[feature]],
       breaks = bins,
-      col = histogram_color,
+      plot = FALSE
+    )
+    graphics::plot(
+      histogram,
+      col = if (proposal.diagnostic) "#CBD5E1" else histogram_color,
       border = "#FFFFFF",
       main = sprintf(
         "%s (n=%d)",
@@ -586,7 +825,275 @@ gflowui_draw_basin_plot <- function(
       ),
       xlab = gflowui_basin_plot_axis_label(feature, scales[[feature]])
     )
-  } else if (identical(as.character(spec$kind), "scatter")) {
+    legend.labels <- character()
+    legend.colors <- character()
+    legend.lines <- integer()
+    if (proposal.overlay.available) {
+      selected.rows <- as.character(data$canonical_basin_id) %in%
+        as.character(selection_overlay$core.ids)
+      if (any(selected.rows)) {
+        selected.histogram <- graphics::hist(
+          data[[feature]][selected.rows],
+          breaks = histogram$breaks,
+          plot = FALSE
+        )
+        graphics::plot(
+          selected.histogram,
+          add = TRUE,
+          col = grDevices::adjustcolor("#2563EB", alpha.f = 0.72),
+          border = "#FFFFFF"
+        )
+        legend.labels <- c(legend.labels, "Initially selected")
+        legend.colors <- c(legend.colors, "#2563EB")
+        legend.lines <- c(legend.lines, 1L)
+      }
+    }
+    if (overlay.available && identical(feature, "mass")) {
+      cutoff <- suppressWarnings(as.numeric(
+        if (identical(selection_overlay$filter.mode, "minimum_mass")) {
+          selection_overlay$minimum.mass
+        } else {
+          selection_overlay$mass.cutoff
+        }
+      ))
+      if (is.finite(cutoff) && cutoff > 0) {
+        if (identical(scales[[feature]], "log10")) cutoff <- log10(cutoff)
+        graphics::abline(v = cutoff, col = "#B45309", lty = 3, lwd = 1.5)
+        legend.labels <- c(legend.labels, "Active mass cutoff")
+        legend.colors <- c(legend.colors, "#B45309")
+        legend.lines <- c(legend.lines, 3L)
+      }
+    }
+    .gflowui_basin_threshold_legend(
+      legend.labels,
+      legend.colors,
+      legend.lines
+    )
+  } else if (identical(kind, "ranked")) {
+    feature <- features[[1L]]
+    curve <- gflowui_basin_ranked_curve(data, feature)
+    if (nrow(curve) < 1L) {
+      graphics::plot.new()
+      graphics::text(0.5, 0.5, "No eligible ranked values.")
+      return(invisible(data))
+    }
+    graphics::plot(
+      NA_real_,
+      NA_real_,
+      xlim = range(curve$position, finite = TRUE),
+      ylim = range(curve$value, finite = TRUE),
+      xlab = "Complete-tie rank position",
+      ylab = gflowui_basin_plot_axis_label(feature, scales[[feature]]),
+      main = sprintf("%s (n=%d)", gflowui_basin_plot_title(spec), nrow(curve))
+    )
+    graphics::grid(col = "#D9DEE2", lty = 3)
+    directions <- unique(as.character(curve$type))
+    direction.colors <- c(max = "#111827", min = "#0891B2")
+    explicit.color <- if (grepl("^#", as.character(point_color))) {
+      as.character(point_color)
+    } else {
+      NA_character_
+    }
+    for (direction in directions) {
+      rows <- which(curve$type == direction)
+      color <- if (is.na(explicit.color)) {
+        unname(direction.colors[[direction]] %||% "#475569")
+      } else {
+        explicit.color
+      }
+      if (proposal.diagnostic) color <- "#94A3B8"
+      graphics::lines(
+        curve$position[rows],
+        curve$value[rows],
+        col = color,
+        lwd = 1.8
+      )
+      graphics::points(
+        curve$position[rows],
+        curve$value[rows],
+        col = grDevices::adjustcolor(color, alpha.f = point_opacity),
+        pch = point_glyph,
+        cex = point_size
+      )
+    }
+    legend.labels <- character()
+    legend.colors <- character()
+    legend.lines <- integer()
+    if (proposal.overlay.available) {
+      selected.rows <- which(curve$canonical_basin_id %in%
+        selection_overlay$core.ids)
+      if (length(selected.rows)) {
+        graphics::points(
+          curve$position[selected.rows],
+          curve$value[selected.rows],
+          col = grDevices::adjustcolor("#2563EB", alpha.f = point_opacity),
+          pch = point_glyph,
+          cex = max(point_size, 0.7)
+        )
+        legend.labels <- c(legend.labels, "Initially selected")
+        legend.colors <- c(legend.colors, "#2563EB")
+        legend.lines <- c(legend.lines, 1L)
+      }
+    }
+    if (overlay.available && identical(feature, "mass")) {
+      if (is.finite(selection_overlay$boundary)) {
+        graphics::abline(
+          v = selection_overlay$boundary,
+          col = "#B45309",
+          lty = 3,
+          lwd = 1.5
+        )
+        legend.labels <- c(legend.labels, "Initial-selection boundary")
+        legend.colors <- c(legend.colors, "#B45309")
+        legend.lines <- c(legend.lines, 3L)
+      }
+      cutoff <- suppressWarnings(as.numeric(selection_overlay$mass.cutoff))
+      if (is.finite(cutoff) && cutoff > 0) {
+        if (identical(scales[[feature]], "log10")) cutoff <- log10(cutoff)
+        graphics::abline(h = cutoff, col = "#B45309", lty = 3, lwd = 1.5)
+      }
+      if (is.finite(selection_overlay$core.budget) &&
+          !identical(
+            as.integer(selection_overlay$core.budget),
+            as.integer(selection_overlay$boundary)
+          )) {
+        graphics::abline(
+          v = selection_overlay$core.budget,
+          col = "#64748B",
+          lty = 4,
+          lwd = 1.2
+        )
+        legend.labels <- c(legend.labels, "Core branch budget")
+        legend.colors <- c(legend.colors, "#64748B")
+        legend.lines <- c(legend.lines, 4L)
+      }
+    }
+    .gflowui_basin_threshold_legend(
+      legend.labels,
+      legend.colors,
+      legend.lines
+    )
+  } else if (identical(kind, "cumulative")) {
+    feature <- features[[1L]]
+    curve <- gflowui_basin_cumulative_curve(data, feature)
+    if (nrow(curve) < 1L) {
+      graphics::plot.new()
+      graphics::text(0.5, 0.5, "No positive additive values.")
+      return(invisible(data))
+    }
+    graphics::plot(
+      NA_real_,
+      NA_real_,
+      xlim = c(1, max(curve$position)),
+      ylim = c(0, 1),
+      xlab = "Complete-tie group endpoint",
+      ylab = "Cumulative share",
+      main = sprintf("%s (n=%d)", gflowui_basin_plot_title(spec), nrow(data))
+    )
+    graphics::grid(col = "#D9DEE2", lty = 3)
+    directions <- unique(as.character(curve$type))
+    direction.colors <- c(max = "#111827", min = "#0891B2")
+    explicit.color <- if (grepl("^#", as.character(point_color))) {
+      as.character(point_color)
+    } else {
+      NA_character_
+    }
+    for (direction in directions) {
+      rows <- which(curve$type == direction)
+      color <- if (is.na(explicit.color)) {
+        unname(direction.colors[[direction]] %||% "#475569")
+      } else {
+        explicit.color
+      }
+      if (proposal.diagnostic) color <- "#94A3B8"
+      graphics::lines(
+        c(1, curve$position[rows]),
+        c(0, curve$value[rows]),
+        type = "s",
+        col = color,
+        lwd = 2
+      )
+      graphics::points(
+        curve$position[rows],
+        curve$value[rows],
+        col = color,
+        pch = point_glyph,
+        cex = point_size
+      )
+    }
+    legend.labels <- character()
+    legend.colors <- character()
+    legend.lines <- integer()
+    if (proposal.overlay.available && identical(feature, "mass")) {
+      boundary <- suppressWarnings(as.integer(selection_overlay$boundary))
+      if (is.finite(boundary)) {
+        selected <- curve[
+          curve$type == "max" & curve$position <= boundary,
+          ,
+          drop = FALSE
+        ]
+        if (nrow(selected)) {
+          graphics::lines(
+            c(1, selected$position),
+            c(0, selected$value),
+            type = "s",
+            col = "#2563EB",
+            lwd = 2.5
+          )
+        }
+        legend.labels <- c(legend.labels, "Initially selected")
+        legend.colors <- c(legend.colors, "#2563EB")
+        legend.lines <- c(legend.lines, 1L)
+        if (overlay.available) {
+          graphics::abline(
+            v = boundary,
+            col = "#B45309",
+            lty = 3,
+            lwd = 1.5
+          )
+          legend.labels <- c(
+            legend.labels,
+            "Initial-selection boundary"
+          )
+          legend.colors <- c(legend.colors, "#B45309")
+          legend.lines <- c(legend.lines, 3L)
+        }
+      }
+    }
+    if (overlay.available && identical(feature, "mass")) {
+      if (is.finite(selection_overlay$coverage.target)) {
+        graphics::abline(
+          h = selection_overlay$coverage.target,
+          col = "#7C3AED",
+          lty = 3,
+          lwd = 1.5
+        )
+        legend.labels <- c(legend.labels, "Mass-coverage target")
+        legend.colors <- c(legend.colors, "#7C3AED")
+        legend.lines <- c(legend.lines, 3L)
+      }
+      if (is.finite(selection_overlay$core.budget) &&
+          !identical(
+            as.integer(selection_overlay$core.budget),
+            as.integer(selection_overlay$boundary)
+          )) {
+        graphics::abline(
+          v = selection_overlay$core.budget,
+          col = "#64748B",
+          lty = 4,
+          lwd = 1.2
+        )
+        legend.labels <- c(legend.labels, "Core branch budget")
+        legend.colors <- c(legend.colors, "#64748B")
+        legend.lines <- c(legend.lines, 4L)
+      }
+    }
+    .gflowui_basin_threshold_legend(
+      legend.labels,
+      legend.colors,
+      legend.lines
+    )
+  } else if (identical(kind, "scatter")) {
     x.feature <- features[[1L]]
     y.feature <- features[[2L]]
     show.type.legend <- identical(as.character(point_color), "type") &&

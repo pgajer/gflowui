@@ -741,7 +741,7 @@ test_that("basin server invalidates changed fields and graph identities", {
     )
     expect_identical(analysis$display.source, "current")
     default.plots <- basin_plot_specs()
-    expect_length(default.plots, 2L)
+    expect_length(default.plots, 3L)
     expect_true(all(vapply(
       default.plots,
       function(spec) isTRUE(spec$seeded.default),
@@ -749,10 +749,11 @@ test_that("basin server invalidates changed fields and graph identities", {
     )))
     expect_identical(
       lapply(default.plots, `[[`, "features"),
-      list(
-        c("extremum_value_rank", "support_rank"),
-        c("extremum_value_rank", "mass_rank")
-      )
+      list("mass", "mass", "mass")
+    )
+    expect_identical(
+      vapply(default.plots, `[[`, character(1), "kind"),
+      c("histogram", "ranked", "cumulative")
     )
     expect_true(all(vapply(
       default.plots,
@@ -760,8 +761,7 @@ test_that("basin server invalidates changed fields and graph identities", {
         identical(spec$scope, "component_maxima") &&
           identical(spec$type, "max") &&
           identical(spec$point_color, "proposal") &&
-          identical(spec$x_scale, "log10") &&
-          identical(spec$y_scale, "log10") &&
+          isTRUE(spec$proposal_diagnostic) &&
           identical(spec$construction_fingerprint, first.identity)
       },
       logical(1)
@@ -789,11 +789,6 @@ test_that("basin server invalidates changed fields and graph identities", {
       workspace,
       fixed = TRUE
     )[[1L]]
-    plot.position <- regexpr(
-      "basin_plot_workspace_ui",
-      workspace,
-      fixed = TRUE
-    )[[1L]]
     inspector.position <- regexpr(
       "basin_inspector_ui",
       workspace,
@@ -802,9 +797,9 @@ test_that("basin server invalidates changed fields and graph identities", {
     expect_true(
       labeling.position > 0L &&
         labeling.position < tree.position &&
-        tree.position < plot.position &&
-        plot.position < inspector.position
+        tree.position < inspector.position
     )
+    expect_false(grepl("basin_plot_workspace_ui", workspace, fixed = TRUE))
     labeling.shell <- htmltools::renderTags(
       output$basin_labeling_ui
     )$html
@@ -830,9 +825,10 @@ test_that("basin server invalidates changed fields and graph identities", {
     )$html
     expect_match(
       tree.shell,
-      "Basin Superlevel-Set Merge Tree",
+      "Basin Structure, Selection, and Merge Tree",
       fixed = TRUE
     )
+    expect_match(tree.shell, "basin_plot_workspace_ui", fixed = TRUE)
     expect_match(
       tree.shell,
       'role="region"',
@@ -980,7 +976,6 @@ test_that("basin server invalidates changed fields and graph identities", {
       "basin_tree_support_sentinel",
       "basin_tree_important_labels",
       "basin_tree_label_mode",
-      "basin_tree_show_diagnostic",
       "basin_tree_open_complete",
       "basin_tree_show_all",
       "basin_tree_recipe_save",
@@ -998,6 +993,29 @@ test_that("basin server invalidates changed fields and graph identities", {
     panel.model <- basin_merge_tree_model_for_state(analysis, first)
     expect_identical(panel.model$direction.maximum.count, 352L)
     expect_identical(panel.model$component.maximum.count, 352L)
+    selection.plot.data <- gflowui:::gflowui_basin_plot_data(
+      first,
+      scope = "component_maxima",
+      type = "max",
+      analysis_state = analysis
+    )
+    selection.overlay <- gflowui:::gflowui_basin_plot_selection_overlay(
+      selection.plot.data,
+      analysis,
+      visible = TRUE
+    )
+    expect_true(selection.overlay$available)
+    expect_identical(selection.overlay$boundary, 17L)
+    expect_equal(
+      selection.overlay$mass.cutoff,
+      panel.model$proposal$core$informational.cutoff
+    )
+    expect_equal(selection.overlay$coverage.target, 0.99)
+    expect_identical(selection.overlay$core.budget, 50L)
+    expect_identical(
+      selection.overlay$core.ids,
+      panel.model$proposal$core$ids
+    )
     label.map <- basin_label_map(first, analysis)
     expect_identical(
       unname(panel.model$labels$text[names(label.map)]),
@@ -1117,6 +1135,18 @@ test_that("basin server invalidates changed fields and graph identities", {
       "occupation_density_active"
     )
 
+    linked.plot <- list(
+      id = 999L,
+      kind = "scatter",
+      features = c("extremum_value_rank", "support_rank"),
+      scope = "component_maxima",
+      type = "max",
+      x_scale = "log10",
+      y_scale = "log10",
+      construction_fingerprint = first.identity
+    )
+    basin_plot_specs(c(default.plots, list(linked.plot)))
+    session$flushReact()
     htmltools::renderTags(output$basin_plot_workspace_ui)
     plot.row <- default.plot.data[[1L]][2L, , drop = FALSE]
     plot.input <- list(list(
@@ -1125,7 +1155,7 @@ test_that("basin server invalidates changed fields and graph identities", {
     ))
     names(plot.input) <- paste0(
       "basin_plot_click_",
-      default.plots[[1L]]$id
+      linked.plot$id
     )
     do.call(session$setInputs, plot.input)
     session$flushReact()
@@ -1139,6 +1169,8 @@ test_that("basin server invalidates changed fields and graph identities", {
       basin_analysis_state()$active.attempt$attempt.id,
       linked.attempt
     )
+    basin_plot_specs(default.plots)
+    session$flushReact()
     linked.table <- gflowui:::gflowui_basin_proposal_context_table(
       basin_result(),
       basin_analysis_state()
@@ -1392,7 +1424,7 @@ test_that("basin server invalidates changed fields and graph identities", {
       basin_analysis_state()$active.attempt$attempt.id
     session$setInputs(
       basin_tree_label_mode = "all",
-      basin_tree_show_diagnostic = FALSE
+      basin_plot_show_thresholds = FALSE
     )
     session$flushReact()
     expect_identical(
@@ -1410,7 +1442,7 @@ test_that("basin server invalidates changed fields and graph identities", {
     ))
     session$setInputs(
       basin_tree_label_mode = "important",
-      basin_tree_show_diagnostic = TRUE
+      basin_plot_show_thresholds = TRUE
     )
     session$flushReact()
     expect_identical(
@@ -1666,8 +1698,16 @@ test_that("basin server invalidates changed fields and graph identities", {
     plot.workspace <- htmltools::renderTags(
       output$basin_plot_workspace_ui
     )$html
-    expect_match(plot.workspace, "Basin Plot Workspace", fixed = TRUE)
-    expect_match(plot.workspace, "Characteristics", fixed = TRUE)
+    expect_match(
+      plot.workspace,
+      "Selection Diagnostics and Metric Plots",
+      fixed = TRUE
+    )
+    expect_match(
+      plot.workspace,
+      "Choose characteristics for new plots",
+      fixed = TRUE
+    )
     expect_match(
       plot.workspace,
       "gf-basin-plot-characteristics",
@@ -1684,8 +1724,29 @@ test_that("basin server invalidates changed fields and graph identities", {
       fixed = TRUE
     )
     expect_match(plot.workspace, "Add histograms", fixed = TRUE)
+    expect_match(plot.workspace, "Add ranked plots", fixed = TRUE)
+    expect_match(
+      plot.workspace,
+      "Add cumulative-share plots",
+      fixed = TRUE
+    )
     expect_match(plot.workspace, "Add pair plots", fixed = TRUE)
     expect_match(plot.workspace, "Add matrix", fixed = TRUE)
+    expect_match(
+      plot.workspace,
+      "Show initial-selection thresholds",
+      fixed = TRUE
+    )
+    expect_match(
+      plot.workspace,
+      'id="basin_plot_show_thresholds"[^>]*checked="checked"',
+      perl = TRUE
+    )
+    expect_false(grepl(
+      'name="basin_plot_features"[^>]*checked',
+      plot.workspace,
+      perl = TRUE
+    ))
     expect_false(grepl(
       'id="basin_plot_add_histograms"[^>]*btn-primary',
       plot.workspace,
@@ -1696,16 +1757,9 @@ test_that("basin server invalidates changed fields and graph identities", {
       '<option value="max" selected>Maximum only</option>',
       fixed = TRUE
     )
-    expect_match(
-      plot.workspace,
-      "Extremum value rank × Support rank",
-      fixed = TRUE
-    )
-    expect_match(
-      plot.workspace,
-      "Extremum value rank × Mass rank",
-      fixed = TRUE
-    )
+    expect_match(plot.workspace, "Positive log10 mass", fixed = TRUE)
+    expect_match(plot.workspace, "Ranked positive mass", fixed = TRUE)
+    expect_match(plot.workspace, "Cumulative positive mass", fixed = TRUE)
     expect_equal(
       lengths(regmatches(
         plot.workspace,
@@ -1715,7 +1769,7 @@ test_that("basin server invalidates changed fields and graph identities", {
           fixed = TRUE
         )
       )),
-      4L
+      2L
     )
     session$setInputs(basin_plot_clear_all = 1L)
     session$flushReact()
@@ -1795,6 +1849,53 @@ test_that("basin server invalidates changed fields and graph identities", {
     expect_length(basin_plot_specs(), 0L)
     session$setInputs(
       basin_plot_features = c("support", "mass", "prominence"),
+      basin_plot_add_ranked = 1L
+    )
+    session$flushReact()
+    expect_length(basin_plot_specs(), 3L)
+    expect_true(all(vapply(
+      basin_plot_specs(),
+      function(spec) identical(spec$kind, "ranked"),
+      logical(1)
+    )))
+    ranked.workspace <- htmltools::renderTags(
+      output$basin_plot_workspace_ui
+    )$html
+    expect_match(ranked.workspace, "Ranked Support", fixed = TRUE)
+    expect_match(ranked.workspace, "Value scale", fixed = TRUE)
+    session$setInputs(basin_plot_clear_all = 3L)
+    session$flushReact()
+    session$setInputs(
+      basin_plot_features = c("support", "mass", "prominence"),
+      basin_plot_add_cumulative = 1L
+    )
+    session$flushReact()
+    expect_length(basin_plot_specs(), 2L)
+    expect_true(all(vapply(
+      basin_plot_specs(),
+      function(spec) identical(spec$kind, "cumulative"),
+      logical(1)
+    )))
+    expect_identical(
+      vapply(
+        basin_plot_specs(),
+        function(spec) spec$features[[1L]],
+        character(1)
+      ),
+      c("support", "mass")
+    )
+    cumulative.workspace <- htmltools::renderTags(
+      output$basin_plot_workspace_ui
+    )$html
+    expect_match(
+      cumulative.workspace,
+      "Cumulative Support share",
+      fixed = TRUE
+    )
+    session$setInputs(basin_plot_clear_all = 4L)
+    session$flushReact()
+    session$setInputs(
+      basin_plot_features = c("support", "mass", "prominence"),
       basin_plot_add_pairs = 1L
     )
     session$flushReact()
@@ -1867,7 +1968,7 @@ test_that("basin server invalidates changed fields and graph identities", {
     session$setInputs(basin_plot_add_pairs = 2L)
     session$flushReact()
     expect_length(basin_plot_specs(), 3L)
-    session$setInputs(basin_plot_clear_all = 3L)
+    session$setInputs(basin_plot_clear_all = 5L)
     session$flushReact()
     session$setInputs(
       basin_plot_features = c(
@@ -2145,16 +2246,29 @@ test_that("basin server invalidates changed fields and graph identities", {
       },
       basin_plot_specs()
     )
-    expect_length(second.defaults, 2L)
+    expect_length(second.defaults, 3L)
     htmltools::renderTags(output$basin_plot_workspace_ui)
     expect_length(
       ls(basin_plot_click_observers, all.names = TRUE),
       length(second.defaults)
     )
+    second.linked.plot <- list(
+      id = 999L,
+      kind = "scatter",
+      features = c("extremum_value_rank", "support_rank"),
+      scope = "component_maxima",
+      type = "max",
+      x_scale = "log10",
+      y_scale = "log10",
+      construction_fingerprint = second$construction_identity$fingerprint
+    )
+    basin_plot_specs(c(second.defaults, list(second.linked.plot)))
+    session$flushReact()
+    htmltools::renderTags(output$basin_plot_workspace_ui)
     second.plot.data <- gflowui:::gflowui_basin_plot_data(
       second,
-      scope = second.defaults[[1L]]$scope,
-      type = second.defaults[[1L]]$type,
+      scope = second.linked.plot$scope,
+      type = second.linked.plot$type,
       analysis_state = second.analysis
     )
     second.plot.row <- second.plot.data[1L, , drop = FALSE]
@@ -2164,7 +2278,7 @@ test_that("basin server invalidates changed fields and graph identities", {
     ))
     names(second.click) <- paste0(
       "basin_plot_click_",
-      second.defaults[[1L]]$id
+      second.linked.plot$id
     )
     do.call(session$setInputs, second.click)
     session$flushReact()
