@@ -8,6 +8,10 @@ app_ui <- function() {
     "app/www/basin-inspector-state.js",
     package = "gflowui"
   )
+  basin.tree.js.path <- system.file(
+    "app/www/basin-tree-interaction.js",
+    package = "gflowui"
+  )
   theme <- bslib::bs_theme(
     version = 5,
     base_font = bslib::font_google("Space Grotesk"),
@@ -58,6 +62,9 @@ app_ui <- function() {
       },
       if (nzchar(basin.inspector.js.path)) {
         shiny::includeScript(basin.inspector.js.path)
+      },
+      if (nzchar(basin.tree.js.path)) {
+        shiny::includeScript(basin.tree.js.path)
       }
     ),
     shiny::div(

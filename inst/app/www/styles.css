@@ -1265,6 +1265,92 @@ body.gf-general-inspector-resizing {
   overflow-x: auto;
 }
 
+.gf-basin-tree-interaction {
+  margin-top: 0.85rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(15, 139, 119, 0.2);
+}
+
+.gf-basin-tree-interaction h5 {
+  margin: 0;
+  color: #164e43;
+}
+
+.gf-basin-tree-interaction-intro {
+  margin: 0.35rem 0 0;
+  color: #475569;
+  font-size: 0.82rem;
+}
+
+.gf-basin-tree-style-controls {
+  margin-top: 0.7rem;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid #dbe3ea;
+  border-radius: 6px;
+  background: rgba(248, 250, 252, 0.72);
+}
+
+.gf-basin-tree-style-controls > summary {
+  cursor: pointer;
+  color: #334155;
+  font-weight: 650;
+}
+
+.gf-basin-tree-interactive-frame {
+  display: grid;
+  grid-template-columns: 5.3rem minmax(0, 1fr);
+  gap: 0.45rem;
+  align-items: stretch;
+  min-width: 0;
+  margin-top: 0.75rem;
+}
+
+.gf-basin-tree-threshold-control {
+  display: flex;
+  min-height: 680px;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.5rem 0.35rem;
+  border: 1px solid rgba(15, 139, 119, 0.16);
+  border-radius: 6px;
+  background: #f8fafc;
+}
+
+.gf-basin-tree-threshold-control > label {
+  margin: 0;
+  color: #334155;
+  font-size: 0.78rem;
+  font-weight: 650;
+  text-align: center;
+}
+
+.gf-basin-tree-threshold-range {
+  width: 1.5rem;
+  min-height: 510px;
+  flex: 1 1 auto;
+  margin: 0;
+  accent-color: #e11d48;
+  direction: rtl;
+  writing-mode: vertical-lr;
+}
+
+.gf-basin-tree-height-status {
+  width: 100%;
+  color: #475569;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.66rem;
+  line-height: 1.35;
+  text-align: center;
+  white-space: pre-line;
+}
+
+.gf-basin-tree-interactive-frame > .gf-basin-tree-plot-frame {
+  min-width: 0;
+  margin-top: 0;
+  overflow: hidden;
+}
+
 .gf-basin-complete-tree-viewer {
   min-height: 32rem;
 }
@@ -1290,6 +1376,10 @@ body.gf-general-inspector-resizing {
 
   .gf-basin-tree-control-grid .checkbox {
     margin-top: 0;
+  }
+
+  .gf-basin-tree-interactive-frame {
+    grid-template-columns: 4.5rem minmax(0, 1fr);
   }
 }
 
