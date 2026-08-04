@@ -10996,11 +10996,11 @@ app_server <- function(input, output, session) {
           class = "gf-basin-tree-actions",
           shiny::actionButton(
             "basin_tree_open_complete",
-            "Open complete interactive tree"
+            "Open all branches interactively"
           ),
           shiny::actionButton(
             "basin_tree_show_all",
-            "Show all"
+            "Use all branches (Filter: None)"
           )
         ),
         shiny::div(

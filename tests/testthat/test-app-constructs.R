@@ -1481,7 +1481,7 @@ test_that("basin server invalidates changed fields and graph identities", {
       'data-render-outcome="core_overflow"',
       fixed = TRUE
     )
-    expect_match(overflow.shell, "Open complete interactive tree", fixed = TRUE)
+    expect_match(overflow.shell, "Open all branches interactively", fixed = TRUE)
     expect_false(grepl(
       'id="basin_merge_tree_plot"',
       overflow.shell,

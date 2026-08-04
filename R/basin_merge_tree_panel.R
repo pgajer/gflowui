@@ -1129,41 +1129,146 @@ gflowui_basin_complete_interactive_data <- function(
           "cumulative mass, a minimum mass, Top K, or no filtering."
         )
       ),
+      shiny::tags$dt("Core branch budget"),
+      shiny::tags$dd(
+        shiny::p(
+          paste(
+            "A soft upper limit on the number of positive-mass branches in",
+            "the initial subset selected by Auto or Cumulative Mass. It does",
+            "not apply to Minimum Mass, Top K, or None, and it is not the",
+            "number of branches permitted in the final tree."
+          )
+        ),
+        shiny::p(
+          paste(
+            "Branches are ordered by decreasing trajectory-flow mass, with",
+            "exact mass ties kept together. Cumulative Mass keeps the",
+            "smallest tie-complete prefix that reaches the requested",
+            "coverage. Auto first finds a tie-complete prefix that reaches",
+            "the coverage target and contains at least three positive-mass",
+            "branches when available, then looks for the first strong mass",
+            "gap at or before the budget. If reaching the target would cross",
+            "the budget, selection stops at the budget boundary; an exact",
+            "tie that crosses that boundary is kept in full, so the actual",
+            "initial count can be slightly larger than the stated budget."
+          )
+        )
+      ),
       shiny::tags$dt("Final render budget"),
       shiny::tags$dd(
         paste(
-          "Limits the static plot after required sentinels, pins, and",
-          "canonical ancestors are added. The plot pauses instead of",
-          "silently removing required branches."
+          "A separate safety limit for the number of branches drawn in the",
+          "static tree. The app starts with the initial subset, adds required",
+          "sentinels, pinned branches, and the component's surviving branch,",
+          "then adds any intermediate ancestor branches needed to connect",
+          "them into a valid tree. If the result exceeds this limit, the app",
+          "does not discard scientifically required branches: it pauses the",
+          "static plot and reports which stage exceeded the budget. Increase",
+          "the budget or narrow the filter to make the static tree render."
         )
       ),
       shiny::tags$dt("Sentinels"),
       shiny::tags$dd(
         paste(
-          "Keep the top requested branches by peak value, prominence,",
-          "or support even when the main filter would omit them."
+          "Sentinels protect scientifically notable branches from being",
+          "lost only because the main filter ranks by trajectory-flow mass.",
+          "For each enabled measure—peak value, prominence, or support—the",
+          "app adds the requested number of top-ranked branches to the",
+          "initial subset. Exact ties at the cutoff are all kept, so an",
+          "enabled measure can add more than the requested count. A sentinel",
+          "changes only which branches are displayed; it never changes",
+          "parentage, merge levels, or the elder-rule tree."
         )
       ),
       shiny::tags$dt("Labels"),
       shiny::tags$dd(
-        paste(
-          "Control which branch labels are drawn. Label text follows",
-          "the Basin labeling method selected at the top of General Inspector."
+        shiny::p(
+          paste(
+            "Controls which labels are drawn on branches that are actually",
+            "present in the current tree. Label text follows the Basin",
+            "labeling method selected at the top of General Inspector."
+          )
+        ),
+        shiny::tags$ul(
+          shiny::tags$li(
+            shiny::strong("Important: "),
+            paste(
+              "labels the union of the top Important-label count branches",
+              "by trajectory-flow mass, peak value, prominence, and support.",
+              "It also labels the component's surviving branch and any",
+              "selected or pinned displayed branches. Exact cutoff ties are",
+              "included, so the label count can exceed the entered number."
+            )
+          ),
+          shiny::tags$li(
+            shiny::strong("Selected: "),
+            paste(
+              "labels only branches selected in the tree and currently",
+              "present in the displayed layout."
+            )
+          ),
+          shiny::tags$li(
+            shiny::strong("Displayed: "),
+            "labels every branch in the current filtered tree."
+          ),
+          shiny::tags$li(
+            shiny::strong("None: "),
+            "draws no branch labels."
+          ),
+          shiny::tags$li(
+            shiny::strong("All: "),
+            paste(
+              "labels every branch in the current displayed layout and",
+              "shows a crowding warning. It cannot label branches omitted",
+              "from that layout; use the complete interactive viewer to",
+              "inspect those branches."
+            )
+          )
         )
       ),
       shiny::tags$dt("Tree actions"),
       shiny::tags$dd(
-        paste(
-          "Open complete interactive tree keeps the current proposal and",
-          "opens all branches for the selected component. Show all changes",
-          "the filter to None and recomputes the displayed proposal."
+        shiny::p(
+          paste(
+            "Open all branches interactively opens a modal viewer containing",
+            "every branch in the selected graph component. It does not",
+            "change the current filtered proposal or its controls."
+          )
+        ),
+        shiny::p(
+          paste(
+            "Use all branches (Filter: None) changes Filter to None and",
+            "recomputes the proposal from every branch in the component.",
+            "This can exceed the Final render budget, in which case the",
+            "static plot pauses rather than silently dropping branches."
+          )
+        ),
+        shiny::p(
+          paste(
+            "The present interactive viewer supports hover, zoom, and branch",
+            "selection. It does not yet provide a superlevel threshold h or",
+            "link a threshold cut to the 3D graph."
+          )
         )
       ),
       shiny::tags$dt("Display recipe"),
       shiny::tags$dd(
-        paste(
-          "Saves or restores display settings only; it does not save",
-          "basins, selections, pins, or a computed proposal."
+        shiny::p(
+          paste(
+            "A display recipe lets you reuse the same filtering, budget,",
+            "sentinel, and label settings after a reload or with another",
+            "compatible basin analysis. Saving places a versioned copy in",
+            "browser storage and makes it available as a JSON download."
+          )
+        ),
+        shiny::p(
+          paste(
+            "Applying a recipe validates those settings against the active",
+            "scientific bundle and recomputes the component and display",
+            "proposal. A recipe is not a saved analysis or figure: it does",
+            "not contain the basin complex, data values, component identity,",
+            "selected or pinned basins, proposal results, or tree layout."
+          )
         )
       )
     )
@@ -1432,12 +1537,12 @@ gflowui_basin_merge_tree_panel_ui <- function(model) {
           class = "gf-basin-tree-actions",
           shiny::actionButton(
             "basin_tree_show_all",
-            "Show all",
+            "Use all branches (Filter: None)",
             class = "btn btn-sm btn-outline-secondary"
           ),
           shiny::actionButton(
             "basin_tree_open_complete",
-            "Open complete interactive tree",
+            "Open all branches interactively",
             class = "btn btn-sm btn-outline-secondary"
           )
         ) else NULL
@@ -1528,13 +1633,16 @@ gflowui_basin_merge_tree_panel_ui <- function(model) {
         class = "gf-basin-tree-actions",
         shiny::actionButton(
           "basin_tree_show_all",
-          "Show all",
+          "Use all branches (Filter: None)",
           class = "btn btn-sm btn-outline-secondary",
-          title = "Set Filter to None and recompute"
+          title = paste(
+            "Set Filter to None and recompute; the static plot pauses if",
+            "the resulting tree exceeds the Final render budget"
+          )
         ),
         shiny::actionButton(
           "basin_tree_open_complete",
-          "Open complete interactive tree",
+          "Open all branches interactively",
           class = "btn btn-sm btn-outline-secondary",
           title = "Open the complete component without changing the proposal"
         )

@@ -447,6 +447,47 @@ test_that("tree terminology identifies density-value survival semantics", {
   )
   expect_match(ui, "do not change branch continuation", fixed = TRUE)
   expect_match(ui, "How the tree and controls work", fixed = TRUE)
+  expect_match(ui, "Core branch budget", fixed = TRUE)
+  expect_match(
+    ui,
+    "soft upper limit on the number of positive-mass branches",
+    fixed = TRUE
+  )
+  expect_match(
+    ui,
+    "exact mass ties kept together",
+    fixed = TRUE
+  )
+  expect_match(
+    ui,
+    "does not discard scientifically required branches",
+    fixed = TRUE
+  )
+  expect_match(
+    ui,
+    "Sentinels protect scientifically notable branches",
+    fixed = TRUE
+  )
+  expect_match(
+    ui,
+    "labels the union of the top Important-label count branches",
+    fixed = TRUE
+  )
+  expect_match(
+    ui,
+    "Use all branches (Filter: None)",
+    fixed = TRUE
+  )
+  expect_match(
+    ui,
+    "does not yet provide a superlevel threshold h",
+    fixed = TRUE
+  )
+  expect_match(
+    ui,
+    "A display recipe lets you reuse the same filtering",
+    fixed = TRUE
+  )
   expect_match(ui, "Initially selected for display", fixed = TRUE)
   expect_match(ui, "Final branches displayed", fixed = TRUE)
   expect_match(ui, "Static rendering", fixed = TRUE)
