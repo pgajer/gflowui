@@ -1,3 +1,6 @@
+.gflowui_basin_continuation_lifetime_cache <-
+  new.env(parent = emptyenv())
+
 .gflowui_basin_inspector_empty <- function() {
   data.frame(
     key = character(),
@@ -66,6 +69,167 @@ gflowui_basin_prepare_analysis_result <- function(
   ## is a non-mutating projection of it.
   result$table <- all.table
   gflowui_basin_apply_label_basis(result, label_basis)
+}
+
+gflowui_basin_add_continuation_lifetime <- function(
+    result,
+    rule = "field_value",
+    layout.accessor = gflow::get.basin.merge.tree.layout) {
+  if (!is.list(result) ||
+      !is.data.frame(result$all_table) ||
+      !inherits(result$prominence_complex, "basin_complex")) {
+    return(result)
+  }
+  tree <- gflow::get.basin.merge.tree(
+    result$prominence_complex,
+    required = TRUE
+  )
+  table <- result$all_table
+  required <- c(
+    "type", "extremum.vertex", "primary.support.mass",
+    "primary.support.size", "prominence"
+  )
+  if (!all(required %in% names(table))) {
+    stop(
+      "Continuation lifetime requires basin type, extremum, mass, and support.",
+      call. = FALSE
+    )
+  }
+  rule <- gflowui_basin_continuation_rule(rule)
+  if (identical(rule, "field_value")) {
+    table$continuation.lifetime <- suppressWarnings(as.numeric(
+      table$prominence
+    ))
+    result$all_table <- table
+    if (is.data.frame(result$table)) {
+      matched <- match(as.character(result$table$key), as.character(table$key))
+      result$table$continuation.lifetime <-
+        table$continuation.lifetime[matched]
+    }
+    result$continuation_rule <- rule
+    result$continuation_rule_label <-
+      "Field-value elder rule (canonical)"
+    return(result)
+  }
+  fingerprint <- as.character(
+    result$construction_identity$fingerprint %||% ""
+  )
+  build.id <- as.character(
+    gflow::get.gflow.build.identity()$build.id %||% ""
+  )
+  cache.key <- if (
+    length(fingerprint) == 1L &&
+      !is.na(fingerprint) &&
+      nzchar(fingerprint) &&
+      length(build.id) == 1L &&
+      !is.na(build.id) &&
+      nzchar(build.id)
+  ) {
+    paste(fingerprint, build.id, rule, sep = "|")
+  } else {
+    ""
+  }
+  if (nzchar(cache.key) &&
+      exists(
+        cache.key,
+        envir = .gflowui_basin_continuation_lifetime_cache,
+        inherits = FALSE
+      )) {
+    cached <- get(
+      cache.key,
+      envir = .gflowui_basin_continuation_lifetime_cache,
+      inherits = FALSE
+    )
+    if (is.list(cached) &&
+        identical(as.character(cached$key), as.character(table$key)) &&
+        length(cached$lifetime) == nrow(table)) {
+      table$continuation.lifetime <- as.numeric(cached$lifetime)
+      result$all_table <- table
+      if (is.data.frame(result$table)) {
+        matched <- match(
+          as.character(result$table$key),
+          as.character(table$key)
+        )
+        result$table$continuation.lifetime <-
+          table$continuation.lifetime[matched]
+      }
+      result$continuation_rule <- rule
+      result$continuation_rule_label <- cached$label
+      return(result)
+    }
+  }
+  lifetime <- rep.int(NA_real_, nrow(table))
+  for (direction in intersect(c("max", "min"), unique(tree$basin.table$type))) {
+    branches <- tree$basin.table[
+      tree$basin.table$type == direction,
+      ,
+      drop = FALSE
+    ]
+    rows <- match(
+      paste(direction, branches$extremum.vertex, sep = "\r"),
+      paste(table$type, table$extremum.vertex, sep = "\r")
+    )
+    if (anyNA(rows)) {
+      stop(
+        "Continuation lifetime could not match canonical and trajectory basins.",
+        call. = FALSE
+      )
+    }
+    policy <- .gflowui_basin_continuation_spec(
+      rule,
+      branches$basin.id,
+      table$primary.support.mass[rows],
+      table$primary.support.size[rows]
+    )
+    graph.component <- suppressWarnings(as.integer(
+      tree$graph.input$validation$component[branches$extremum.vertex]
+    ))
+    for (component in sort(unique(graph.component))) {
+      layout <- layout.accessor(
+        tree,
+        direction = direction,
+        component = component,
+        continuation.priority = policy$priority,
+        continuation.measure = if (is.null(policy$priority)) {
+          NULL
+        } else {
+          policy$measure
+        }
+      )
+      branch.rows <- match(
+        layout$branches$basin.id,
+        branches$basin.id
+      )
+      table.rows <- rows[branch.rows]
+      lifetime[table.rows] <- suppressWarnings(as.numeric(
+        layout$branches$continuation.lifetime
+      ))
+    }
+  }
+  table$continuation.lifetime <- lifetime
+  result$all_table <- table
+  if (is.data.frame(result$table)) {
+    matched <- match(as.character(result$table$key), as.character(table$key))
+    result$table$continuation.lifetime <- lifetime[matched]
+  }
+  result$continuation_rule <- rule
+  result$continuation_rule_label <- unname(
+    names(gflowui_basin_continuation_rule_choices())[
+      match(rule, gflowui_basin_continuation_rule_choices())
+    ]
+  )
+  if (nzchar(cache.key)) {
+    assign(
+      cache.key,
+      list(
+        key = as.character(table$key),
+        lifetime = lifetime,
+        label = result$continuation_rule_label
+      ),
+      envir = .gflowui_basin_continuation_lifetime_cache
+    )
+  }
+  result
 }
 
 .gflowui_basin_inspector_pair <- function(result, state) {
@@ -240,6 +404,7 @@ gflowui_basin_inspector_sort_choices <- function() {
     "Support" = "support",
     "Peak value" = "peak",
     "Prominence" = "prominence",
+    "Continuation lifetime" = "continuation_lifetime",
     "Basin label" = "basin_label"
   )
 }
@@ -282,6 +447,11 @@ gflowui_basin_inspector_rows <- function(
     support = suppressWarnings(as.numeric(table$primary.support.size)),
     peak = suppressWarnings(as.numeric(table$extremum.value)),
     prominence = suppressWarnings(as.numeric(table$prominence)),
+    continuation_lifetime = if ("continuation.lifetime" %in% names(table)) {
+      suppressWarnings(as.numeric(table$continuation.lifetime))
+    } else {
+      rep.int(NA_real_, nrow(table))
+    },
     basin_label = suppressWarnings(as.numeric(table$label.rank)),
     suppressWarnings(as.numeric(table$primary.support.mass))
   )

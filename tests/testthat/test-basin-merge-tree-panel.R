@@ -1,4 +1,6 @@
-phase5_panel_bundle <- function(suffix = "base") {
+phase5_panel_bundle <- function(
+    suffix = "base",
+    vertex.mass = c(0.52, 0.03, 0.21, 0.02, 0.14, 0.08)) {
   adjacency <- list(
     2L,
     c(1L, 3L, 4L),
@@ -13,7 +15,6 @@ phase5_panel_bundle <- function(suffix = "base") {
   )
   field <- c(5, 1, 4, 0, 3, 2)
   vertex.ids <- paste0("v", seq_along(field))
-  vertex.mass <- c(0.52, 0.03, 0.21, 0.02, 0.14, 0.08)
   graph.identity <- gflowui:::gflowui_basin_graph_identity(
     adj_list = adjacency,
     edge_length_list = edge.lengths,
@@ -394,7 +395,7 @@ test_that("static tree uses exact layout and trajectory-flow annotations", {
   )
 })
 
-test_that("tree terminology identifies density-value survival semantics", {
+test_that("tree terminology identifies continuation semantics", {
   bundle <- phase5_panel_bundle("density-value-terminology")
   state <- phase5_panel_state(bundle)
   model <- gflowui:::gflowui_basin_merge_tree_model(state)
@@ -422,8 +423,8 @@ test_that("tree terminology identifies density-value survival semantics", {
   expect_identical(
     captured$titles,
     c(
-      "Filtered crossing-free density-value elder-rule merge tree",
-      "Complete crossing-free density-value elder-rule merge tree"
+      "Filtered crossing-free field-value elder-rule merge tree",
+      "Complete crossing-free field-value elder-rule merge tree"
     )
   )
   ui <- htmltools::renderTags(
@@ -437,15 +438,19 @@ test_that("tree terminology identifies density-value survival semantics", {
   expect_match(ui, "Each local maximum starts a branch", fixed = TRUE)
   expect_match(
     ui,
-    "the branch with the smaller canonical extremum-vertex index survives",
+    "Exact birth-value ties use the extremum-vertex index",
     fixed = TRUE
   )
   expect_match(
     ui,
-    "mass and support rank or filter branches for display",
+    "The continuation selector changes only which basin identity",
     fixed = TRUE
   )
-  expect_match(ui, "do not change branch continuation", fixed = TRUE)
+  expect_match(
+    ui,
+    "Continuation lifetime reports the corresponding quantity",
+    fixed = TRUE
+  )
   expect_match(ui, "How the tree and controls work", fixed = TRUE)
   expect_match(ui, "Core branch budget", fixed = TRUE)
   expect_match(
@@ -527,6 +532,69 @@ test_that("tree terminology identifies density-value survival semantics", {
   expect_identical(
     gflowui:::.gflowui_basin_complete_viewer_title(),
     "Complete Interactive Density-Value Elder-Rule Basin Merge Tree"
+  )
+})
+
+test_that("continuation selector drives layout metadata and adaptive titles", {
+  bundle <- phase5_panel_bundle(
+    "continuation-policy",
+    vertex.mass = c(0.05, 0.03, 0.04, 0.02, 0.80, 0.06)
+  )
+  state <- phase5_panel_state(bundle)
+  canonical.model <- gflowui:::gflowui_basin_merge_tree_model(state)
+  mass.model <- gflowui:::gflowui_basin_merge_tree_model(
+    state,
+    continuation.rule = "mass"
+  )
+  support.model <- gflowui:::gflowui_basin_merge_tree_model(
+    state,
+    continuation.rule = "support"
+  )
+
+  expect_identical(mass.model$continuation$rule, "mass")
+  expect_identical(
+    canonical.model$layout$component.root.basin.id,
+    "basin_max_v00000001"
+  )
+  expect_identical(
+    mass.model$layout$component.root.basin.id,
+    "basin_max_v00000005"
+  )
+  expect_identical(
+    mass.model$layout$continuation$measure,
+    "Trajectory-flow basin mass"
+  )
+  expect_true(all(is.finite(
+    mass.model$layout$branches$continuation.lifetime
+  )))
+  expect_identical(
+    gflowui:::gflowui_basin_continuation_tree_title(
+      mass.model$continuation
+    ),
+    "Filtered crossing-free trajectory-flow mass-priority continuation tree"
+  )
+  expect_identical(
+    gflowui:::gflowui_basin_continuation_tree_title(
+      support.model$continuation,
+      complete = TRUE
+    ),
+    "Complete crossing-free trajectory-flow support-priority continuation tree"
+  )
+  expect_match(
+    gflowui:::gflowui_basin_continuation_description("mass"),
+    "Exact mass ties use the canonical field-value elder rule",
+    fixed = TRUE
+  )
+  interactive <- gflowui:::gflowui_basin_interactive_tree_data(
+    state,
+    level.index = length(
+      gflowui:::gflowui_basin_interactive_levels(state)
+    ) - 1L,
+    continuation.rule = "mass"
+  )
+  expect_identical(
+    interactive$cut$components$basin.id,
+    "basin_max_v00000005"
   )
 })
 

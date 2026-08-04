@@ -824,6 +824,21 @@ test_that("basin server invalidates changed fields and graph identities", {
       "does not change tree parentage",
       fixed = TRUE
     )
+    expect_match(
+      labeling.shell,
+      "Branch continuation at merges",
+      fixed = TRUE
+    )
+    expect_match(
+      labeling.shell,
+      '<option value="field_value" selected>',
+      fixed = TRUE
+    )
+    expect_match(
+      labeling.shell,
+      "This independent scientific choice changes branch identity",
+      fixed = TRUE
+    )
     tree.shell <- htmltools::renderTags(
       output$basin_merge_tree_ui
     )$html
@@ -902,19 +917,45 @@ test_that("basin server invalidates changed fields and graph identities", {
     )
     expect_match(
       tree.shell,
-      "the branch with the smaller canonical extremum-vertex index survives",
+      "Exact birth-value ties use the extremum-vertex index",
       fixed = TRUE
     )
     expect_match(
       tree.shell,
-      "mass and support rank or filter branches for display",
+      "The continuation selector changes only which basin identity",
       fixed = TRUE
     )
     expect_match(
       tree.shell,
-      "do not change branch continuation",
+      "Continuation lifetime reports the corresponding quantity",
       fixed = TRUE
     )
+    expect_match(
+      inspector.shell,
+      "Continuation lifetime",
+      fixed = TRUE
+    )
+    session$setInputs(basin_tree_continuation_rule = "mass")
+    session$flushReact()
+    expect_identical(basin_tree_interaction$continuation_rule, "mass")
+    continuation.result <- basin_presentation_result()
+    expect_true(all(is.finite(
+      continuation.result$all_table$continuation.lifetime
+    )))
+    continuation.model <- basin_merge_tree_model_for_state(
+      basin_analysis_state(),
+      basin_result()
+    )
+    expect_identical(continuation.model$continuation$rule, "mass")
+    expect_match(
+      gflowui:::gflowui_basin_continuation_tree_title(
+        continuation.model$continuation
+      ),
+      "trajectory-flow mass-priority continuation tree",
+      fixed = TRUE
+    )
+    session$setInputs(basin_tree_continuation_rule = "field_value")
+    session$flushReact()
     expect_match(
       tree.shell,
       "Tree construction and display controls",

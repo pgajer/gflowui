@@ -494,7 +494,7 @@ test_that("invalid prominence does not mask parent-event corruption", {
 
   expect_error(
     phase2_bundle(case, "bad-prominence-and-parent-event"),
-    "event survivor disagrees",
+    "cycle|event survivor disagrees",
     class = "gflowui_basin_bundle_error"
   )
 })

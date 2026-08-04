@@ -4,6 +4,7 @@ gflowui_basin_plot_feature_choices <- function() {
     "Mass" = "mass",
     "Extremum value" = "extremum_value",
     "Prominence" = "prominence",
+    "Continuation lifetime" = "continuation_lifetime",
     "Extremum value rank" = "extremum_value_rank",
     "Support rank" = "support_rank",
     "Mass rank" = "mass_rank",
@@ -124,6 +125,7 @@ gflowui_basin_plot_data <- function(
       mass = numeric(),
       extremum_value = numeric(),
       prominence = numeric(),
+      continuation_lifetime = numeric(),
       extremum_value_rank = integer(),
       support_rank = integer(),
       mass_rank = integer(),
@@ -171,6 +173,11 @@ gflowui_basin_plot_data <- function(
   support <- suppressWarnings(as.integer(table$primary.support.size))
   mass <- suppressWarnings(as.numeric(table$primary.support.mass))
   prominence <- suppressWarnings(as.numeric(table$prominence))
+  continuation.lifetime <- if ("continuation.lifetime" %in% names(table)) {
+    suppressWarnings(as.numeric(table$continuation.lifetime))
+  } else {
+    rep.int(NA_real_, nrow(table))
+  }
   extremum.value.rank <- direction.rank(
     extremum.value,
     minimum.lowest = TRUE
@@ -185,6 +192,7 @@ gflowui_basin_plot_data <- function(
     support <- support[keep]
     mass <- mass[keep]
     prominence <- prominence[keep]
+    continuation.lifetime <- continuation.lifetime[keep]
     extremum.value.rank <- extremum.value.rank[keep]
     support.rank <- support.rank[keep]
     mass.rank <- mass.rank[keep]
@@ -205,6 +213,7 @@ gflowui_basin_plot_data <- function(
     support <- support[keep]
     mass <- mass[keep]
     prominence <- prominence[keep]
+    continuation.lifetime <- continuation.lifetime[keep]
     extremum.value.rank <- extremum.value.rank[keep]
     support.rank <- support.rank[keep]
     mass.rank <- mass.rank[keep]
@@ -221,6 +230,7 @@ gflowui_basin_plot_data <- function(
     support <- support[keep]
     mass <- mass[keep]
     prominence <- prominence[keep]
+    continuation.lifetime <- continuation.lifetime[keep]
     extremum.value.rank <- extremum.value.rank[keep]
     support.rank <- support.rank[keep]
     mass.rank <- mass.rank[keep]
@@ -232,6 +242,7 @@ gflowui_basin_plot_data <- function(
     support <- support[keep]
     mass <- mass[keep]
     prominence <- prominence[keep]
+    continuation.lifetime <- continuation.lifetime[keep]
     extremum.value.rank <- extremum.value.rank[keep]
     support.rank <- support.rank[keep]
     mass.rank <- mass.rank[keep]
@@ -244,6 +255,7 @@ gflowui_basin_plot_data <- function(
     support <- support[keep]
     mass <- mass[keep]
     prominence <- prominence[keep]
+    continuation.lifetime <- continuation.lifetime[keep]
     extremum.value.rank <- extremum.value.rank[keep]
     support.rank <- support.rank[keep]
     mass.rank <- mass.rank[keep]
@@ -258,6 +270,7 @@ gflowui_basin_plot_data <- function(
     mass = mass,
     extremum_value = extremum.value,
     prominence = prominence,
+    continuation_lifetime = continuation.lifetime,
     extremum_value_rank = extremum.value.rank,
     support_rank = support.rank,
     mass_rank = mass.rank,
