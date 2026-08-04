@@ -1212,34 +1212,14 @@ gflowui_basin_complete_interactive_data <- function(
   components
 }
 
-gflowui_basin_interactive_levels <- function(state) {
-  .gflowui_basin_assert_runtime_state(state)
-  proposal <- gflowui_basin_displayed_proposal(state)
-  if (is.null(proposal)) {
-    .gflowui_basin_panel_stop(
-      "A displayed basin proposal is required for interactive tree levels."
-    )
-  }
-  data <- .gflowui_basin_assert_pair(proposal, state$bundle)
-  tree <- data$canonical.tree
-  graph.component <- .gflowui_basin_tree_component_vector(tree)
-  component <- proposal$component$id
-  values <- suppressWarnings(as.numeric(data$source.values))
-  values <- values[graph.component == component]
-  if (!length(values) || anyNA(values) || any(!is.finite(values))) {
-    .gflowui_basin_panel_stop(
-      "The selected graph component does not provide finite field values."
-    )
-  }
-  values <- sort(unique(values), decreasing = TRUE)
-  span <- diff(range(values))
-  offset <- sqrt(.Machine$double.eps) *
-    max(1, abs(values[[1L]]), if (is.finite(span)) span else 0)
-  above <- values[[1L]] + offset
-  if (!is.finite(above) || above <= values[[1L]]) {
-    above <- values[[1L]]
-  }
-  c(above, values)
+gflowui_basin_interactive_levels <- function(state, scope = "proposal",
+                                             continuation.rule = "field_value") {
+  structure <- gflowui_basin_interactive_structure(
+    state,
+    scope = scope,
+    continuation.rule = continuation.rule
+  )
+  gflowui_basin_interactive_events(structure)$height
 }
 
 .gflowui_basin_interactive_label_ids <- function(
@@ -1406,21 +1386,15 @@ gflowui_basin_interactive_levels <- function(state) {
   result
 }
 
-gflowui_basin_interactive_tree_data <- function(
+gflowui_basin_interactive_structure <- function(
     state,
     scope = c("proposal", "complete"),
-    level.index = 0L,
-    component.colors = c("distinct", "single"),
-    merge.scope = c("current", "reached", "hidden"),
     continuation.rule = "field_value",
     label.text = NULL,
     basin.colors = NULL,
-    layout.accessor = gflow::get.basin.merge.tree.layout,
-    cut.accessor = gflow::cut.basin.merge.tree) {
+    layout.accessor = gflow::get.basin.merge.tree.layout) {
   .gflowui_basin_assert_runtime_state(state)
   scope <- match.arg(scope)
-  component.colors <- match.arg(component.colors)
-  merge.scope <- match.arg(merge.scope)
   proposal <- gflowui_basin_displayed_proposal(state)
   if (is.null(proposal)) {
     .gflowui_basin_panel_stop(
@@ -1455,32 +1429,6 @@ gflowui_basin_interactive_tree_data <- function(
     }
   )
   render.ids <- as.character(layout$basin.ids)
-  levels <- gflowui_basin_interactive_levels(state)
-  level.index <- suppressWarnings(as.integer(level.index))
-  if (!is.finite(level.index)) {
-    level.index <- 0L
-  }
-  level.index <- max(0L, min(length(levels) - 1L, level.index))
-  height <- levels[[level.index + 1L]]
-  cut <- cut.accessor(
-    data$canonical.tree,
-    height = height,
-    direction = "max",
-    component = component,
-    continuation.priority = continuation$priority,
-    continuation.measure = if (is.null(continuation$priority)) {
-      NULL
-    } else {
-      continuation$measure
-    }
-  )
-  visible.components <- cut$components$basin.id %in% render.ids
-  components <- cut$components[visible.components, , drop = FALSE]
-  membership <- cut$membership[
-    cut$membership$component.id %in% components$component.id,
-    ,
-    drop = FALSE
-  ]
   if (is.null(label.text)) {
     label.text <- stats::setNames(
       data$canonical$basin.id,
@@ -1496,17 +1444,6 @@ gflowui_basin_interactive_tree_data <- function(
     component.ids,
     basin.colors
   )
-  component.palette <- if (identical(component.colors, "single")) {
-    stats::setNames(
-      rep("#2563EB", nrow(components)),
-      components$component.id
-    )
-  } else {
-    stats::setNames(
-      unname(palette[components$basin.id]),
-      components$component.id
-    )
-  }
   coordinates <- layout$coordinates
   index <- match(layout$branches$basin.id, data$canonical$basin.id)
   points <- coordinates$branches
@@ -1554,39 +1491,292 @@ gflowui_basin_interactive_tree_data <- function(
     events$merge.level,
     events$event.id
   )
-  maxima <- data$canonical[
-    data$canonical$basin.id %in% render.ids &
-      data$canonical$peak.value >= height,
-    c("basin.id", "extremum.vertex", "peak.value"),
-    drop = FALSE
-  ]
-  maxima$label <- unname(label.text[maxima$basin.id])
-  missing.maxima.labels <- is.na(maxima$label) | !nzchar(maxima$label)
-  maxima$label[missing.maxima.labels] <-
-    maxima$basin.id[missing.maxima.labels]
-  plateaus <- .gflowui_basin_interactive_merge_plateaus(
-    tree = list(merge.table = layout$events),
-    canonical = data$canonical,
-    component = component,
-    scope.ids = render.ids,
-    height = height,
-    merge.scope = merge.scope,
-    label.text = label.text
+  graph.component <- .gflowui_basin_tree_component_vector(
+    data$canonical.tree
   )
+  component.values <- suppressWarnings(as.numeric(data$source.values))[
+    graph.component == component
+  ]
+  if (!length(component.values) || anyNA(component.values) ||
+      any(!is.finite(component.values))) {
+    .gflowui_basin_panel_stop(
+      "The selected graph component does not provide finite field values."
+    )
+  }
+  context.token <- gflowui_basin_sha256(list(
+    schema = "basin-tree-event-context-v1",
+    bundle.id = as.character(state$bundle$bundle.id %||% ""),
+    scientific.identity = data$identity,
+    context.generation = state$context.generation,
+    component = component,
+    scope = scope,
+    requested.scope.ids = sort(as.character(scope.ids), method = "radix"),
+    rendered.scope.ids = sort(render.ids, method = "radix"),
+    continuation.rule = continuation$rule,
+    continuation.priority = continuation$priority,
+    labels = label.text[sort(names(label.text), method = "radix")],
+    colors = palette[sort(names(palette), method = "radix")],
+    label.mode = state$presentation$label.mode,
+    important.label.n = state$presentation$important.label.n,
+    selected.ids = sort(state$selected.ids, method = "radix"),
+    pinned.ids = sort(state$pinned.ids, method = "radix")
+  ))
   list(
     scope = scope,
     requested.scope.ids = sort(scope.ids, method = "radix"),
     scope.ids = sort(render.ids, method = "radix"),
     component = component,
-    levels = levels,
-    level.index = level.index,
-    height = height,
-    relation = ">=",
+    context.token = context.token,
     continuation = continuation,
+    data = data,
+    proposal = proposal,
     layout = layout,
     points = points,
     vertical = vertical,
     horizontal = horizontal,
+    palette = palette,
+    label.text = label.text,
+    component.values = component.values
+  )
+}
+
+.gflowui_basin_event_ids_at_height <- function(values, ids, height) {
+  unique(as.character(ids[values == height]))
+}
+
+gflowui_basin_interactive_events <- function(structure) {
+  if (!is.list(structure) || is.null(structure$layout) ||
+      is.null(structure$component.values)) {
+    .gflowui_basin_panel_stop(
+      "Interactive-tree events require a prepared tree structure."
+    )
+  }
+  values <- structure$component.values
+  maximum <- max(values)
+  minimum <- min(values)
+  span <- diff(range(values))
+  offset <- sqrt(.Machine$double.eps) *
+    max(1, abs(maximum), if (is.finite(span)) span else 0)
+  above <- maximum + offset
+  if (!is.finite(above) || above <= maximum) {
+    .gflowui_basin_panel_stop(
+      "A finite threshold strictly above the component maximum could not be represented."
+    )
+  }
+  branches <- structure$layout$coordinates$branches
+  merge.events <- structure$layout$events
+  birth.levels <- suppressWarnings(as.numeric(branches$birth.level))
+  merge.levels <- suppressWarnings(as.numeric(merge.events$merge.level))
+  heights <- sort(
+    unique(c(above, birth.levels, merge.levels, minimum)),
+    decreasing = TRUE
+  )
+  birth.ids <- lapply(heights, function(height) {
+    .gflowui_basin_event_ids_at_height(
+      birth.levels,
+      branches$basin.id,
+      height
+    )
+  })
+  plateau.ids <- lapply(heights, function(height) {
+    .gflowui_basin_event_ids_at_height(
+      merge.levels,
+      merge.events$merge.plateau.id,
+      height
+    )
+  })
+  above.flag <- seq_along(heights) == 1L
+  floor.flag <- heights == minimum
+  birth.count <- lengths(birth.ids)
+  merge.count <- lengths(plateau.ids)
+  kinds <- vapply(seq_along(heights), function(index) {
+    if (above.flag[[index]]) {
+      return("above_maximum")
+    }
+    has.birth <- birth.count[[index]] > 0L
+    has.merge <- merge.count[[index]] > 0L
+    has.floor <- floor.flag[[index]]
+    if (has.birth && has.merge && has.floor) return("birth_merge_and_floor")
+    if (has.birth && has.merge) return("birth_and_merge")
+    if (has.birth && has.floor) return("birth_and_floor")
+    if (has.merge && has.floor) return("merge_and_floor")
+    if (has.birth) return("birth")
+    if (has.merge) return("merge")
+    if (has.floor) return("floor")
+    "unknown"
+  }, character(1))
+  summaries <- vapply(seq_along(heights), function(index) {
+    if (above.flag[[index]]) {
+      return("above all maxima; superlevel set empty")
+    }
+    parts <- character()
+    if (birth.count[[index]] > 0L) {
+      parts <- c(parts, sprintf(
+        "%d maximum birth%s",
+        birth.count[[index]],
+        if (birth.count[[index]] == 1L) "" else "s"
+      ))
+    }
+    if (merge.count[[index]] > 0L) {
+      parts <- c(parts, sprintf(
+        "%d merge plateau%s",
+        merge.count[[index]],
+        if (merge.count[[index]] == 1L) "" else "s"
+      ))
+    }
+    if (floor.flag[[index]]) {
+      parts <- c(parts, "component floor; complete component active")
+    }
+    paste(parts, collapse = "; ")
+  }, character(1))
+  result <- data.frame(
+    event.index = seq_along(heights) - 1L,
+    event.number = seq_along(heights),
+    event.count = rep.int(length(heights), length(heights)),
+    height = heights,
+    height.text = sprintf("%.17g", heights),
+    birth.count = birth.count,
+    merge.count = merge.count,
+    event.kind = kinds,
+    event.summary = summaries,
+    above.maximum = above.flag,
+    component.floor = floor.flag,
+    stringsAsFactors = FALSE
+  )
+  result$birth.basin.ids <- I(birth.ids)
+  result$merge.plateau.ids <- I(plateau.ids)
+  result$aria.value.text <- sprintf(
+    "Event %d of %d: %s; h equals %s",
+    result$event.number,
+    result$event.count,
+    result$event.summary,
+    result$height.text
+  )
+  result$kind <- result$event.kind
+  result$summary <- result$event.summary
+  result$aria.label <- result$aria.value.text
+  result
+}
+
+gflowui_basin_validate_interactive_events <- function(events) {
+  required <- c(
+    "event.index", "event.number", "event.count", "height",
+    "above.maximum", "component.floor", "birth.count",
+    "birth.basin.ids", "merge.count", "merge.plateau.ids",
+    "event.kind", "event.summary", "aria.value.text"
+  )
+  if (!is.data.frame(events) || !nrow(events) ||
+      !all(required %in% names(events))) {
+    .gflowui_basin_panel_stop(
+      "A complete, non-empty topology-event table is required."
+    )
+  }
+  count <- nrow(events)
+  valid <- identical(events$event.index, seq_len(count) - 1L) &&
+    identical(events$event.number, seq_len(count)) &&
+    all(events$event.count == count) &&
+    all(is.finite(events$height)) &&
+    (count == 1L || all(diff(events$height) < 0)) &&
+    identical(which(events$above.maximum), 1L) &&
+    identical(which(events$component.floor), count) &&
+    identical(lengths(events$birth.basin.ids), events$birth.count) &&
+    identical(lengths(events$merge.plateau.ids), events$merge.count) &&
+    all(!is.na(events$event.kind) & nzchar(events$event.kind)) &&
+    all(!is.na(events$event.summary) & nzchar(events$event.summary)) &&
+    all(!is.na(events$aria.value.text) & nzchar(events$aria.value.text))
+  if (!isTRUE(valid)) {
+    .gflowui_basin_panel_stop(
+      "The topology-event table is malformed or not strictly decreasing."
+    )
+  }
+  invisible(events)
+}
+
+gflowui_basin_remap_event_index <- function(events, previous.height = NULL) {
+  gflowui_basin_validate_interactive_events(events)
+  height <- suppressWarnings(as.numeric(previous.height))
+  if (length(height) != 1L || !is.finite(height)) {
+    return(0L)
+  }
+  exact <- which(events$height == height)
+  if (length(exact)) return(as.integer(events$event.index[[exact[[1L]]]]))
+  if (height >= events$height[[1L]]) return(0L)
+  if (height <= events$height[[nrow(events)]]) {
+    return(as.integer(events$event.index[[nrow(events)]]))
+  }
+  downward <- which(events$height <= height)
+  as.integer(events$event.index[[downward[[1L]]]])
+}
+
+gflowui_basin_interactive_cut <- function(
+    structure,
+    events,
+    event.index = 0L,
+    component.colors = c("distinct", "single"),
+    merge.scope = c("current", "reached", "hidden"),
+    cut.accessor = gflow::cut.basin.merge.tree) {
+  gflowui_basin_validate_interactive_events(events)
+  component.colors <- match.arg(component.colors)
+  merge.scope <- match.arg(merge.scope)
+  event.index <- suppressWarnings(as.integer(event.index))
+  if (length(event.index) != 1L || !is.finite(event.index)) event.index <- 0L
+  event.index <- max(0L, min(nrow(events) - 1L, event.index))
+  event <- events[event.index + 1L, , drop = FALSE]
+  height <- event$height[[1L]]
+  continuation <- structure$continuation
+  data <- structure$data
+  cut <- cut.accessor(
+    data$canonical.tree,
+    height = height,
+    direction = "max",
+    component = structure$component,
+    continuation.priority = continuation$priority,
+    continuation.measure = if (is.null(continuation$priority)) {
+      NULL
+    } else {
+      continuation$measure
+    }
+  )
+  components <- cut$components
+  membership <- cut$membership
+  component.palette <- if (identical(component.colors, "single")) {
+    stats::setNames(rep("#2563EB", nrow(components)), components$component.id)
+  } else {
+    stats::setNames(
+      unname(structure$palette[components$basin.id]),
+      components$component.id
+    )
+  }
+  maxima <- data$canonical[
+    data$canonical$basin.id %in% structure$scope.ids &
+      data$canonical$peak.value >= height,
+    c("basin.id", "extremum.vertex", "peak.value"),
+    drop = FALSE
+  ]
+  maxima$label <- unname(structure$label.text[maxima$basin.id])
+  missing.labels <- is.na(maxima$label) | !nzchar(maxima$label)
+  maxima$label[missing.labels] <- maxima$basin.id[missing.labels]
+  plateaus <- .gflowui_basin_interactive_merge_plateaus(
+    tree = list(merge.table = structure$layout$events),
+    canonical = data$canonical,
+    component = structure$component,
+    scope.ids = structure$scope.ids,
+    height = height,
+    merge.scope = merge.scope,
+    label.text = structure$label.text
+  )
+  c(structure[c(
+    "scope", "requested.scope.ids", "scope.ids", "component",
+    "context.token", "continuation", "layout", "points", "vertical",
+    "horizontal"
+  )], list(
+    events = events,
+    event = event,
+    event.index = event.index,
+    level.index = event.index,
+    levels = events$height,
+    height = height,
+    relation = ">=",
     cut = cut,
     components = components,
     membership = membership,
@@ -1595,7 +1785,37 @@ gflowui_basin_interactive_tree_data <- function(
     merge.plateaus = plateaus,
     n.active.vertices = nrow(membership),
     n.active.components = nrow(components),
-    above.maximum = identical(level.index, 0L)
+    above.maximum = isTRUE(event$above.maximum[[1L]])
+  ))
+}
+
+gflowui_basin_interactive_tree_data <- function(
+    state,
+    scope = c("proposal", "complete"),
+    level.index = 0L,
+    component.colors = c("distinct", "single"),
+    merge.scope = c("current", "reached", "hidden"),
+    continuation.rule = "field_value",
+    label.text = NULL,
+    basin.colors = NULL,
+    layout.accessor = gflow::get.basin.merge.tree.layout,
+    cut.accessor = gflow::cut.basin.merge.tree) {
+  structure <- gflowui_basin_interactive_structure(
+    state,
+    scope = scope,
+    continuation.rule = continuation.rule,
+    label.text = label.text,
+    basin.colors = basin.colors,
+    layout.accessor = layout.accessor
+  )
+  events <- gflowui_basin_interactive_events(structure)
+  gflowui_basin_interactive_cut(
+    structure,
+    events,
+    event.index = level.index,
+    component.colors = component.colors,
+    merge.scope = merge.scope,
+    cut.accessor = cut.accessor
   )
 }
 
@@ -1840,11 +2060,15 @@ gflowui_basin_interactive_tree_data <- function(
         ),
         shiny::p(
           paste(
-            "The vertical threshold starts above every maximum. Moving h",
-            "down visits every distinct field value. The dotted tree line",
-            "and the 3D graph use the same exact cut: vertices with value",
-            "below h are gray, while vertices with value at least h are",
-            "grouped into graph superlevel-set components."
+            "The horizontal navigator starts at a finite level above every",
+            "maximum and stops only where topology changes: a branch birth,",
+            "one or more exact merge plateaus, or the component floor. Coincident",
+            "changes share one event. Previous event and Next event move one",
+            "topology event at a time. While you drag, only the dotted line and",
+            "preview text move in the browser; releasing the slider commits the",
+            "event and computes its exact cut. The 3D graph then uses that same",
+            "cut: vertices below h are gray, while vertices with value at least",
+            "h are grouped into graph superlevel-set components."
           )
         ),
         shiny::p(

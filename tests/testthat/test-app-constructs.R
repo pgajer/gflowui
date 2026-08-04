@@ -1131,7 +1131,9 @@ test_that("basin server invalidates changed fields and graph identities", {
       "basin_tree_merge_color",
       "basin_tree_merge_size",
       "basin_tree_merge_label_size",
-      "basin_tree_level_range",
+      "basin_tree_previous_event",
+      "basin_tree_next_event",
+      "basin_tree_event_range",
       "basin_merge_tree_interactive_plot",
       "basin_tree_recipe_save",
       "basin_tree_recipe_apply",
@@ -1150,19 +1152,88 @@ test_that("basin server invalidates changed fields and graph identities", {
     expect_identical(panel.model$component.maximum.count, 352L)
     initial.tree <- basin_tree_interactive_data()
     initial.overlay <- basin_tree_graph_overlay()
+    initial.static.builds <- basin_tree_event_metrics$static_build_count
+    initial.cut.computes <- basin_tree_event_metrics$cut_compute_count
     expect_identical(initial.tree$scope, "proposal")
-    expect_identical(initial.tree$level.index, 0L)
+    expect_identical(initial.tree$event.index, 0L)
     expect_identical(initial.tree$n.active.vertices, 0L)
     expect_true(is.list(initial.overlay))
     expect_length(initial.overlay$active.vertices, 0L)
     expect_true(all(
       initial.overlay$vertex.colors == initial.overlay$inactive.color
     ))
-    session$setInputs(basin_tree_level_index = 1L)
+    initial.domain <- basin_tree_event_domain()
+    expect_lt(nrow(initial.domain$events), 100L)
+    session$setInputs(basin_tree_event_commit = list(
+      context_token = initial.domain$context.token,
+      event_index = 1L,
+      nonce = "test-event-1"
+    ))
     session$flushReact()
     first.cut <- basin_tree_interactive_data()
-    expect_identical(first.cut$level.index, 1L)
+    expect_identical(first.cut$event.index, 1L)
     expect_gt(first.cut$n.active.vertices, 0L)
+    expect_identical(
+      basin_tree_event_metrics$static_build_count,
+      initial.static.builds
+    )
+    expect_identical(
+      basin_tree_event_metrics$cut_compute_count,
+      initial.cut.computes + 1L
+    )
+    session$setInputs(basin_tree_event_commit = list(
+      context_token = initial.domain$context.token,
+      event_index = 1L,
+      nonce = "test-event-repeat"
+    ))
+    session$flushReact()
+    expect_identical(
+      basin_tree_event_metrics$cut_compute_count,
+      initial.cut.computes + 1L
+    )
+    session$setInputs(basin_tree_event_commit = list(
+      context_token = "stale-event-context",
+      event_index = 2L,
+      nonce = "test-event-stale"
+    ))
+    session$flushReact()
+    expect_identical(basin_tree_interactive_data()$event.index, 1L)
+    expect_identical(
+      basin_tree_event_metrics$cut_compute_count,
+      initial.cut.computes + 1L
+    )
+    session$setInputs(basin_tree_link_graph = FALSE)
+    session$flushReact()
+    overlay.computes.before.unlinked.commit <-
+      basin_tree_event_metrics$graph_overlay_compute_count
+    session$setInputs(basin_tree_event_commit = list(
+      context_token = initial.domain$context.token,
+      event_index = 2L,
+      nonce = "test-event-unlinked"
+    ))
+    session$flushReact()
+    expect_identical(basin_tree_interactive_data()$event.index, 2L)
+    expect_identical(
+      basin_tree_event_metrics$graph_overlay_compute_count,
+      overlay.computes.before.unlinked.commit
+    )
+    expect_null(basin_tree_graph_overlay())
+    session$setInputs(basin_tree_link_graph = TRUE)
+    session$flushReact()
+    expect_true(is.list(basin_tree_graph_overlay()))
+    cut.computes.before.cached.backtrack <-
+      basin_tree_event_metrics$cut_compute_count
+    session$setInputs(basin_tree_event_commit = list(
+      context_token = initial.domain$context.token,
+      event_index = 1L,
+      nonce = "test-event-cached-backtrack"
+    ))
+    session$flushReact()
+    expect_identical(basin_tree_interactive_data()$event.index, 1L)
+    expect_identical(
+      basin_tree_event_metrics$cut_compute_count,
+      cut.computes.before.cached.backtrack
+    )
     session$setInputs(
       basin_tree_scope = "complete",
       basin_tree_component_colors = "single"
@@ -1170,16 +1241,34 @@ test_that("basin server invalidates changed fields and graph identities", {
     session$flushReact()
     complete.tree <- basin_tree_interactive_data()
     expect_identical(complete.tree$scope, "complete")
+    expect_identical(complete.tree$height, first.cut$height)
     expect_identical(nrow(complete.tree$points), 352L)
     expect_identical(
       unique(unname(complete.tree$component.colors)),
       "#2563EB"
     )
+    complete.domain <- basin_tree_event_domain()
+    expect_gt(nrow(complete.domain$events), nrow(initial.domain$events))
+    session$setInputs(basin_tree_event_commit = list(
+      context_token = complete.domain$context.token,
+      event_index = nrow(complete.domain$events) - 1L,
+      nonce = "test-event-component-floor"
+    ))
+    session$flushReact()
+    floor.tree <- basin_tree_interactive_data()
+    expect_true(floor.tree$event$component.floor[[1L]])
+    expect_identical(floor.tree$n.active.vertices, 6529L)
     session$setInputs(
       basin_tree_scope = "proposal",
-      basin_tree_component_colors = "distinct",
-      basin_tree_level_index = 0L
+      basin_tree_component_colors = "distinct"
     )
+    session$flushReact()
+    proposal.domain <- basin_tree_event_domain()
+    session$setInputs(basin_tree_event_commit = list(
+      context_token = proposal.domain$context.token,
+      event_index = 0L,
+      nonce = "test-event-2"
+    ))
     session$flushReact()
     selection.plot.data <- gflowui:::gflowui_basin_plot_data(
       first,
