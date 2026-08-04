@@ -11965,7 +11965,7 @@ app_server <- function(input, output, session) {
     event <- tree$event
     sprintf(
       paste(
-        "Event %s of %s — %s — h = %s",
+        "Event %s of %s - %s - h = %s",
         "Active: %s vertices in %s component%s",
         sep = "\n"
       ),
@@ -12235,7 +12235,7 @@ app_server <- function(input, output, session) {
       committed_index = tree$event.index,
       committed_height = tree$height,
       committed_status = sprintf(
-        "Event %d of %d — %s — h = %s",
+        "Event %d of %d - %s - h = %s",
         tree$event$event.number,
         tree$event$event.count,
         tree$event$summary,
