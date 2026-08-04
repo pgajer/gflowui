@@ -53,6 +53,7 @@ app_server <- function(input, output, session) {
     vertex_color = NA_character_,
     component = NA_character_
   )
+  graph_color_sync_target <- shiny::reactiveVal("")
   occupation_density_result <- shiny::reactiveVal(NULL)
   occupation_density_status <- shiny::reactiveVal(
     "Choose an estimate, then show it on the graph."
@@ -410,6 +411,44 @@ app_server <- function(input, output, session) {
     }
     invisible(value)
   }
+  normalize_graph_color_selection <- function(value) {
+    value <- as.character(value %||% "")
+    value <- value[!is.na(value) & nzchar(value)]
+    if (length(value) < 1L) "" else value[[1L]]
+  }
+  first_valid_graph_color_selection <- function(candidates, choices) {
+    choices <- unique(as.character(unname(choices %||% character())))
+    choices <- choices[!is.na(choices) & nzchar(choices)]
+    candidates <- as.character(candidates %||% character())
+    candidates <- candidates[!is.na(candidates) & nzchar(candidates)]
+    valid <- candidates[candidates %in% choices]
+    if (length(valid) > 0L) {
+      return(valid[[1L]])
+    }
+    if (length(choices) > 0L) choices[[1L]] else ""
+  }
+  set_graph_color_selection <- function(value, sync_input = TRUE) {
+    value <- normalize_graph_color_selection(value)
+    set_reactive_field_if_changed(graph_layout_state, "color_by", value)
+    if (!isTRUE(sync_input) || !nzchar(value)) {
+      graph_color_sync_target("")
+      return(invisible(value))
+    }
+    current_input <- normalize_graph_color_selection(
+      shiny::isolate(input$graph_layout_color_by)
+    )
+    if (identical(current_input, value)) {
+      graph_color_sync_target("")
+    } else {
+      graph_color_sync_target(value)
+      shiny::updateSelectInput(
+        session,
+        "graph_layout_color_by",
+        selected = value
+      )
+    }
+    invisible(value)
+  }
   normalize_plotly_camera <- function(cam) {
     if (!is.list(cam)) {
       return(NULL)
@@ -514,6 +553,7 @@ app_server <- function(input, output, session) {
     graph_layout_state$vertex_layout <- "point"
     graph_layout_state$size_label <- NA_character_
     graph_layout_state$color_by <- NA_character_
+    graph_color_sync_target("")
     graph_layout_state$vertex_color <- NA_character_
     graph_layout_state$component <- NA_character_
     occupation_density_result(NULL)
@@ -604,11 +644,6 @@ app_server <- function(input, output, session) {
       set_reactive_field_if_changed(graph_layout_state, "size_label", size_val[[1]])
     }
 
-    color_by_val <- as.character(input$graph_layout_color_by %||% "")
-    if (length(color_by_val) > 0L && nzchar(color_by_val[[1]])) {
-      set_reactive_field_if_changed(graph_layout_state, "color_by", color_by_val[[1]])
-    }
-
     vertex_color_val <- as.character(input$graph_layout_vertex_color %||% "")
     if (length(vertex_color_val) > 0L && nzchar(vertex_color_val[[1]])) {
       set_reactive_field_if_changed(
@@ -627,6 +662,46 @@ app_server <- function(input, output, session) {
       set_reactive_field_if_changed(graph_layout_state, "component", component_val)
     }
   })
+
+  shiny::observeEvent(input$graph_layout_color_by, {
+    color_by_val <- normalize_graph_color_selection(
+      input$graph_layout_color_by
+    )
+    if (!nzchar(color_by_val)) {
+      return()
+    }
+
+    sync_target <- normalize_graph_color_selection(
+      shiny::isolate(graph_color_sync_target())
+    )
+    if (nzchar(sync_target)) {
+      if (identical(color_by_val, sync_target)) {
+        graph_color_sync_target("")
+      } else {
+        shiny::updateSelectInput(
+          session,
+          "graph_layout_color_by",
+          selected = sync_target
+        )
+      }
+      return()
+    }
+
+    graph_ui <- tryCatch(
+      shiny::isolate(graph_structure_state()),
+      error = function(e) NULL
+    )
+    valid_choices <- if (is.list(graph_ui)) {
+      as.character(unname(graph_ui$color_choices %||% character()))
+    } else {
+      character()
+    }
+    if (color_by_val %in% valid_choices) {
+      set_graph_color_selection(color_by_val, sync_input = FALSE)
+    } else if (is.list(graph_ui)) {
+      set_graph_color_selection(graph_ui$color_selected)
+    }
+  }, ignoreInit = FALSE, ignoreNULL = TRUE)
 
   project_open_selection_defaults <- function(project_id, manifest = NULL, graph_sets = list()) {
     pid <- tolower(trimws(as.character(project_id %||% "")))
@@ -1304,7 +1379,11 @@ app_server <- function(input, output, session) {
       renderer = normalize_live_renderer_choice(input$graph_layout_renderer, default = "plotly"),
       vertex_layout = tolower(as.character(input$graph_layout_vertex %||% "point")),
       vertex_size = as.character(input$graph_layout_size %||% "1.0x"),
-      color_by = as.character(input$graph_layout_color_by %||% "vertex_degree"),
+      color_by = as.character(
+        graph_layout_state$color_by %||%
+          input$graph_layout_color_by %||%
+          "vertex_degree"
+      ),
       vertex_color = normalize_palette_choice(
         input$graph_layout_vertex_color %||% graph_solid_color_default,
         graph_vertex_color_choices(),
@@ -8113,11 +8192,7 @@ app_server <- function(input, output, session) {
     subject_state$edge_mode <- "temporal"
     shiny::updateSelectInput(session, "subject_ids", selected = subject_id)
     shiny::updateSelectInput(session, "subject_edge_mode", selected = "temporal")
-    graph_layout_state$color_by <- "occupation_density_active"
-    shiny::updateSelectInput(
-      session, "graph_layout_color_by",
-      selected = "occupation_density_active"
-    )
+    set_graph_color_selection("occupation_density_active")
     graph_note <- if (is.finite(graph_k) &&
                       identical(as.character(result$method$source %||% ""),
                                 "precomputed_path")) {
@@ -8758,12 +8833,7 @@ app_server <- function(input, output, session) {
       } else {
         ""
       }
-      graph_layout_state$color_by <- next.color
-      shiny::updateSelectInput(
-        session,
-        "graph_layout_color_by",
-        selected = next.color
-      )
+      set_graph_color_selection(next.color)
     }
     basin_status(message)
     invisible(TRUE)
@@ -12865,12 +12935,7 @@ app_server <- function(input, output, session) {
         length(result$values %||% character()) < 1L) {
       return(invisible(FALSE))
     }
-    graph_layout_state$color_by <- "basin_active"
-    shiny::updateSelectInput(
-      session,
-      "graph_layout_color_by",
-      selected = "basin_active"
-    )
+    set_graph_color_selection("basin_active")
     if (isTRUE(update_status)) {
       basin_status(sprintf(
         paste(
@@ -13079,12 +13144,13 @@ app_server <- function(input, output, session) {
     requested <- normalize_live_renderer_choice(requested_raw, default = "plotly")
 
     layout_presets <- if (is.list(spec$graph_set$layout_assets$presets)) spec$graph_set$layout_assets$presets else list()
-    src_key_raw <- as.character(
-      input$graph_layout_color_by %||%
-        graph_layout_state$color_by %||%
-        layout_presets$color_by %||%
-        st$default_key %||%
-        ""
+    src_key_raw <- first_valid_graph_color_selection(
+      c(
+        graph_layout_state$color_by,
+        layout_presets$color_by,
+        st$default_key
+      ),
+      c(graph_solid_color_key, names(st$sources %||% list()))
     )
     use_solid_color <- identical(src_key_raw, graph_solid_color_key)
     src_key <- src_key_raw
@@ -15664,25 +15730,24 @@ app_server <- function(input, output, session) {
 
     solid_vertex_color_choices <- graph_vertex_color_choices()
     color_choices <- c("Solid color..." = graph_solid_color_key, "Vertex Degree" = "vertex_degree")
-    color_selected <- as.character(
-      input$graph_layout_color_by %||%
-        graph_layout_state$color_by %||%
-        layout_presets$color_by %||%
+    color_selected <- first_valid_graph_color_selection(
+      c(
+        graph_layout_state$color_by,
+        layout_presets$color_by,
         "vertex_degree"
+      ),
+      color_choices
     )
     if (is.list(st_use) && length(st_use$choices %||% c()) > 0L) {
       color_choices <- c("Solid color..." = graph_solid_color_key, st_use$choices)
-      color_selected <- as.character(
-        input$graph_layout_color_by %||%
-          layout_presets$color_by %||%
-          st_use$default_key %||%
-          ""
+      color_selected <- first_valid_graph_color_selection(
+        c(
+          graph_layout_state$color_by,
+          layout_presets$color_by,
+          st_use$default_key
+        ),
+        color_choices
       )
-      if (!(color_selected %in% unname(color_choices))) {
-        color_selected <- unname(color_choices)[1]
-      }
-    } else if (!(color_selected %in% unname(color_choices))) {
-      color_selected <- "vertex_degree"
     }
     vertex_color_selected <- normalize_palette_choice(
       input$graph_layout_vertex_color %||%
@@ -15834,6 +15899,24 @@ app_server <- function(input, output, session) {
       vertex_color_choices = solid_vertex_color_choices,
       vertex_color_selected = vertex_color_selected
     )
+  })
+
+  shiny::observe({
+    graph_ui <- graph_structure_state()
+    if (!is.list(graph_ui)) {
+      return()
+    }
+    selected <- normalize_graph_color_selection(graph_ui$color_selected)
+    choices <- as.character(unname(graph_ui$color_choices %||% character()))
+    if (!nzchar(selected) || !(selected %in% choices)) {
+      return()
+    }
+    current <- normalize_graph_color_selection(
+      shiny::isolate(graph_layout_state$color_by)
+    )
+    if (!identical(current, selected)) {
+      set_graph_color_selection(selected)
+    }
   })
 
   project_overview_state <- shiny::reactive({
@@ -17638,7 +17721,7 @@ app_server <- function(input, output, session) {
             )
           ),
           if (identical(
-            as.character(input$graph_layout_color_by %||% graph_ui$color_selected %||% ""),
+            as.character(graph_ui$color_selected %||% ""),
             graph_solid_color_key
           )) {
             shiny::div(

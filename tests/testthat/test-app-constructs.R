@@ -381,6 +381,103 @@ test_that("subject overlay changes preserve density display settings", {
   })
 })
 
+test_that("canonical graph color state survives density source rebinding", {
+  skip_if_not_installed("plotly")
+  local_projects_data_sandbox()
+
+  project_id <- "hmp_subject15_k03_heat_basin_path"
+  if (!(project_id %in% gflowui::list_projects()$id)) {
+    skip("The Subject 15 reference project is not registered")
+  }
+
+  shiny::testServer(gflowui:::app_server, {
+    open_project(project_id)
+    session$flushReact()
+
+    expect_identical(graph_layout_state$color_by, "cst_norm")
+    expect_identical(graph_structure_state()$color_selected, "cst_norm")
+
+    session$setInputs(
+      occupation_density_mode = "parameters",
+      occupation_density_subject = "15",
+      occupation_density_method = "graph_heat_kernel",
+      occupation_density_eta_index = "4",
+      graph_layout_color_by = "cst_norm"
+    )
+    session$flushReact()
+    show_occupation_density_selection(notify_errors = FALSE)
+    session$flushReact()
+
+    expect_identical(
+      graph_layout_state$color_by,
+      "occupation_density_active"
+    )
+    expect_identical(
+      graph_structure_state()$color_selected,
+      "occupation_density_active"
+    )
+    controls <- htmltools::renderTags(output$workflow_controls)$html
+    expect_match(
+      controls,
+      '<option value="occupation_density_active" selected>',
+      fixed = TRUE
+    )
+
+    session$setInputs(graph_layout_color_by = "cst_norm")
+    session$flushReact()
+    expect_identical(
+      graph_layout_state$color_by,
+      "occupation_density_active"
+    )
+    expect_identical(
+      graph_structure_state()$color_selected,
+      "occupation_density_active"
+    )
+
+    session$setInputs(graph_layout_color_by = NULL)
+    session$flushReact()
+    expect_identical(
+      graph_layout_state$color_by,
+      "occupation_density_active"
+    )
+    expect_identical(
+      graph_structure_state()$color_selected,
+      "occupation_density_active"
+    )
+
+    session$setInputs(
+      graph_layout_color_by = "occupation_density_active"
+    )
+    session$flushReact()
+    session$setInputs(graph_layout_color_by = "cst_norm")
+    session$flushReact()
+    expect_identical(graph_layout_state$color_by, "cst_norm")
+    expect_identical(graph_structure_state()$color_selected, "cst_norm")
+
+    show_occupation_density_selection(notify_errors = FALSE)
+    session$flushReact()
+    session$setInputs(
+      graph_layout_color_by = "occupation_density_active"
+    )
+    session$flushReact()
+    session$setInputs(occupation_density_eta_index = "5")
+    session$flushReact()
+    expect_identical(
+      graph_layout_state$color_by,
+      "occupation_density_active"
+    )
+    expect_identical(
+      graph_structure_state()$color_selected,
+      "occupation_density_active"
+    )
+
+    occupation_density_result(NULL)
+    session$flushReact()
+    expect_identical(graph_layout_state$color_by, "cst_norm")
+    expect_identical(graph_structure_state()$color_selected, "cst_norm")
+  })
+})
+
 test_that("legacy html renderer state is normalized to plotly", {
   skip_if_not_installed("plotly")
   local_projects_data_sandbox()
@@ -2212,6 +2309,7 @@ test_that("basin server invalidates changed fields and graph identities", {
     session$setInputs(basin_show_colors = 1L)
     session$flushReact()
     expect_identical(graph_layout_state$color_by, "basin_active")
+    expect_identical(graph_structure_state()$color_selected, "basin_active")
     expect_match(basin_status(), "Showing basin colors", fixed = TRUE)
 
     show_occupation_density_selection(notify_errors = FALSE)
