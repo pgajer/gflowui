@@ -149,7 +149,10 @@ app_server <- function(input, output, session) {
   basin_tree_interaction <- shiny::reactiveValues(
     continuation_rule = "field_value",
     scope = "proposal",
-    level_index = 0L,
+    event_index = 0L,
+    event_height = NA_real_,
+    event_context_token = "",
+    event_nonce = "",
     component_colors = "distinct",
     link_graph = TRUE,
     show_maxima_labels = TRUE,
@@ -162,10 +165,32 @@ app_server <- function(input, output, session) {
     merge_size = 1,
     merge_label_size = 1
   )
+  basin_tree_event_metrics <- new.env(parent = emptyenv())
+  basin_tree_event_metrics$static_build_count <- 0L
+  basin_tree_event_metrics$cut_compute_count <- 0L
+  basin_tree_event_metrics$accepted_commit_count <- 0L
+  basin_tree_event_metrics$ignored_commit_count <- 0L
+  basin_tree_event_metrics$tree_render_count <- 0L
+  basin_tree_event_metrics$graph_overlay_compute_count <- 0L
+  basin_tree_event_metrics$last_static_build_elapsed_ms <- NA_real_
+  basin_tree_event_metrics$last_cut_elapsed_ms <- NA_real_
+  basin_tree_event_metrics$last_cut_cache_hit <- FALSE
+  basin_tree_event_metrics_tick <- shiny::reactiveVal(0L)
+  bump_basin_tree_event_metrics <- function() {
+    basin_tree_event_metrics_tick(
+      shiny::isolate(basin_tree_event_metrics_tick()) + 1L
+    )
+    invisible(NULL)
+  }
+  basin_tree_cut_cache <- new.env(parent = emptyenv())
+  basin_tree_cut_cache$order <- character()
   reset_basin_tree_interaction <- function() {
     basin_tree_interaction$continuation_rule <- "field_value"
     basin_tree_interaction$scope <- "proposal"
-    basin_tree_interaction$level_index <- 0L
+    basin_tree_interaction$event_index <- 0L
+    basin_tree_interaction$event_height <- NA_real_
+    basin_tree_interaction$event_context_token <- ""
+    basin_tree_interaction$event_nonce <- ""
     basin_tree_interaction$component_colors <- "distinct"
     basin_tree_interaction$link_graph <- TRUE
     basin_tree_interaction$show_maxima_labels <- TRUE
@@ -8958,30 +8983,125 @@ app_server <- function(input, output, session) {
     )
   }
 
-  basin_tree_interactive_data <- shiny::reactive({
+  basin_tree_interactive_structure <- shiny::reactive({
+    started <- unname(proc.time()[["elapsed"]])
     state <- basin_analysis_state()
     result <- basin_result()
     shiny::req(is.list(state), is.list(result))
     shiny::req(!is.null(gflowui_basin_displayed_proposal(state)))
-    gflowui_basin_interactive_tree_data(
+    structure <- gflowui_basin_interactive_structure(
       state,
       scope = as.character(
         basin_tree_interaction$scope %||% "proposal"
-      ),
-      level.index = suppressWarnings(as.integer(
-        basin_tree_interaction$level_index %||% 0L
-      )),
-      component.colors = as.character(
-        basin_tree_interaction$component_colors %||% "distinct"
-      ),
-      merge.scope = as.character(
-        basin_tree_interaction$merge_scope %||% "current"
       ),
       continuation.rule = basin_tree_interaction$continuation_rule %||%
         "field_value",
       label.text = basin_label_map(result, state),
       basin.colors = basin_tree_canonical_color_map(result)
     )
+    basin_tree_event_metrics$static_build_count <-
+      basin_tree_event_metrics$static_build_count + 1L
+    basin_tree_event_metrics$last_static_build_elapsed_ms <- max(
+      0,
+      (unname(proc.time()[["elapsed"]]) - started) * 1000
+    )
+    structure
+  })
+
+  basin_tree_event_domain <- shiny::reactive({
+    structure <- basin_tree_interactive_structure()
+    list(
+      context.token = structure$context.token,
+      events = gflowui_basin_interactive_events(structure)
+    )
+  })
+
+  shiny::observe({
+    domain <- basin_tree_event_domain()
+    token <- as.character(domain$context.token)
+    previous.token <- shiny::isolate(
+      as.character(basin_tree_interaction$event_context_token %||% "")
+    )
+    if (!identical(token, previous.token)) {
+      previous.height <- shiny::isolate(
+        basin_tree_interaction$event_height
+      )
+      index <- gflowui_basin_remap_event_index(
+        domain$events,
+        previous.height
+      )
+      basin_tree_interaction$event_index <- index
+      basin_tree_interaction$event_height <-
+        domain$events$height[[index + 1L]]
+      basin_tree_interaction$event_context_token <- token
+      basin_tree_interaction$event_nonce <- ""
+    }
+  })
+
+  basin_tree_interactive_data <- shiny::reactive({
+    structure <- basin_tree_interactive_structure()
+    domain <- basin_tree_event_domain()
+    index <- suppressWarnings(as.integer(
+      basin_tree_interaction$event_index %||% 0L
+    ))
+    if (!is.finite(index)) index <- 0L
+    index <- max(0L, min(nrow(domain$events) - 1L, index))
+    component.colors <- as.character(
+      basin_tree_interaction$component_colors %||% "distinct"
+    )
+    merge.scope <- as.character(
+      basin_tree_interaction$merge_scope %||% "current"
+    )
+    cache.key <- gflowui_basin_sha256(list(
+      schema = "basin-tree-cut-cache-v1",
+      context.token = domain$context.token,
+      component = structure$component,
+      scope = structure$scope,
+      direction = "max",
+      continuation.rule = structure$continuation$rule,
+      height = domain$events$height[[index + 1L]],
+      component.colors = component.colors,
+      merge.scope = merge.scope
+    ))
+    object.name <- paste0("cut_", cache.key)
+    if (exists(object.name, envir = basin_tree_cut_cache, inherits = FALSE)) {
+      value <- get(object.name, envir = basin_tree_cut_cache, inherits = FALSE)
+      basin_tree_cut_cache$order <- c(
+        setdiff(basin_tree_cut_cache$order, object.name),
+        object.name
+      )
+      basin_tree_event_metrics$last_cut_elapsed_ms <- 0
+      basin_tree_event_metrics$last_cut_cache_hit <- TRUE
+      return(value)
+    }
+    started <- unname(proc.time()[["elapsed"]])
+    value <- gflowui_basin_interactive_cut(
+      structure,
+      domain$events,
+      event.index = index,
+      component.colors = component.colors,
+      merge.scope = merge.scope
+    )
+    assign(object.name, value, envir = basin_tree_cut_cache)
+    basin_tree_cut_cache$order <- c(
+      basin_tree_cut_cache$order,
+      object.name
+    )
+    while (length(basin_tree_cut_cache$order) > 32L) {
+      oldest <- basin_tree_cut_cache$order[[1L]]
+      basin_tree_cut_cache$order <- basin_tree_cut_cache$order[-1L]
+      if (exists(oldest, envir = basin_tree_cut_cache, inherits = FALSE)) {
+        rm(list = oldest, envir = basin_tree_cut_cache)
+      }
+    }
+    basin_tree_event_metrics$cut_compute_count <-
+      basin_tree_event_metrics$cut_compute_count + 1L
+    basin_tree_event_metrics$last_cut_elapsed_ms <- max(
+      0,
+      (unname(proc.time()[["elapsed"]]) - started) * 1000
+    )
+    basin_tree_event_metrics$last_cut_cache_hit <- FALSE
+    value
   })
 
   basin_tree_graph_overlay <- shiny::reactive({
@@ -8996,6 +9116,8 @@ app_server <- function(input, output, session) {
     if (!is.list(tree)) {
       return(NULL)
     }
+    basin_tree_event_metrics$graph_overlay_compute_count <-
+      basin_tree_event_metrics$graph_overlay_compute_count + 1L
     data <- gflowui_basin_bundle_snapshot(
       basin_analysis_state()$bundle
     )
@@ -9027,7 +9149,7 @@ app_server <- function(input, output, session) {
       vertex.colors[active] <- component.colors
       vertex.labels[active] <- component.labels
     }
-    list(
+    overlay <- list(
       tree = tree,
       active.vertices = sort(unique(active)),
       vertex.colors = vertex.colors,
@@ -9060,6 +9182,8 @@ app_server <- function(input, output, session) {
         basin_tree_interaction$merge_label_size %||% 1
       )
     )
+    bump_basin_tree_event_metrics()
+    overlay
   })
 
   output$basin_labeling_ui <- shiny::renderUI({
@@ -11100,13 +11224,14 @@ app_server <- function(input, output, session) {
     missing.labels <- is.na(selected.labels) | !nzchar(selected.labels)
     selected.labels[missing.labels] <- selected.ids[missing.labels]
     selected.choices <- stats::setNames(selected.ids, selected.labels)
-    interaction.levels <- tryCatch(
-      gflowui_basin_interactive_levels(state),
-      error = function(error) numeric()
+    interaction.domain <- tryCatch(
+      basin_tree_event_domain(),
+      error = function(error) NULL
     )
-    interaction.maximum <- max(0L, length(interaction.levels) - 1L)
+    interaction.events <- interaction.domain$events %||% data.frame()
+    interaction.maximum <- max(0L, nrow(interaction.events) - 1L)
     interaction.index <- suppressWarnings(as.integer(
-      basin_tree_interaction$level_index %||% 0L
+      basin_tree_interaction$event_index %||% 0L
     ))
     if (!is.finite(interaction.index)) {
       interaction.index <- 0L
@@ -11115,7 +11240,11 @@ app_server <- function(input, output, session) {
       0L,
       min(interaction.maximum, interaction.index)
     )
-    interaction.raw.value <- interaction.maximum - interaction.index
+    interaction.event <- if (nrow(interaction.events)) {
+      interaction.events[interaction.index + 1L, , drop = FALSE]
+    } else {
+      NULL
+    }
     mode.controls <- switch(
       mode,
       auto = shiny::tagList(
@@ -11389,8 +11518,9 @@ app_server <- function(input, output, session) {
         shiny::p(
           class = "gf-basin-tree-interaction-intro",
           paste(
-            "Move h downward to reveal vertices with field value at least h.",
-            "The line in the tree and the 3D graph use the same exact",
+            "Move through branch births and merge plateaus in decreasing h.",
+            "Each committed event reveals vertices with field value at least",
+            "h; the tree line and linked 3D graph use that same exact",
             "canonical superlevel-set cut."
           )
         ),
@@ -11520,38 +11650,74 @@ app_server <- function(input, output, session) {
         shiny::div(
           class = "gf-basin-tree-interactive-frame",
           shiny::div(
-            class = "gf-basin-tree-threshold-control",
-            shiny::tags$label(
-              `for` = "basin_tree_level_range",
-              "Threshold h"
-            ),
-            shiny::tags$input(
-              id = "basin_tree_level_range",
-              class = "gf-basin-tree-threshold-range",
-              type = "range",
-              min = 0,
-              max = interaction.maximum,
-              step = 1,
-              value = interaction.raw.value,
-              `data-level-count` = length(interaction.levels),
-              `aria-label` = paste(
-                "Superlevel threshold; move down to lower h"
-              )
-            ),
-            shiny::div(
-              class = "gf-basin-tree-height-status",
-              shiny::textOutput(
-                "basin_tree_height_status",
-                inline = TRUE
-              )
-            )
-          ),
-          shiny::div(
             class = "gf-basin-tree-plot-frame",
             plotly::plotlyOutput(
               "basin_merge_tree_interactive_plot",
               width = "100%",
               height = "680px"
+            )
+          ),
+          shiny::div(
+            class = "gf-basin-tree-event-navigator",
+            shiny::tags$label(
+              `for` = "basin_tree_event_range",
+              "Topology event"
+            ),
+            shiny::div(
+              class = "gf-basin-tree-event-controls",
+              shiny::tags$button(
+                id = "basin_tree_previous_event",
+                class = "btn btn-default btn-sm",
+                type = "button",
+                disabled = if (interaction.index <= 0L) "disabled" else NULL,
+                `aria-label` = "Move to the previous topology event",
+                "Previous event"
+              ),
+              shiny::tags$input(
+                id = "basin_tree_event_range",
+                class = "gf-basin-tree-event-range",
+                type = "range",
+                min = 0,
+                max = interaction.maximum,
+                step = 1,
+                value = interaction.index,
+                disabled = if (interaction.maximum == 0L) "disabled" else NULL,
+                `aria-valuemin` = 0,
+                `aria-valuemax` = interaction.maximum,
+                `aria-valuenow` = interaction.index,
+                `data-context-token` = as.character(
+                  interaction.domain$context.token %||% ""
+                ),
+                `aria-valuetext` = as.character(
+                  interaction.event$aria.label %||% "No topology event"
+                ),
+                `aria-label` = paste(
+                  "Superlevel-set topology event; move right to lower h"
+                )
+              ),
+              shiny::tags$button(
+                id = "basin_tree_next_event",
+                class = "btn btn-default btn-sm",
+                type = "button",
+                disabled = if (
+                  interaction.index >= interaction.maximum
+                ) "disabled" else NULL,
+                `aria-label` = "Move to the next topology event",
+                "Next event"
+              )
+            ),
+            shiny::div(
+              id = "basin_tree_event_preview_status",
+              class = "gf-basin-tree-event-preview-status"
+            ),
+            shiny::div(
+              class = "gf-basin-tree-height-status",
+              role = "status",
+              `aria-live` = "polite",
+              shiny::textOutput(
+                "basin_tree_height_status",
+                inline = TRUE
+              )
             )
           )
         )
@@ -11796,19 +11962,20 @@ app_server <- function(input, output, session) {
 
   output$basin_tree_height_status <- shiny::renderText({
     tree <- basin_tree_interactive_data()
+    event <- tree$event
     sprintf(
       paste(
-        "h = %s",
+        "Event %s of %s — %s — h = %s",
         "Active: %s vertices in %s component%s",
-        "Step %s of %s",
         sep = "\n"
       ),
-      formatC(tree$height, format = "g", digits = 7),
+      event$event.number,
+      event$event.count,
+      event$summary,
+      event$height.text,
       format(tree$n.active.vertices, big.mark = ","),
       format(tree$n.active.components, big.mark = ","),
-      if (tree$n.active.components == 1L) "" else "s",
-      tree$level.index,
-      length(tree$levels) - 1L
+      if (tree$n.active.components == 1L) "" else "s"
     )
   })
   shiny::outputOptions(
@@ -11819,6 +11986,8 @@ app_server <- function(input, output, session) {
 
   output$basin_merge_tree_interactive_plot <- plotly::renderPlotly({
     started <- unname(proc.time()[["elapsed"]])
+    basin_tree_event_metrics$tree_render_count <-
+      basin_tree_event_metrics$tree_render_count + 1L
     state <- basin_analysis_state()
     shiny::req(is.list(state))
     tree <- basin_tree_interactive_data()
@@ -11973,12 +12142,20 @@ app_server <- function(input, output, session) {
       ),
       branch.count = nrow(points),
       scope = tree$scope,
-      level.index = tree$level.index,
+      event.index = tree$event.index,
+      event.count = nrow(tree$events),
       active.vertex.count = tree$n.active.vertices,
-      active.component.count = tree$n.active.components
+      active.component.count = tree$n.active.components,
+      static.build.count = basin_tree_event_metrics$static_build_count,
+      cut.compute.count = basin_tree_event_metrics$cut_compute_count,
+      accepted.commit.count =
+        basin_tree_event_metrics$accepted_commit_count,
+      ignored.commit.count = basin_tree_event_metrics$ignored_commit_count
     )
     basin_analysis_panel_metrics(metrics)
-    plotly::event_register(plot, "plotly_click")
+    plot <- plotly::event_register(plot, "plotly_click")
+    bump_basin_tree_event_metrics()
+    plot
   })
   shiny::outputOptions(
     output,
@@ -12004,24 +12181,87 @@ app_server <- function(input, output, session) {
     ignoreInit = TRUE
   )
 
-  shiny::observeEvent(input$basin_tree_level_index, {
-    index <- suppressWarnings(as.integer(input$basin_tree_level_index))
-    state <- shiny::isolate(basin_analysis_state())
-    if (!is.list(state) || !is.finite(index)) {
+  shiny::observeEvent(input$basin_tree_event_commit, {
+    commit <- input$basin_tree_event_commit
+    domain <- shiny::isolate(basin_tree_event_domain())
+    nonce <- as.character(commit$nonce %||% "")
+    token <- as.character(commit$context_token %||% "")
+    raw.index <- suppressWarnings(as.numeric(commit$event_index))
+    valid.index <- length(raw.index) == 1L && is.finite(raw.index) &&
+      raw.index == floor(raw.index) && raw.index >= 0L &&
+      raw.index < nrow(domain$events)
+    valid.token <- length(token) == 1L && identical(
+      token,
+      as.character(domain$context.token)
+    )
+    basin_tree_interaction$event_nonce <- nonce
+    if (!valid.index || !valid.token) {
+      basin_tree_event_metrics$ignored_commit_count <-
+        basin_tree_event_metrics$ignored_commit_count + 1L
       return()
     }
-    levels <- tryCatch(
-      gflowui_basin_interactive_levels(state),
-      error = function(error) numeric()
-    )
-    if (!length(levels)) {
+    index <- as.integer(raw.index)
+    current <- suppressWarnings(as.integer(
+      shiny::isolate(basin_tree_interaction$event_index %||% 0L)
+    ))
+    if (identical(index, current)) {
+      basin_tree_event_metrics$ignored_commit_count <-
+        basin_tree_event_metrics$ignored_commit_count + 1L
       return()
     }
-    basin_tree_interaction$level_index <- max(
-      0L,
-      min(length(levels) - 1L, index)
-    )
+    basin_tree_interaction$event_index <- index
+    basin_tree_interaction$event_height <- domain$events$height[[index + 1L]]
+    basin_tree_event_metrics$accepted_commit_count <-
+      basin_tree_event_metrics$accepted_commit_count + 1L
   }, ignoreInit = TRUE)
+
+  shiny::observe({
+    basin_tree_event_metrics_tick()
+    domain <- basin_tree_event_domain()
+    tree <- basin_tree_interactive_data()
+    event.rows <- lapply(seq_len(nrow(domain$events)), function(index) {
+      event <- domain$events[index, , drop = FALSE]
+      list(
+        event_index = event$event.index[[1L]],
+        height = event$height[[1L]],
+        height_text = event$height.text[[1L]],
+        summary = event$summary[[1L]],
+        aria_label = event$aria.label[[1L]]
+      )
+    })
+    payload <- list(
+      context_token = domain$context.token,
+      events = event.rows,
+      committed_index = tree$event.index,
+      committed_height = tree$height,
+      committed_status = sprintf(
+        "Event %d of %d — %s — h = %s",
+        tree$event$event.number,
+        tree$event$event.count,
+        tree$event$summary,
+        tree$event$height.text
+      ),
+      active_vertices = tree$n.active.vertices,
+      active_components = tree$n.active.components,
+      link_graph = isTRUE(basin_tree_interaction$link_graph),
+      ack_nonce = as.character(basin_tree_interaction$event_nonce %||% ""),
+      plot_id = "basin_merge_tree_interactive_plot",
+      static_build_count = basin_tree_event_metrics$static_build_count,
+      cut_compute_count = basin_tree_event_metrics$cut_compute_count,
+      accepted_commit_count = basin_tree_event_metrics$accepted_commit_count,
+      ignored_commit_count = basin_tree_event_metrics$ignored_commit_count,
+      tree_render_count = basin_tree_event_metrics$tree_render_count,
+      graph_overlay_compute_count =
+        basin_tree_event_metrics$graph_overlay_compute_count,
+      last_static_build_elapsed_ms =
+        basin_tree_event_metrics$last_static_build_elapsed_ms,
+      last_cut_elapsed_ms = basin_tree_event_metrics$last_cut_elapsed_ms,
+      last_cut_cache_hit = basin_tree_event_metrics$last_cut_cache_hit
+    )
+    shiny::isolate(session$onFlushed(function() {
+      session$sendCustomMessage("gflowui-basin-tree-event-domain", payload)
+    }, once = TRUE))
+  })
 
   shiny::observeEvent(input$basin_tree_scope, {
     value <- as.character(input$basin_tree_scope %||% "proposal")
@@ -12139,7 +12379,9 @@ app_server <- function(input, output, session) {
         identical(component, state$context$component)) {
       return()
     }
-    basin_tree_interaction$level_index <- 0L
+    basin_tree_interaction$event_index <- 0L
+    basin_tree_interaction$event_height <- NA_real_
+    basin_tree_interaction$event_context_token <- ""
     apply_basin_analysis_event(
       gflowui_basin_state_event(
         "component_change",

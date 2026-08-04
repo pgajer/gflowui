@@ -485,7 +485,7 @@ test_that("tree terminology identifies continuation semantics", {
   )
   expect_match(
     ui,
-    "The vertical threshold starts above every maximum",
+    "The horizontal navigator starts at a finite level above every maximum",
     fixed = TRUE
   )
   expect_match(
@@ -925,9 +925,14 @@ test_that("interactive tree and canonical graph cut share exact levels", {
   levels <- gflowui:::gflowui_basin_interactive_levels(state)
 
   expect_gt(levels[[1L]], max(snapshot$source.values))
-  expect_identical(
+  structure <- gflowui:::gflowui_basin_interactive_structure(state)
+  expect_setequal(
     levels[-1L],
-    sort(unique(snapshot$source.values), decreasing = TRUE)
+    unique(c(
+      structure$layout$coordinates$branches$birth.level,
+      structure$layout$events$merge.level,
+      min(structure$component.values)
+    ))
   )
 
   initial <- gflowui:::gflowui_basin_interactive_tree_data(
@@ -975,6 +980,254 @@ test_that("interactive tree and canonical graph cut share exact levels", {
     "#2563EB"
   )
   expect_true(all(complete$maxima$peak.value >= complete$height))
+})
+
+test_that("topology events are exact, grouped, and deterministically ordered", {
+  bundle <- phase5_panel_bundle("topology-events")
+  state <- phase5_panel_state(bundle)
+  structure <- gflowui:::gflowui_basin_interactive_structure(state)
+  events <- gflowui:::gflowui_basin_interactive_events(structure)
+
+  expect_true(all(c(
+    "event.index", "event.number", "event.count", "height",
+    "above.maximum", "component.floor", "birth.count",
+    "birth.basin.ids", "merge.count", "merge.plateau.ids",
+    "event.kind", "event.summary", "aria.value.text"
+  ) %in% names(events)))
+  expect_identical(events$event.index, seq_len(nrow(events)) - 1L)
+  expect_identical(events$event.number, seq_len(nrow(events)))
+  expect_true(all(diff(events$height) < 0))
+  expect_true(events$above.maximum[[1L]])
+  expect_true(events$component.floor[[nrow(events)]])
+  expect_gt(events$height[[1L]], max(structure$component.values))
+  expect_identical(
+    events$height[[nrow(events)]],
+    min(structure$component.values)
+  )
+  expect_true(any(lengths(events$merge.plateau.ids) > 0L))
+  expect_true(all(nzchar(events$summary)))
+  expect_true(all(nzchar(events$aria.label)))
+  expect_identical(events$birth.count, lengths(events$birth.basin.ids))
+  expect_identical(events$merge.count, lengths(events$merge.plateau.ids))
+
+  coincident <- which(events$height == 0)
+  expect_length(coincident, 1L)
+  expect_setequal(
+    events$birth.basin.ids[[coincident]],
+    structure$layout$coordinates$branches$basin.id[
+      structure$layout$coordinates$branches$birth.level == 0
+    ]
+  )
+  expect_setequal(
+    events$merge.plateau.ids[[coincident]],
+    structure$layout$events$merge.plateau.id[
+      structure$layout$events$merge.level == 0
+    ]
+  )
+  expect_identical(events$event.kind[[coincident]], "merge_and_floor")
+
+  combined.structure <- structure
+  combined.structure$layout$coordinates$branches$birth.level[[4L]] <- 1
+  combined.events <- gflowui:::gflowui_basin_interactive_events(
+    combined.structure
+  )
+  combined.index <- which(combined.events$height == 1)
+  expect_identical(
+    combined.events$event.kind[[combined.index]],
+    "birth_and_merge"
+  )
+  expect_gt(combined.events$birth.count[[combined.index]], 0L)
+  expect_gt(combined.events$merge.count[[combined.index]], 0L)
+})
+
+test_that("event remapping preserves exact height and otherwise snaps downward", {
+  bundle <- phase5_panel_bundle("event-remap")
+  state <- phase5_panel_state(bundle)
+  structure <- gflowui:::gflowui_basin_interactive_structure(state)
+  events <- gflowui:::gflowui_basin_interactive_events(structure)
+
+  exact.index <- min(2L, nrow(events) - 1L)
+  exact.height <- events$height[[exact.index + 1L]]
+  expect_identical(
+    gflowui:::gflowui_basin_remap_event_index(events, exact.height),
+    exact.index
+  )
+  between <- mean(events$height[2:3])
+  expect_identical(
+    gflowui:::gflowui_basin_remap_event_index(events, between),
+    2L
+  )
+  expect_identical(
+    gflowui:::gflowui_basin_remap_event_index(events, NA_real_),
+    0L
+  )
+  expect_identical(
+    gflowui:::gflowui_basin_remap_event_index(
+      events,
+      events$height[[nrow(events)]] - 1
+    ),
+    nrow(events) - 1L
+  )
+})
+
+test_that("event cuts activate the full component at the exact floor", {
+  bundle <- phase5_panel_bundle("event-floor")
+  state <- phase5_panel_state(bundle)
+  structure <- gflowui:::gflowui_basin_interactive_structure(state)
+  events <- gflowui:::gflowui_basin_interactive_events(structure)
+  floor.cut <- gflowui:::gflowui_basin_interactive_cut(
+    structure,
+    events,
+    event.index = nrow(events) - 1L,
+    merge.scope = "current"
+  )
+
+  expect_identical(floor.cut$height, min(structure$component.values))
+  expect_identical(
+    floor.cut$n.active.vertices,
+    length(structure$component.values)
+  )
+  expect_true(all(floor.cut$membership$vertex %in%
+    seq_along(structure$data$source.values)))
+})
+
+test_that("event cuts reuse a prepared static layout", {
+  bundle <- phase5_panel_bundle("event-static-layout")
+  state <- phase5_panel_state(bundle)
+  calls <- new.env(parent = emptyenv())
+  calls$layout <- 0L
+  calls$cut <- 0L
+  layout.accessor <- function(...) {
+    calls$layout <- calls$layout + 1L
+    gflow::get.basin.merge.tree.layout(...)
+  }
+  cut.accessor <- function(...) {
+    calls$cut <- calls$cut + 1L
+    gflow::cut.basin.merge.tree(...)
+  }
+  structure <- gflowui:::gflowui_basin_interactive_structure(
+    state,
+    layout.accessor = layout.accessor
+  )
+  events <- gflowui:::gflowui_basin_interactive_events(structure)
+  gflowui:::gflowui_basin_interactive_cut(
+    structure,
+    events,
+    event.index = 0L,
+    cut.accessor = cut.accessor
+  )
+  gflowui:::gflowui_basin_interactive_cut(
+    structure,
+    events,
+    event.index = min(1L, nrow(events) - 1L),
+    cut.accessor = cut.accessor
+  )
+
+  expect_identical(calls$layout, 1L)
+  expect_identical(calls$cut, 2L)
+})
+
+test_that("event tables omit regular levels and support negative floors", {
+  bundle <- phase5_panel_bundle("event-negative")
+  state <- phase5_panel_state(bundle)
+  structure <- gflowui:::gflowui_basin_interactive_structure(state)
+  with.regular <- structure
+  with.regular$component.values <- c(structure$component.values, 2.5)
+  regular.events <- gflowui:::gflowui_basin_interactive_events(with.regular)
+  expect_false(2.5 %in% regular.events$height)
+
+  shifted <- structure
+  shifted$component.values <- structure$component.values - 10
+  shifted$layout$coordinates$branches$birth.level <-
+    shifted$layout$coordinates$branches$birth.level - 10
+  shifted$layout$coordinates$branches$death.level <-
+    shifted$layout$coordinates$branches$death.level - 10
+  shifted$layout$coordinates$events$merge.level <-
+    shifted$layout$coordinates$events$merge.level - 10
+  shifted$layout$events$merge.level <- shifted$layout$events$merge.level - 10
+  negative.events <- gflowui:::gflowui_basin_interactive_events(shifted)
+  expect_identical(negative.events$height[[nrow(negative.events)]], -10)
+  expect_true(negative.events$component.floor[[nrow(negative.events)]])
+  expect_true(all(diff(negative.events$height) < 0))
+})
+
+test_that("every navigator event delegates to the canonical exact cut", {
+  bundle <- phase5_panel_bundle("event-equivalence")
+  state <- phase5_panel_state(bundle)
+  structure <- gflowui:::gflowui_basin_interactive_structure(state)
+  events <- gflowui:::gflowui_basin_interactive_events(structure)
+
+  for (index in events$event.index) {
+    navigator <- gflowui:::gflowui_basin_interactive_cut(
+      structure,
+      events,
+      event.index = index
+    )
+    direct <- gflow::cut.basin.merge.tree(
+      structure$data$canonical.tree,
+      height = events$height[[index + 1L]],
+      direction = "max",
+      component = structure$component
+    )
+    expect_identical(navigator$cut$components, direct$components)
+    expect_identical(navigator$cut$membership, direct$membership)
+    expect_identical(navigator$components, direct$components)
+    expect_identical(navigator$membership, direct$membership)
+  }
+})
+
+test_that("proposal and complete domains follow their resolved layouts", {
+  bundle <- phase5_panel_bundle("event-scope")
+  state <- phase5_panel_state(
+    bundle,
+    controls = list(
+      filter.mode = "top_k",
+      top.k = 1L,
+      sentinel.top.n = 0L,
+      peak.sentinel.enabled = FALSE,
+      prominence.sentinel.enabled = FALSE,
+      support.sentinel.enabled = FALSE
+    )
+  )
+  proposal <- gflowui:::gflowui_basin_interactive_structure(
+    state,
+    scope = "proposal"
+  )
+  complete <- gflowui:::gflowui_basin_interactive_structure(
+    state,
+    scope = "complete"
+  )
+  proposal.events <- gflowui:::gflowui_basin_interactive_events(proposal)
+  complete.events <- gflowui:::gflowui_basin_interactive_events(complete)
+
+  expect_setequal(
+    unique(unlist(proposal.events$birth.basin.ids)),
+    proposal$layout$coordinates$branches$basin.id
+  )
+  expect_setequal(
+    unique(unlist(complete.events$birth.basin.ids)),
+    complete$layout$coordinates$branches$basin.id
+  )
+  expect_lte(nrow(proposal.events), nrow(complete.events))
+  expect_lte(length(proposal$scope.ids), length(complete$scope.ids))
+})
+
+test_that("malformed event domains fail closed", {
+  bundle <- phase5_panel_bundle("event-validation")
+  state <- phase5_panel_state(bundle)
+  structure <- gflowui:::gflowui_basin_interactive_structure(state)
+  events <- gflowui:::gflowui_basin_interactive_events(structure)
+  malformed <- events
+  malformed$height[[2L]] <- malformed$height[[1L]]
+
+  expect_error(
+    gflowui:::gflowui_basin_validate_interactive_events(malformed),
+    "malformed"
+  )
+  expect_error(
+    gflowui:::gflowui_basin_interactive_cut(structure, malformed),
+    "malformed"
+  )
 })
 
 test_that("hidden selection remains presentation-only until pin", {
