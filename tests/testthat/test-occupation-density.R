@@ -492,6 +492,7 @@ test_that("basin plot helpers preserve all, listed, and selected scopes", {
     primary.support.mass = c(0.4, 0.2, 0.3),
     extremum.value = c(1.2, 1.0, 0.1),
     prominence = c(0.8, 0.5, 0.6),
+    continuation.lifetime = c(0.7, 0.4, 0.5),
     stringsAsFactors = FALSE
   )
   result <- list(
@@ -528,11 +529,16 @@ test_that("basin plot helpers preserve all, listed, and selected scopes", {
   expect_equal(all.plot.data$support_rank, c(1L, 2L, 1L))
   expect_equal(all.plot.data$mass_rank, c(1L, 2L, 1L))
   expect_equal(all.plot.data$prominence_rank, c(1L, 2L, 1L))
+  expect_equal(
+    all.plot.data$continuation_lifetime,
+    table$continuation.lifetime
+  )
   expect_true(all(c(
     "Extremum value rank",
     "Support rank",
     "Mass rank",
-    "Prominence rank"
+    "Prominence rank",
+    "Continuation lifetime"
   ) %in% names(gflowui:::gflowui_basin_plot_feature_choices())))
   rank.table <- data.frame(
     key = c("max|a", "max|b", "min|c", "min|d"),

@@ -146,6 +146,7 @@ app_server <- function(input, output, session) {
     plot_show_thresholds = TRUE
   )
   basin_tree_interaction <- shiny::reactiveValues(
+    continuation_rule = "field_value",
     scope = "proposal",
     level_index = 0L,
     component_colors = "distinct",
@@ -161,6 +162,7 @@ app_server <- function(input, output, session) {
     merge_label_size = 1
   )
   reset_basin_tree_interaction <- function() {
+    basin_tree_interaction$continuation_rule <- "field_value"
     basin_tree_interaction$scope <- "proposal"
     basin_tree_interaction$level_index <- 0L
     basin_tree_interaction$component_colors <- "distinct"
@@ -176,6 +178,16 @@ app_server <- function(input, output, session) {
     basin_tree_interaction$merge_label_size <- 1
     invisible(NULL)
   }
+  basin_presentation_result <- shiny::reactive({
+    result <- basin_result()
+    if (!is.list(result)) {
+      return(result)
+    }
+    gflowui_basin_add_continuation_lifetime(
+      result,
+      basin_tree_interaction$continuation_rule %||% "field_value"
+    )
+  })
   graph_vertex_color_choices <- function() {
     c(
       "Black" = "#111827",
@@ -8847,7 +8859,9 @@ app_server <- function(input, output, session) {
       result = shiny::isolate(basin_result())) {
     gflowui_basin_merge_tree_model(
       state,
-      display.labels = basin_label_map(result, state)
+      display.labels = basin_label_map(result, state),
+      continuation.rule = basin_tree_interaction$continuation_rule %||%
+        "field_value"
     )
   }
 
@@ -8893,6 +8907,8 @@ app_server <- function(input, output, session) {
       merge.scope = as.character(
         basin_tree_interaction$merge_scope %||% "current"
       ),
+      continuation.rule = basin_tree_interaction$continuation_rule %||%
+        "field_value",
       label.text = basin_label_map(result, state),
       basin.colors = basin_tree_canonical_color_map(result)
     )
@@ -9040,6 +9056,29 @@ app_server <- function(input, output, session) {
           "change tree parentage, filtering, proposal membership, or selection."
         )
       ),
+      shiny::selectInput(
+        "basin_tree_continuation_rule",
+        "Branch continuation at merges",
+        choices = gflowui_basin_continuation_rule_choices(),
+        selected = gflowui_basin_continuation_rule(
+          basin_tree_interaction$continuation_rule %||% "field_value"
+        )
+      ),
+      shiny::p(
+        class = "gf-basin-continuation-description",
+        gflowui_basin_continuation_description(
+          basin_tree_interaction$continuation_rule %||% "field_value"
+        )
+      ),
+      shiny::p(
+        class = "gf-basin-continuation-contract",
+        paste(
+          "This independent scientific choice changes branch identity,",
+          "parentage, death levels, continuation lifetime, cut labels, and",
+          "tree titles. It does not change superlevel-set components, merge",
+          "heights, canonical prominence, display filtering, or basin labels."
+        )
+      ),
       if (length(unavailable)) shiny::p(
         class = "gf-basin-labeling-unavailable",
         sprintf(
@@ -9095,6 +9134,11 @@ app_server <- function(input, output, session) {
       "Basin labels now use %s; reconstruction and display membership are unchanged.",
       current$label_basis_label
     ))
+  }, ignoreInit = TRUE)
+
+  shiny::observeEvent(input$basin_tree_continuation_rule, {
+    basin_tree_interaction$continuation_rule <-
+      gflowui_basin_continuation_rule(input$basin_tree_continuation_rule)
   }, ignoreInit = TRUE)
 
   basin_linked_status_tag <- function(state, class = "") {
@@ -9256,7 +9300,7 @@ app_server <- function(input, output, session) {
   }
 
   output$basin_inspector_ui <- shiny::renderUI({
-    result <- basin_result()
+    result <- basin_presentation_result()
     analysis <- basin_analysis_state()
     if (!isTRUE(basin_inspector_open()) ||
         !is.list(result) ||
@@ -9360,6 +9404,14 @@ app_server <- function(input, output, session) {
           )
         ),
         "Prominence"
+      ),
+      shiny::tags$th(
+        title = paste(
+          "Extremum-to-termination field difference under the selected",
+          "branch-continuation policy. Unlike canonical prominence, this",
+          "quantity can change when the continuation rule changes."
+        ),
+        "Continuation lifetime"
       ),
       shiny::tags$th(
         title = "Proposal membership without changing table scope or identity.",
@@ -9498,6 +9550,13 @@ app_server <- function(input, output, session) {
         } else "\u2014"),
         shiny::tags$td(if (is.finite(row$prominence)) {
           formatC(as.numeric(row$prominence), digits = 4, format = "g")
+        } else "\u2014"),
+        shiny::tags$td(if (is.finite(row$continuation.lifetime)) {
+          formatC(
+            as.numeric(row$continuation.lifetime),
+            digits = 4,
+            format = "g"
+          )
         } else "\u2014"),
         shiny::tags$td(as.character(row$proposal.membership.class)),
         shiny::tags$td(
@@ -9772,7 +9831,13 @@ app_server <- function(input, output, session) {
           paste(
             "Support is the number of primarily assigned vertices;",
             "Mass is their normalized mass;",
-            "Prominence is the extremum-to-merge field difference.",
+            "Prominence is the canonical field-value elder-rule difference;",
+            "Continuation lifetime is the extremum-to-termination field",
+            sprintf(
+              "difference under %s.",
+              result$continuation_rule_label %||%
+                "the selected continuation policy"
+            ),
             "Proposal class, reasons, pinning, selection, and tree state",
             "describe the current maximum-basin display proposal."
           )
@@ -10453,7 +10518,7 @@ app_server <- function(input, output, session) {
       card.default.y.scale <- default.y.scale
       card.default.point.size <- default.point.size
       output[[output.id]] <- shiny::renderPlot({
-        active <- basin_result()
+        active <- basin_presentation_result()
         active.fingerprint <- as.character(
           active$construction_identity$fingerprint %||% ""
         )
@@ -10515,7 +10580,7 @@ app_server <- function(input, output, session) {
         )
       }, res = 110)
       output[[status.id]] <- shiny::renderText({
-        active <- basin_result()
+        active <- basin_presentation_result()
         active.fingerprint <- as.character(
           active$construction_identity$fingerprint %||% ""
         )
@@ -10583,7 +10648,7 @@ app_server <- function(input, output, session) {
           if (!identical(as.character(card.spec$kind), "scatter")) {
             return()
           }
-          active <- shiny::isolate(basin_result())
+          active <- shiny::isolate(basin_presentation_result())
           state <- shiny::isolate(basin_analysis_state())
           if (!is.list(active) || !is.list(state)) {
             return()
@@ -10910,9 +10975,17 @@ app_server <- function(input, output, session) {
         component.id = model$component,
         component.maximum.count = model$component.maximum.count,
         core.count = model$counts$core,
-        final.count = model$counts$final,
+        final.count = if (!is.null(model$layout)) {
+          nrow(model$layout$branches)
+        } else {
+          model$counts$final
+        },
         core.outcome = model$proposal$core$outcome,
-        render.outcome = model$proposal$render.outcome
+        render.outcome = if (isTRUE(model$renderable)) {
+          "renderable"
+        } else {
+          model$panel$overflow$outcome
+        }
       )
     } else {
       NULL
@@ -11041,7 +11114,11 @@ app_server <- function(input, output, session) {
       `data-analysis-state` = model$attempt.outcome,
       `data-display-source` = model$display.source,
       `data-render-outcome` = if (isTRUE(model$available)) {
-        model$proposal$render.outcome
+        if (isTRUE(model$renderable)) {
+          "renderable"
+        } else {
+          model$panel$overflow$outcome
+        }
       } else {
         "unavailable"
       },
@@ -11078,7 +11155,9 @@ app_server <- function(input, output, session) {
         class = "gf-basin-tree-controls",
         open = NA,
         shiny::tags$summary("Tree construction and display controls"),
-        .gflowui_basin_panel_controls_help(),
+        .gflowui_basin_panel_controls_help(
+          basin_tree_interaction$continuation_rule %||% "field_value"
+        ),
         shiny::div(
           class = "gf-basin-tree-control-grid",
           if (length(component.choices) > 1L) shiny::selectInput(
@@ -11677,7 +11756,11 @@ app_server <- function(input, output, session) {
     shiny::validate(
       shiny::need(
         !identical(tree$scope, "proposal") ||
-          identical(proposal$render.outcome, "renderable"),
+          (
+            identical(proposal$render.outcome, "renderable") &&
+              nrow(tree$layout$branches) <=
+                proposal$accepted.parameters$final.render.budget
+          ),
         paste(
           "The current displayed proposal exceeds the Final render budget.",
           "Increase that budget, narrow the filter, or choose Complete",
@@ -11690,7 +11773,8 @@ app_server <- function(input, output, session) {
       paste(
         "%s",
         "Peak: %.6g",
-        "Prominence: %.6g",
+        "Canonical prominence: %.6g",
+        "Continuation lifetime: %.6g",
         "Trajectory-flow mass: %.6g",
         "Trajectory-flow support: %.0f",
         "Selected: %s",
@@ -11700,6 +11784,7 @@ app_server <- function(input, output, session) {
       points$display.label,
       points$peak.value,
       points$prominence,
+      points$continuation.lifetime,
       points$trajectory.flow.mass,
       points$trajectory.flow.support,
       ifelse(points$selected, "yes", "no"),
@@ -11763,9 +11848,22 @@ app_server <- function(input, output, session) {
     plot <- plotly::layout(
       plot,
       dragmode = "zoom",
-      uirevision = paste0("basin-tree-", tree$scope),
+      uirevision = paste(
+        "basin-tree",
+        tree$scope,
+        tree$continuation$rule,
+        sep = "-"
+      ),
+      title = list(
+        text = gflowui_basin_continuation_tree_title(
+          tree$continuation,
+          identical(tree$scope, "complete")
+        ),
+        x = 0.5,
+        xanchor = "center"
+      ),
       xaxis = list(
-        title = "Canonical crossing-free leaf position",
+        title = "Crossing-free branch position",
         range = c(x.range[[1L]] - x.pad, x.range[[2L]] + x.pad)
       ),
       yaxis = list(title = "Selected field value"),
@@ -11793,7 +11891,7 @@ app_server <- function(input, output, session) {
         yanchor = "bottom",
         font = list(color = "#BE123C", size = 11)
       )),
-      margin = list(l = 70, r = 20, b = 60, t = 24)
+      margin = list(l = 70, r = 20, b = 60, t = 58)
     )
     metrics <- shiny::isolate(basin_analysis_panel_metrics())
     metrics$interactive <- list(

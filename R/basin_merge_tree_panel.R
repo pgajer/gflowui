@@ -9,6 +9,132 @@
   max(0, as.numeric(elapsed) * 1000)
 }
 
+gflowui_basin_continuation_rule_choices <- function() {
+  c(
+    "Field-value elder rule (canonical)" = "field_value",
+    "Trajectory-flow basin mass priority" = "mass",
+    "Trajectory-flow basin support priority" = "support"
+  )
+}
+
+gflowui_basin_continuation_rule <- function(rule = "field_value") {
+  rule <- as.character(rule %||% "field_value")
+  if (length(rule) != 1L ||
+      is.na(rule) ||
+      !rule %in% unname(gflowui_basin_continuation_rule_choices())) {
+    "field_value"
+  } else {
+    rule
+  }
+}
+
+gflowui_basin_continuation_description <- function(rule = "field_value") {
+  switch(
+    gflowui_basin_continuation_rule(rule),
+    mass = paste(
+      "At every merge, the branch with greater fixed trajectory-flow basin",
+      "mass continues. Exact mass ties use the canonical field-value elder",
+      "rule, then the extremum-vertex index."
+    ),
+    support = paste(
+      "At every merge, the branch with greater fixed trajectory-flow basin",
+      "support continues. Exact support ties use the canonical field-value",
+      "elder rule, then the extremum-vertex index."
+    ),
+    paste(
+      "At every merge, the branch born at the more extreme field value",
+      "continues. Exact birth-value ties use the extremum-vertex index.",
+      "This is the canonical merge-tree elder rule."
+    )
+  )
+}
+
+.gflowui_basin_continuation_spec <- function(
+    rule,
+    basin.ids,
+    mass,
+    support) {
+  rule <- gflowui_basin_continuation_rule(rule)
+  basin.ids <- as.character(basin.ids)
+  value <- switch(
+    rule,
+    mass = suppressWarnings(as.numeric(mass)),
+    support = suppressWarnings(as.numeric(support)),
+    NULL
+  )
+  if (!is.null(value) &&
+      (length(value) != length(basin.ids) ||
+        anyNA(basin.ids) ||
+        any(!nzchar(basin.ids)) ||
+        anyDuplicated(basin.ids) ||
+        any(!is.finite(value)) ||
+        any(value < 0))) {
+    .gflowui_basin_panel_stop(
+      "The selected continuation measure is incomplete or invalid."
+    )
+  }
+  measure <- switch(
+    rule,
+    mass = "Trajectory-flow basin mass",
+    support = "Trajectory-flow basin support",
+    "Field value"
+  )
+  list(
+    rule = rule,
+    measure = measure,
+    priority = if (is.null(value)) {
+      NULL
+    } else {
+      stats::setNames(value, basin.ids)
+    },
+    label = unname(
+      names(gflowui_basin_continuation_rule_choices())[
+        match(rule, gflowui_basin_continuation_rule_choices())
+      ]
+    )
+  )
+}
+
+gflowui_basin_continuation_policy <- function(
+    bundle,
+    rule = "field_value") {
+  data <- gflowui_basin_bundle_snapshot(bundle)
+  .gflowui_basin_continuation_spec(
+    rule,
+    data$canonical$basin.id,
+    data$canonical$trajectory.flow.mass,
+    data$canonical$trajectory.flow.support
+  )
+}
+
+gflowui_basin_continuation_tree_title <- function(
+    policy,
+    complete = FALSE) {
+  prefix <- if (isTRUE(complete)) "Complete" else "Filtered"
+  rule <- gflowui_basin_continuation_rule(policy$rule %||% "field_value")
+  suffix <- switch(
+    rule,
+    mass = "trajectory-flow mass-priority continuation tree",
+    support = "trajectory-flow support-priority continuation tree",
+    "field-value elder-rule merge tree"
+  )
+  sprintf("%s crossing-free %s", prefix, suffix)
+}
+
+gflowui_basin_continuation_barcode_title <- function(
+    policy,
+    complete = FALSE) {
+  prefix <- if (isTRUE(complete)) "Complete" else "Filtered"
+  rule <- gflowui_basin_continuation_rule(policy$rule %||% "field_value")
+  suffix <- switch(
+    rule,
+    mass = "trajectory-flow mass continuation-lifetime barcode",
+    support = "trajectory-flow support continuation-lifetime barcode",
+    "extremum-to-saddle persistence barcode"
+  )
+  sprintf("%s %s", prefix, suffix)
+}
+
 .gflowui_basin_panel_attempt_key <- function(state) {
   active <- if (is.list(state)) state$active.attempt else NULL
   if (!is.list(active)) {
@@ -227,7 +353,8 @@ gflowui_basin_start_panel_event <- function(
 gflowui_basin_merge_tree_panel_model <- function(
     state,
     layout.accessor = gflow::get.basin.merge.tree.layout,
-    display.labels = NULL) {
+    display.labels = NULL,
+    continuation.rule = "field_value") {
   if (is.null(state)) {
     return(.gflowui_basin_panel_empty_model())
   }
@@ -237,6 +364,10 @@ gflowui_basin_merge_tree_panel_model <- function(
     return(.gflowui_basin_panel_empty_model(state))
   }
   data <- .gflowui_basin_assert_pair(proposal, state$bundle)
+  continuation <- gflowui_basin_continuation_policy(
+    state$bundle,
+    continuation.rule
+  )
   component.data <- data$canonical[
     data$canonical$component == proposal$component$id,
     ,
@@ -268,16 +399,22 @@ gflowui_basin_merge_tree_panel_model <- function(
     layout <- gflowui_basin_derive_layout(
       proposal,
       state$bundle,
-      layout.accessor = layout.accessor
+      layout.accessor = layout.accessor,
+      continuation.priority = continuation$priority,
+      continuation.measure = if (is.null(continuation$priority)) {
+        NULL
+      } else {
+        continuation$measure
+      }
     )
     layout.elapsed.ms <- .gflowui_basin_panel_elapsed_ms(started)
-    layout.ids <- sort(
-      as.character(layout$basin.ids %||%
-        layout$branches$basin.id),
+    requested.ids <- sort(
+      as.character(layout$requested.basin.ids %||%
+        layout$basin.ids %||% layout$branches$basin.id),
       method = "radix"
     )
     if (!identical(
-      layout.ids,
+      requested.ids,
       sort(proposal$final.ids, method = "radix")
     )) {
       .gflowui_basin_panel_stop(
@@ -285,6 +422,28 @@ gflowui_basin_merge_tree_panel_model <- function(
         "gflowui_basin_panel_layout_error"
       )
     }
+  }
+  overflow <- .gflowui_basin_panel_overflow(proposal, counts)
+  if (is.null(overflow) &&
+      !is.null(layout) &&
+      nrow(layout$branches) >
+        proposal$accepted.parameters$final.render.budget) {
+    overflow <- list(
+      outcome = "continuation_closure_overflow",
+      message = sprintf(
+        paste(
+          "The selected continuation rule requires %d branches after",
+          "adding its connector ancestors, exceeding the final render",
+          "budget of %d. No required connector branch was trimmed."
+        ),
+        nrow(layout$branches),
+        proposal$accepted.parameters$final.render.budget
+      ),
+      core.count = counts$core,
+      preclosure.count = length(proposal$final.ids),
+      final.count = nrow(layout$branches),
+      budget = proposal$accepted.parameters$final.render.budget
+    )
   }
   sentinel.only <- setdiff(
     proposal$sentinels$ids,
@@ -296,6 +455,19 @@ gflowui_basin_merge_tree_panel_model <- function(
   )
   classes[proposal$final.ids] <- "displayed"
   classes[proposal$ancestor.only.ids] <- "ancestor_only"
+  if (!is.null(layout)) {
+    continuation.ancestors <- setdiff(
+      layout$basin.ids,
+      proposal$final.ids
+    )
+    classes[continuation.ancestors] <- "ancestor_only"
+    if (identical(state$presentation$label.mode, "important")) {
+      labels$ids <- sort(unique(c(
+        labels$ids,
+        layout$component.root.basin.id
+      )), method = "radix")
+    }
+  }
   classes[sentinel.only] <- "sentinel_only"
   classes[proposal$core$ids] <- "core"
   classes[proposal$pinned.ids] <- "pinned"
@@ -385,7 +557,8 @@ gflowui_basin_merge_tree_panel_model <- function(
         hidden = selected.hidden,
         pinned = intersect(state$selected.ids, proposal$pinned.ids)
       ),
-      overflow = .gflowui_basin_panel_overflow(proposal, counts),
+      overflow = overflow,
+      continuation = continuation,
       layout = layout,
       layout.elapsed.ms = layout.elapsed.ms
     ),
@@ -410,7 +583,13 @@ gflowui_basin_complete_merge_tree_layout <- function(
   layout.accessor(
     data$canonical.tree,
     direction = "max",
-    component = model$component$id
+    component = model$component$id,
+    continuation.priority = model$continuation$priority,
+    continuation.measure = if (is.null(model$continuation$priority)) {
+      NULL
+    } else {
+      model$continuation$measure
+    }
   )
 }
 
@@ -504,7 +683,7 @@ gflowui_basin_draw_merge_tree <- function(
       data$canonical$component == model$component$id
     ]
   } else {
-    model$proposal$final.ids
+    model$layout$basin.ids
   }
   labels <- .gflowui_basin_panel_labels(model, ids, label.text)
   visible.label.ids <- intersect(model$labels$ids, ids)
@@ -532,20 +711,24 @@ gflowui_basin_draw_merge_tree <- function(
     show.barcode.birth.labels = has.visible.labels,
     show.barcode.parent.labels = has.visible.labels,
     branch.col = colors,
-    main.tree = if (complete) {
-      "Complete crossing-free density-value elder-rule merge tree"
-    } else {
-      "Filtered crossing-free density-value elder-rule merge tree"
-    },
-    main.barcode = if (complete) {
-      "Complete extremum-to-saddle persistence barcode"
-    } else {
-      "Filtered extremum-to-saddle persistence barcode"
-    },
+    main.tree = gflowui_basin_continuation_tree_title(
+      model$continuation,
+      complete
+    ),
+    main.barcode = gflowui_basin_continuation_barcode_title(
+      model$continuation,
+      complete
+    ),
     field.label = "Selected scalar-field value",
     annotation.cex = if (longest > 24L) 0.48 else 0.58,
     basin.ids = if (complete) NULL else ids,
-    close.ancestors = FALSE
+    close.ancestors = FALSE,
+    continuation.priority = model$continuation$priority,
+    continuation.measure = if (is.null(model$continuation$priority)) {
+      NULL
+    } else {
+      model$continuation$measure
+    }
   )
   elapsed.ms <- .gflowui_basin_panel_elapsed_ms(started)
   expected <- if (complete) {
@@ -730,11 +913,13 @@ gflowui_basin_panel_plot_width <- function(
 gflowui_basin_merge_tree_model <- function(
     state,
     layout.accessor = gflow::get.basin.merge.tree.layout,
-    display.labels = NULL) {
+    display.labels = NULL,
+    continuation.rule = "field_value") {
   panel <- gflowui_basin_merge_tree_panel_model(
     state,
     layout.accessor = layout.accessor,
-    display.labels = display.labels
+    display.labels = display.labels,
+    continuation.rule = continuation.rule
   )
   if (!isTRUE(panel$ready)) {
     return(list(
@@ -779,13 +964,23 @@ gflowui_basin_merge_tree_model <- function(
     selected.visible = panel$selected$visible,
     pinned.ids = proposal$pinned.ids,
     membership.class = panel$membership.class,
+    continuation = panel$continuation,
     layout = panel$layout,
     layout.elapsed.ms = panel$layout.elapsed.ms,
-    overflow.text = .gflowui_basin_panel_overflow_text(
-      proposal$render.outcome,
-      panel$counts,
-      proposal$accepted.parameters$final.render.budget
-    ),
+    overflow.text = if (
+      identical(
+        as.character(panel$overflow$outcome %||% ""),
+        "continuation_closure_overflow"
+      )
+    ) {
+      panel$overflow$message
+    } else {
+      .gflowui_basin_panel_overflow_text(
+        proposal$render.outcome,
+        panel$counts,
+        proposal$accepted.parameters$final.render.budget
+      )
+    },
     bundle = panel$bundle,
     panel = panel
   )
@@ -1217,6 +1412,7 @@ gflowui_basin_interactive_tree_data <- function(
     level.index = 0L,
     component.colors = c("distinct", "single"),
     merge.scope = c("current", "reached", "hidden"),
+    continuation.rule = "field_value",
     label.text = NULL,
     basin.colors = NULL,
     layout.accessor = gflow::get.basin.merge.tree.layout,
@@ -1232,6 +1428,10 @@ gflowui_basin_interactive_tree_data <- function(
     )
   }
   data <- .gflowui_basin_assert_pair(proposal, state$bundle)
+  continuation <- gflowui_basin_continuation_policy(
+    state$bundle,
+    continuation.rule
+  )
   component <- proposal$component$id
   component.ids <- data$canonical$basin.id[
     data$canonical$component == component
@@ -1246,8 +1446,15 @@ gflowui_basin_interactive_tree_data <- function(
     direction = "max",
     component = component,
     basin.ids = if (identical(scope, "proposal")) scope.ids else NULL,
-    close.ancestors = identical(scope, "proposal")
+    close.ancestors = identical(scope, "proposal"),
+    continuation.priority = continuation$priority,
+    continuation.measure = if (is.null(continuation$priority)) {
+      NULL
+    } else {
+      continuation$measure
+    }
   )
+  render.ids <- as.character(layout$basin.ids)
   levels <- gflowui_basin_interactive_levels(state)
   level.index <- suppressWarnings(as.integer(level.index))
   if (!is.finite(level.index)) {
@@ -1259,9 +1466,15 @@ gflowui_basin_interactive_tree_data <- function(
     data$canonical.tree,
     height = height,
     direction = "max",
-    component = component
+    component = component,
+    continuation.priority = continuation$priority,
+    continuation.measure = if (is.null(continuation$priority)) {
+      NULL
+    } else {
+      continuation$measure
+    }
   )
-  visible.components <- cut$components$basin.id %in% scope.ids
+  visible.components <- cut$components$basin.id %in% render.ids
   components <- cut$components[visible.components, , drop = FALSE]
   membership <- cut$membership[
     cut$membership$component.id %in% components$component.id,
@@ -1299,6 +1512,8 @@ gflowui_basin_interactive_tree_data <- function(
   points <- coordinates$branches
   points$peak.value <- data$canonical$peak.value[index]
   points$prominence <- data$canonical$persistence[index]
+  points$continuation.lifetime <-
+    layout$branches$continuation.lifetime
   points$trajectory.flow.mass <-
     data$canonical$trajectory.flow.mass[index]
   points$trajectory.flow.support <-
@@ -1317,6 +1532,10 @@ gflowui_basin_interactive_tree_data <- function(
       proposal,
       scope.ids
     )
+  if (identical(state$presentation$label.mode, "important")) {
+    points$label.visible <- points$label.visible |
+      points$basin.id == layout$component.root.basin.id
+  }
   points$color <- unname(palette[points$basin.id])
   points$color[points$pinned] <- "#7C3AED"
   points$color[points$selected] <- "#DC2626"
@@ -1336,7 +1555,7 @@ gflowui_basin_interactive_tree_data <- function(
     events$event.id
   )
   maxima <- data$canonical[
-    data$canonical$basin.id %in% scope.ids &
+    data$canonical$basin.id %in% render.ids &
       data$canonical$peak.value >= height,
     c("basin.id", "extremum.vertex", "peak.value"),
     drop = FALSE
@@ -1346,22 +1565,24 @@ gflowui_basin_interactive_tree_data <- function(
   maxima$label[missing.maxima.labels] <-
     maxima$basin.id[missing.maxima.labels]
   plateaus <- .gflowui_basin_interactive_merge_plateaus(
-    tree = data$canonical.tree,
+    tree = list(merge.table = layout$events),
     canonical = data$canonical,
     component = component,
-    scope.ids = scope.ids,
+    scope.ids = render.ids,
     height = height,
     merge.scope = merge.scope,
     label.text = label.text
   )
   list(
     scope = scope,
-    scope.ids = sort(scope.ids, method = "radix"),
+    requested.scope.ids = sort(scope.ids, method = "radix"),
+    scope.ids = sort(render.ids, method = "radix"),
     component = component,
     levels = levels,
     level.index = level.index,
     height = height,
     relation = ">=",
+    continuation = continuation,
     layout = layout,
     points = points,
     vertical = vertical,
@@ -1403,7 +1624,9 @@ gflowui_basin_interactive_tree_data <- function(
     renderable = "Ready",
     core_overflow = "Paused: initial selection exceeds the render budget",
     sentinel_overflow = "Paused: required sentinels exceed the render budget",
-    closure_overflow = "Paused: ancestor closure exceeds the render budget"
+    closure_overflow = "Paused: ancestor closure exceeds the render budget",
+    continuation_closure_overflow =
+      "Paused: continuation ancestors exceed the render budget"
   )
   outcome <- as.character(outcome %||% "")
   label <- unname(labels[[outcome]])
@@ -1466,7 +1689,9 @@ gflowui_basin_interactive_tree_data <- function(
   )
 }
 
-.gflowui_basin_panel_controls_help <- function() {
+.gflowui_basin_panel_controls_help <- function(
+    continuation.rule = "field_value") {
+  continuation.rule <- gflowui_basin_continuation_rule(continuation.rule)
   shiny::div(
     class = "gf-basin-tree-controls-help",
     shiny::h5("How the tree and controls work"),
@@ -1474,17 +1699,17 @@ gflowui_basin_interactive_tree_data <- function(
       paste(
         "The tree is built from graph superlevel sets as the density",
         "threshold is lowered. Each local maximum starts a branch.",
-        "When two branches meet, the density-value elder rule keeps the",
-        "branch born at the higher density. If the birth densities tie,",
-        "the branch with the smaller canonical extremum-vertex index",
-        "survives. The merge level and losing branch are recorded in the tree."
+        gflowui_basin_continuation_description(continuation.rule),
+        "The merge level and terminating branch are recorded in the tree."
       )
     ),
     shiny::p(
       paste(
-        "Trajectory-flow mass and support rank or filter branches for",
-        "display; they do not change branch continuation, parentage,",
-        "or merge levels."
+        "The continuation selector changes only which basin identity follows",
+        "a connected component after a merge. The graph superlevel sets and",
+        "their merge heights remain fixed. Prominence always reports the",
+        "canonical field-value elder-rule quantity; Continuation lifetime",
+        "reports the corresponding quantity for the selected rule."
       )
     ),
     shiny::tags$dl(
@@ -1554,7 +1779,7 @@ gflowui_basin_interactive_tree_data <- function(
           "initial subset. Exact ties at the cutoff are all kept, so an",
           "enabled measure can add more than the requested count. A sentinel",
           "changes only which branches are displayed; it never changes",
-          "parentage, merge levels, or the elder-rule tree."
+          "parentage, merge levels, or the selected continuation tree."
         )
       ),
       shiny::tags$dt("Labels"),
@@ -1625,7 +1850,8 @@ gflowui_basin_interactive_tree_data <- function(
         shiny::p(
           paste(
             "Active-component colors can be different and stable, using the",
-            "elder basin's color after a merge, or one common color. Uncheck",
+            "continuing basin's color after a merge, or one common color.",
+            "Uncheck",
             "Link h to the 3D graph to leave the graph's ordinary color",
             "source visible while continuing to inspect the tree."
           )
@@ -2009,7 +2235,11 @@ gflowui_basin_merge_tree_panel_ui <- function(model) {
     `data-display-source` = model$display.source,
     `data-context-generation` = model$context.generation,
     `data-attempt-id` = model$active.attempt$attempt.id,
-    `data-render-outcome` = proposal$render.outcome,
+    `data-render-outcome` = if (is.null(model$overflow)) {
+      "renderable"
+    } else {
+      model$overflow$outcome
+    },
     `data-core-outcome` = proposal$core$outcome,
     `data-label-mode` = model$labels$mode,
     shiny::div(
@@ -2044,9 +2274,17 @@ gflowui_basin_merge_tree_panel_ui <- function(model) {
       component.id = model$component$id,
       component.maximum.count = model$component$maximum.count,
       core.count = model$counts$core,
-      final.count = model$counts$final,
+      final.count = if (!is.null(model$layout)) {
+        nrow(model$layout$branches)
+      } else {
+        model$counts$final
+      },
       core.outcome = proposal$core$outcome,
-      render.outcome = proposal$render.outcome
+      render.outcome = if (is.null(model$overflow)) {
+        "renderable"
+      } else {
+        model$overflow$outcome
+      }
     ),
     if (length(warnings)) {
       shiny::div(

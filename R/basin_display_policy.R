@@ -1204,14 +1204,18 @@ gflowui_basin_derive_labels <- function(
 gflowui_basin_derive_layout <- function(
     proposal,
     bundle,
-    layout.accessor = gflow::get.basin.merge.tree.layout) {
+    layout.accessor = gflow::get.basin.merge.tree.layout,
+    continuation.priority = NULL,
+    continuation.measure = NULL) {
   data <- .gflowui_basin_assert_pair(proposal, bundle)
   layout.accessor(
     data$canonical.tree,
     direction = "max",
     component = proposal$component$id,
     basin.ids = proposal$final.ids,
-    close.ancestors = FALSE
+    close.ancestors = TRUE,
+    continuation.priority = continuation.priority,
+    continuation.measure = continuation.measure
   )
 }
 
