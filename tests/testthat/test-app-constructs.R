@@ -980,8 +980,21 @@ test_that("basin server invalidates changed fields and graph identities", {
       "basin_tree_support_sentinel",
       "basin_tree_important_labels",
       "basin_tree_label_mode",
-      "basin_tree_open_complete",
       "basin_tree_show_all",
+      "basin_tree_scope",
+      "basin_tree_component_colors",
+      "basin_tree_link_graph",
+      "basin_tree_merge_scope",
+      "basin_tree_show_maxima_labels",
+      "basin_tree_maxima_color",
+      "basin_tree_maxima_size",
+      "basin_tree_maxima_label_size",
+      "basin_tree_show_merge_labels",
+      "basin_tree_merge_color",
+      "basin_tree_merge_size",
+      "basin_tree_merge_label_size",
+      "basin_tree_level_range",
+      "basin_merge_tree_interactive_plot",
       "basin_tree_recipe_save",
       "basin_tree_recipe_apply",
       "basin_tree_recipe_download",
@@ -997,6 +1010,39 @@ test_that("basin server invalidates changed fields and graph identities", {
     panel.model <- basin_merge_tree_model_for_state(analysis, first)
     expect_identical(panel.model$direction.maximum.count, 352L)
     expect_identical(panel.model$component.maximum.count, 352L)
+    initial.tree <- basin_tree_interactive_data()
+    initial.overlay <- basin_tree_graph_overlay()
+    expect_identical(initial.tree$scope, "proposal")
+    expect_identical(initial.tree$level.index, 0L)
+    expect_identical(initial.tree$n.active.vertices, 0L)
+    expect_true(is.list(initial.overlay))
+    expect_length(initial.overlay$active.vertices, 0L)
+    expect_true(all(
+      initial.overlay$vertex.colors == initial.overlay$inactive.color
+    ))
+    session$setInputs(basin_tree_level_index = 1L)
+    session$flushReact()
+    first.cut <- basin_tree_interactive_data()
+    expect_identical(first.cut$level.index, 1L)
+    expect_gt(first.cut$n.active.vertices, 0L)
+    session$setInputs(
+      basin_tree_scope = "complete",
+      basin_tree_component_colors = "single"
+    )
+    session$flushReact()
+    complete.tree <- basin_tree_interactive_data()
+    expect_identical(complete.tree$scope, "complete")
+    expect_identical(nrow(complete.tree$points), 352L)
+    expect_identical(
+      unique(unname(complete.tree$component.colors)),
+      "#2563EB"
+    )
+    session$setInputs(
+      basin_tree_scope = "proposal",
+      basin_tree_component_colors = "distinct",
+      basin_tree_level_index = 0L
+    )
+    session$flushReact()
     selection.plot.data <- gflowui:::gflowui_basin_plot_data(
       first,
       scope = "component_maxima",
@@ -1118,13 +1164,11 @@ test_that("basin server invalidates changed fields and graph identities", {
     )))
     linked.attempt <- basin_analysis_state()$active.attempt$attempt.id
     branch <- panel.model$layout$coordinates$branches[1L, , drop = FALSE]
-    session$setInputs(basin_merge_tree_click = list(
-      x = as.numeric(branch$x),
-      y = mean(c(
-        as.numeric(branch$birth.level),
-        as.numeric(branch$death.level)
-      ))
+    tree.click <- list(list(
+      customdata = as.character(branch$basin.id)
     ))
+    names(tree.click) <- "plotly_click-basin_interactive_tree_source"
+    do.call(session$setInputs, tree.click)
     session$flushReact()
     expect_identical(
       basin_analysis_state()$selected.ids,
@@ -1196,7 +1240,7 @@ test_that("basin server invalidates changed fields and graph identities", {
     complete.click <- list(list(
       customdata = as.character(linked.row$canonical.basin.id)
     ))
-    names(complete.click) <- "plotly_click-basin_complete_tree_source"
+    names(complete.click) <- "plotly_click-basin_interactive_tree_source"
     do.call(session$setInputs, complete.click)
     session$flushReact()
     expect_identical(
@@ -1481,12 +1525,21 @@ test_that("basin server invalidates changed fields and graph identities", {
       'data-render-outcome="core_overflow"',
       fixed = TRUE
     )
-    expect_match(overflow.shell, "Open all branches interactively", fixed = TRUE)
+    expect_match(
+      overflow.shell,
+      "Displayed-proposal rendering paused",
+      fixed = TRUE
+    )
     expect_false(grepl(
       'id="basin_merge_tree_plot"',
       overflow.shell,
       fixed = TRUE
     ))
+    expect_match(
+      overflow.shell,
+      'id="basin_merge_tree_interactive_plot"',
+      fixed = TRUE
+    )
     session$setInputs(basin_tree_final_budget = 80)
     session$flushReact()
     finish_basin_analysis()
@@ -2141,6 +2194,8 @@ test_that("basin server invalidates changed fields and graph identities", {
     )
 
     if (requireNamespace("plotly", quietly = TRUE)) {
+      session$setInputs(basin_tree_link_graph = FALSE)
+      session$flushReact()
       trace.names <- function() {
         payload <- jsonlite::fromJSON(
           as.character(output$reference_plot),

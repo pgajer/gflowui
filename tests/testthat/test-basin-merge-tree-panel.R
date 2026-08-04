@@ -480,7 +480,12 @@ test_that("tree terminology identifies density-value survival semantics", {
   )
   expect_match(
     ui,
-    "does not yet provide a superlevel threshold h",
+    "The vertical threshold starts above every maximum",
+    fixed = TRUE
+  )
+  expect_match(
+    ui,
+    "Merge plateaus are the one or more graph vertices",
     fixed = TRUE
   )
   expect_match(
@@ -834,6 +839,74 @@ test_that("complete interactive data preserves canonical coordinates", {
     nrow(data$horizontal),
     3L * nrow(layout$coordinates$events)
   )
+})
+
+test_that("interactive tree and canonical graph cut share exact levels", {
+  bundle <- phase5_panel_bundle("interactive-cut")
+  state <- phase5_panel_state(bundle)
+  snapshot <- gflowui:::gflowui_basin_bundle_snapshot(bundle)
+  ids <- snapshot$canonical$basin.id
+  labels <- stats::setNames(
+    paste0("M", seq_along(ids)),
+    ids
+  )
+  colors <- stats::setNames(
+    grDevices::hcl.colors(length(ids), "Dynamic"),
+    ids
+  )
+  levels <- gflowui:::gflowui_basin_interactive_levels(state)
+
+  expect_gt(levels[[1L]], max(snapshot$source.values))
+  expect_identical(
+    levels[-1L],
+    sort(unique(snapshot$source.values), decreasing = TRUE)
+  )
+
+  initial <- gflowui:::gflowui_basin_interactive_tree_data(
+    state,
+    label.text = labels,
+    basin.colors = colors
+  )
+  expect_true(initial$above.maximum)
+  expect_identical(initial$n.active.vertices, 0L)
+  expect_identical(initial$n.active.components, 0L)
+  expect_identical(
+    initial$scope.ids,
+    sort(state$current.proposal$final.ids, method = "radix")
+  )
+
+  merge.index <- match(1, levels) - 1L
+  current <- gflowui:::gflowui_basin_interactive_tree_data(
+    state,
+    level.index = merge.index,
+    merge.scope = "current",
+    label.text = labels,
+    basin.colors = colors
+  )
+  expect_identical(current$height, 1)
+  expect_true(2L %in% current$membership$vertex)
+  expect_identical(nrow(current$merge.plateaus), 1L)
+  expect_identical(current$merge.plateaus$vertices[[1L]], 2L)
+  expect_match(current$merge.plateaus$label[[1L]], "s\\(M")
+
+  complete <- gflowui:::gflowui_basin_interactive_tree_data(
+    state,
+    scope = "complete",
+    level.index = merge.index,
+    component.colors = "single",
+    merge.scope = "reached",
+    label.text = labels,
+    basin.colors = colors
+  )
+  expect_identical(
+    complete$scope.ids,
+    sort(ids, method = "radix")
+  )
+  expect_identical(
+    unique(unname(complete$component.colors)),
+    "#2563EB"
+  )
+  expect_true(all(complete$maxima$peak.value >= complete$height))
 })
 
 test_that("hidden selection remains presentation-only until pin", {
@@ -1212,7 +1285,11 @@ test_that("blocked states without retained proposals keep recovery controls", {
   )$html
   expect_match(ui, 'id="basin_tree_coverage"', fixed = TRUE)
   expect_match(ui, 'id="basin_tree_show_all"', fixed = TRUE)
-  expect_match(ui, 'id="basin_tree_open_complete"', fixed = TRUE)
+  expect_false(grepl(
+    'id="basin_tree_open_complete"',
+    ui,
+    fixed = TRUE
+  ))
   complete <- gflowui:::gflowui_basin_complete_interactive_data(state)
   expect_identical(
     nrow(complete$points),
