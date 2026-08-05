@@ -153,6 +153,8 @@ app_server <- function(input, output, session) {
     event_context_token = "",
     event_nonce = "",
     component_colors = "distinct",
+    basin_vertex_color = "#2563EB",
+    basin_vertex_size = 1,
     link_graph = TRUE,
     show_maxima_labels = TRUE,
     maxima_color = "#111827",
@@ -171,6 +173,7 @@ app_server <- function(input, output, session) {
   basin_tree_event_metrics$ignored_commit_count <- 0L
   basin_tree_event_metrics$tree_render_count <- 0L
   basin_tree_event_metrics$graph_overlay_compute_count <- 0L
+  basin_tree_event_metrics$shell_render_count <- 0L
   basin_tree_event_metrics$last_static_build_elapsed_ms <- NA_real_
   basin_tree_event_metrics$last_cut_elapsed_ms <- NA_real_
   basin_tree_event_metrics$last_cut_cache_hit <- FALSE
@@ -191,6 +194,8 @@ app_server <- function(input, output, session) {
     basin_tree_interaction$event_context_token <- ""
     basin_tree_interaction$event_nonce <- ""
     basin_tree_interaction$component_colors <- "distinct"
+    basin_tree_interaction$basin_vertex_color <- "#2563EB"
+    basin_tree_interaction$basin_vertex_size <- 1
     basin_tree_interaction$link_graph <- TRUE
     basin_tree_interaction$show_maxima_labels <- TRUE
     basin_tree_interaction$maxima_color <- "#111827"
@@ -9127,8 +9132,25 @@ app_server <- function(input, output, session) {
         tree$membership$component.id,
         tree$components$component.id
       )
+      basin.vertex.color <- as.character(
+        basin_tree_interaction$basin_vertex_color %||% "#2563EB"
+      )
+      if (length(basin.vertex.color) != 1L ||
+          is.na(basin.vertex.color) ||
+          !nzchar(basin.vertex.color)) {
+        basin.vertex.color <- "#2563EB"
+      }
+      displayed.component.colors <- tree$component.colors
+      if (identical(
+        as.character(
+          basin_tree_interaction$component_colors %||% "distinct"
+        ),
+        "single"
+      )) {
+        displayed.component.colors[] <- basin.vertex.color
+      }
       component.colors <- unname(
-        tree$component.colors[tree$membership$component.id]
+        displayed.component.colors[tree$membership$component.id]
       )
       component.labels <- unname(
         basin_label_map()[
@@ -9141,15 +9163,28 @@ app_server <- function(input, output, session) {
         tree$components$basin.id[component.index][missing.labels]
       vertex.colors[active] <- component.colors
       vertex.labels[active] <- component.labels
+    } else {
+      displayed.component.colors <- tree$component.colors
+    }
+    basin.vertex.size <- suppressWarnings(as.numeric(
+      basin_tree_interaction$basin_vertex_size %||% 1
+    ))
+    if (!is.finite(basin.vertex.size)) {
+      basin.vertex.size <- 1
     }
     overlay <- list(
       tree = tree,
       active.vertices = sort(unique(active)),
       vertex.colors = vertex.colors,
       vertex.labels = vertex.labels,
+      component.colors = displayed.component.colors,
       inactive.color = inactive.color,
       inactive.opacity = 0.24,
       active.opacity = 0.92,
+      basin.vertex.color = as.character(
+        basin_tree_interaction$basin_vertex_color %||% "#2563EB"
+      ),
+      basin.vertex.size = max(0.5, min(3, basin.vertex.size)),
       show.maxima.labels = isTRUE(
         basin_tree_interaction$show_maxima_labels
       ),
@@ -11104,6 +11139,8 @@ app_server <- function(input, output, session) {
   }
 
   output$basin_merge_tree_ui <- shiny::renderUI({
+    basin_tree_event_metrics$shell_render_count <-
+      basin_tree_event_metrics$shell_render_count + 1L
     result <- basin_result()
     state <- basin_analysis_state()
     if (!isTRUE(basin_inspector_open()) ||
@@ -11112,7 +11149,7 @@ app_server <- function(input, output, session) {
       return(NULL)
     }
     model <- tryCatch(
-      basin_merge_tree_model_for_state(state, result),
+      shiny::isolate(basin_merge_tree_model_for_state(state, result)),
       error = function(error) error
     )
     if (inherits(model, "error")) {
@@ -11217,14 +11254,62 @@ app_server <- function(input, output, session) {
     missing.labels <- is.na(selected.labels) | !nzchar(selected.labels)
     selected.labels[missing.labels] <- selected.ids[missing.labels]
     selected.choices <- stats::setNames(selected.ids, selected.labels)
+    interaction.settings <- shiny::isolate(list(
+      continuation.rule = as.character(
+        basin_tree_interaction$continuation_rule %||% "field_value"
+      ),
+      scope = as.character(
+        basin_tree_interaction$scope %||% "proposal"
+      ),
+      component.colors = as.character(
+        basin_tree_interaction$component_colors %||% "distinct"
+      ),
+      basin.vertex.color = as.character(
+        basin_tree_interaction$basin_vertex_color %||% "#2563EB"
+      ),
+      basin.vertex.size = as.numeric(
+        basin_tree_interaction$basin_vertex_size %||% 1
+      ),
+      link.graph = isTRUE(basin_tree_interaction$link_graph),
+      merge.scope = as.character(
+        basin_tree_interaction$merge_scope %||% "current"
+      ),
+      show.maxima.labels = isTRUE(
+        basin_tree_interaction$show_maxima_labels
+      ),
+      maxima.color = as.character(
+        basin_tree_interaction$maxima_color %||% "#111827"
+      ),
+      maxima.size = as.numeric(
+        basin_tree_interaction$maxima_size %||% 1
+      ),
+      maxima.label.size = as.numeric(
+        basin_tree_interaction$maxima_label_size %||% 1
+      ),
+      show.merge.labels = isTRUE(
+        basin_tree_interaction$show_merge_labels
+      ),
+      merge.color = as.character(
+        basin_tree_interaction$merge_color %||% "#E11D48"
+      ),
+      merge.size = as.numeric(
+        basin_tree_interaction$merge_size %||% 1
+      ),
+      merge.label.size = as.numeric(
+        basin_tree_interaction$merge_label_size %||% 1
+      ),
+      event.index = as.integer(
+        basin_tree_interaction$event_index %||% 0L
+      )
+    ))
     interaction.domain <- tryCatch(
-      basin_tree_event_domain(),
+      shiny::isolate(basin_tree_event_domain()),
       error = function(error) NULL
     )
     interaction.events <- interaction.domain$events %||% data.frame()
     interaction.maximum <- max(0L, nrow(interaction.events) - 1L)
     interaction.index <- suppressWarnings(as.integer(
-      basin_tree_interaction$event_index %||% 0L
+      interaction.settings$event.index %||% 0L
     ))
     if (!is.finite(interaction.index)) {
       interaction.index <- 0L
@@ -11348,7 +11433,7 @@ app_server <- function(input, output, session) {
         open = NA,
         shiny::tags$summary("Tree construction and display controls"),
         .gflowui_basin_panel_controls_help(
-          basin_tree_interaction$continuation_rule %||% "field_value"
+          interaction.settings$continuation.rule
         ),
         shiny::div(
           class = "gf-basin-tree-control-grid",
@@ -11526,9 +11611,7 @@ app_server <- function(input, output, session) {
               "Current displayed proposal" = "proposal",
               "Complete component" = "complete"
             ),
-            selected = as.character(
-              basin_tree_interaction$scope %||% "proposal"
-            )
+            selected = interaction.settings$scope
           ),
           shiny::selectInput(
             "basin_tree_component_colors",
@@ -11537,14 +11620,12 @@ app_server <- function(input, output, session) {
               "Different stable colors" = "distinct",
               "One common color" = "single"
             ),
-            selected = as.character(
-              basin_tree_interaction$component_colors %||% "distinct"
-            )
+            selected = interaction.settings$component.colors
           ),
           shiny::checkboxInput(
             "basin_tree_link_graph",
             "Link h to the 3D graph",
-            value = isTRUE(basin_tree_interaction$link_graph)
+            value = interaction.settings$link.graph
           ),
           shiny::selectInput(
             "basin_tree_merge_scope",
@@ -11554,32 +11635,44 @@ app_server <- function(input, output, session) {
               "All plateaus reached above h" = "reached",
               "Hide" = "hidden"
             ),
-            selected = as.character(
-              basin_tree_interaction$merge_scope %||% "current"
-            )
+            selected = interaction.settings$merge.scope
           )
         ),
         shiny::tags$details(
           class = "gf-basin-tree-style-controls",
-          shiny::tags$summary("Maximum and merge-plateau styling"),
+          shiny::tags$summary(
+            "Basin, maximum, and merge-plateau styling"
+          ),
           shiny::div(
             class = "gf-basin-tree-control-grid",
+            shiny::selectInput(
+              "basin_tree_basin_vertex_color",
+              "Basin vertex color (one-color mode)",
+              choices = basin_color_choices(
+                interaction.settings$basin.vertex.color
+              ),
+              selected = interaction.settings$basin.vertex.color
+            ),
+            shiny::sliderInput(
+              "basin_tree_basin_vertex_size",
+              "Basin vertex size",
+              min = 0.5,
+              max = 3,
+              step = 0.1,
+              value = interaction.settings$basin.vertex.size
+            ),
             shiny::checkboxInput(
               "basin_tree_show_maxima_labels",
               "Label active maxima",
-              value = isTRUE(
-                basin_tree_interaction$show_maxima_labels
-              )
+              value = interaction.settings$show.maxima.labels
             ),
             shiny::selectInput(
               "basin_tree_maxima_color",
               "Maximum color",
               choices = basin_color_choices(
-                basin_tree_interaction$maxima_color
+                interaction.settings$maxima.color
               ),
-              selected = as.character(
-                basin_tree_interaction$maxima_color %||% "#111827"
-              )
+              selected = interaction.settings$maxima.color
             ),
             shiny::sliderInput(
               "basin_tree_maxima_size",
@@ -11587,9 +11680,7 @@ app_server <- function(input, output, session) {
               min = 0.5,
               max = 3,
               step = 0.1,
-              value = as.numeric(
-                basin_tree_interaction$maxima_size %||% 1
-              )
+              value = interaction.settings$maxima.size
             ),
             shiny::sliderInput(
               "basin_tree_maxima_label_size",
@@ -11597,26 +11688,20 @@ app_server <- function(input, output, session) {
               min = 0.5,
               max = 3,
               step = 0.1,
-              value = as.numeric(
-                basin_tree_interaction$maxima_label_size %||% 1
-              )
+              value = interaction.settings$maxima.label.size
             ),
             shiny::checkboxInput(
               "basin_tree_show_merge_labels",
               "Label merge plateaus",
-              value = isTRUE(
-                basin_tree_interaction$show_merge_labels
-              )
+              value = interaction.settings$show.merge.labels
             ),
             shiny::selectInput(
               "basin_tree_merge_color",
               "Merge-plateau color",
               choices = basin_color_choices(
-                basin_tree_interaction$merge_color
+                interaction.settings$merge.color
               ),
-              selected = as.character(
-                basin_tree_interaction$merge_color %||% "#E11D48"
-              )
+              selected = interaction.settings$merge.color
             ),
             shiny::sliderInput(
               "basin_tree_merge_size",
@@ -11624,9 +11709,7 @@ app_server <- function(input, output, session) {
               min = 0.5,
               max = 3,
               step = 0.1,
-              value = as.numeric(
-                basin_tree_interaction$merge_size %||% 1
-              )
+              value = interaction.settings$merge.size
             ),
             shiny::sliderInput(
               "basin_tree_merge_label_size",
@@ -11634,9 +11717,7 @@ app_server <- function(input, output, session) {
               min = 0.5,
               max = 3,
               step = 0.1,
-              value = as.numeric(
-                basin_tree_interaction$merge_label_size %||% 1
-              )
+              value = interaction.settings$merge.label.size
             )
           )
         ),
@@ -12116,7 +12197,7 @@ app_server <- function(input, output, session) {
         y = tree$height,
         text = sprintf(
           "h = %s",
-          formatC(tree$height, format = "g", digits = 5)
+          tree$event$height.text
         ),
         showarrow = FALSE,
         xanchor = "right",
@@ -12269,6 +12350,23 @@ app_server <- function(input, output, session) {
     )
     if (value %in% c("distinct", "single")) {
       basin_tree_interaction$component_colors <- value
+    }
+  }, ignoreInit = TRUE)
+
+  shiny::observeEvent(input$basin_tree_basin_vertex_color, {
+    value <- as.character(input$basin_tree_basin_vertex_color %||% "")
+    if (length(value) == 1L && !is.na(value) && nzchar(value)) {
+      basin_tree_interaction$basin_vertex_color <- value
+    }
+  }, ignoreInit = TRUE)
+
+  shiny::observeEvent(input$basin_tree_basin_vertex_size, {
+    value <- suppressWarnings(as.numeric(
+      input$basin_tree_basin_vertex_size
+    ))
+    if (is.finite(value)) {
+      basin_tree_interaction$basin_vertex_size <-
+        max(0.5, min(3, value))
     }
   }, ignoreInit = TRUE)
 
@@ -13947,30 +14045,38 @@ app_server <- function(input, output, session) {
       p <- plotly::plot_ly(source = reference_plotly_source)
 
       if (isTRUE(tree.linked)) {
-        p <- p %>%
-          plotly::add_trace(
-            type = "scatter3d",
-            mode = "markers",
-            x = plot_data$x,
-            y = plot_data$y,
-            z = plot_data$z,
-            key = plot_data$vertex,
-            customdata = plot_data$vertex,
-            name = "Below h",
-            text = sprintf(
-              "vertex=%d<br>field value &lt; h",
-              plot_data$vertex
-            ),
-            hoverinfo = "text",
-            marker = list(
-              size = point_size,
-              color = tree.overlay$inactive.color,
-              opacity = tree.overlay$inactive.opacity
-            ),
-            showlegend = FALSE
-          )
+        inactive.rows <- !(
+          plot_data$vertex %in% tree.overlay$active.vertices
+        )
+        if (any(inactive.rows)) {
+          p <- p %>%
+            plotly::add_trace(
+              type = "scatter3d",
+              mode = "markers",
+              x = plot_data$x[inactive.rows],
+              y = plot_data$y[inactive.rows],
+              z = plot_data$z[inactive.rows],
+              key = plot_data$vertex[inactive.rows],
+              customdata = plot_data$vertex[inactive.rows],
+              name = "Below h",
+              text = sprintf(
+                "vertex=%d<br>field value &lt; h",
+                plot_data$vertex[inactive.rows]
+              ),
+              hoverinfo = "text",
+              marker = list(
+                size = point_size,
+                color = tree.overlay$inactive.color,
+                opacity = tree.overlay$inactive.opacity
+              ),
+              showlegend = FALSE
+            )
+        }
         components <- tree.overlay$tree$components
         membership <- tree.overlay$tree$membership
+        maximum.vertices <- suppressWarnings(as.integer(
+          tree.overlay$tree$maxima$extremum.vertex
+        ))
         for (component.index in seq_len(nrow(components))) {
           component.id <- components$component.id[[component.index]]
           vertices <- suppressWarnings(as.integer(
@@ -13979,6 +14085,7 @@ app_server <- function(input, output, session) {
             ]
           ))
           vertices <- intersect(vertices, idx)
+          vertices <- setdiff(vertices, maximum.vertices)
           if (!length(vertices)) {
             next
           }
@@ -13986,7 +14093,7 @@ app_server <- function(input, output, session) {
             components$basin.id[[component.index]]
           )
           color <- unname(
-            tree.overlay$tree$component.colors[component.id]
+            tree.overlay$component.colors[component.id]
           )
           p <- p %>%
             plotly::add_trace(
@@ -14006,7 +14113,7 @@ app_server <- function(input, output, session) {
               ),
               hoverinfo = "text",
               marker = list(
-                size = point_size,
+                size = point_size * tree.overlay$basin.vertex.size,
                 color = color,
                 opacity = tree.overlay$active.opacity
               ),
@@ -15299,20 +15406,79 @@ app_server <- function(input, output, session) {
       if (isTRUE(tree.linked)) {
         tree_base_colors <- tree.overlay$vertex.colors[keep_idx]
         active.view <- keep_idx %in% tree.overlay$active.vertices
-        tree_base_colors[!active.view] <- grDevices::adjustcolor(
-          tree.overlay$inactive.color,
-          alpha.f = tree.overlay$inactive.opacity
-        )
-        tree_base_colors[active.view] <- grDevices::adjustcolor(
-          tree_base_colors[active.view],
-          alpha.f = tree.overlay$active.opacity
-        )
+        if (any(!active.view)) {
+          tree_base_colors[!active.view] <- grDevices::adjustcolor(
+            tree.overlay$inactive.color,
+            alpha.f = tree.overlay$inactive.opacity
+          )
+        }
+        if (any(active.view)) {
+          tree_base_colors[active.view] <- grDevices::adjustcolor(
+            tree_base_colors[active.view],
+            alpha.f = 0
+          )
+        }
         maxima <- tree.overlay$tree$maxima
         maxima.view <- match(maxima$extremum.vertex, keep_idx)
         keep.maxima <- is.finite(maxima.view) &
           maxima.view >= 1L & maxima.view <= nn_view
         maxima.view <- maxima.view[keep.maxima]
         maxima.labels <- maxima$label[keep.maxima]
+        basin.view <- setdiff(which(active.view), maxima.view)
+        if (length(basin.view)) {
+          tree_layers[[length(tree_layers) + 1L]] <- list(
+            fun = function(
+                ctx,
+                basin_idx,
+                basin_colors,
+                basin_size,
+                basin_opacity,
+                draw_mode,
+                marker_radius,
+                marker_size) {
+              idx <- suppressWarnings(as.integer(basin_idx))
+              keep <- is.finite(idx) &
+                idx >= 1L & idx <= nrow(ctx$X)
+              idx <- idx[keep]
+              colors <- as.character(basin_colors)[keep]
+              if (!length(idx)) {
+                return(invisible(NULL))
+              }
+              colors <- grDevices::adjustcolor(
+                colors,
+                alpha.f = basin_opacity
+              )
+              if (identical(draw_mode, "sphere")) {
+                rgl::spheres3d(
+                  ctx$X[idx, , drop = FALSE],
+                  col = colors,
+                  radius = max(
+                    1e-8,
+                    marker_radius * basin_size
+                  )
+                )
+              } else {
+                rgl::points3d(
+                  ctx$X[idx, , drop = FALSE],
+                  col = colors,
+                  size = max(1.2, marker_size * basin_size)
+                )
+              }
+              invisible(NULL)
+            },
+            args = list(
+              basin_idx = basin.view,
+              basin_colors =
+                tree.overlay$vertex.colors[keep_idx[basin.view]],
+              basin_size = tree.overlay$basin.vertex.size,
+              basin_opacity = tree.overlay$active.opacity,
+              draw_mode = vertex_mode,
+              marker_radius = sphere_radius,
+              marker_size = point_size
+            ),
+            with_ctx = TRUE
+          )
+        }
         if (length(maxima.view)) {
           tree_layers[[length(tree_layers) + 1L]] <- list(
             fun = function(

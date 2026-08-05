@@ -1634,7 +1634,7 @@ gflowui_basin_interactive_events <- function(structure) {
     event.number = seq_along(heights),
     event.count = rep.int(length(heights), length(heights)),
     height = heights,
-    height.text = sprintf("%.17g", heights),
+    height.text = trimws(formatC(heights, format = "g", digits = 3)),
     birth.count = birth.count,
     merge.count = merge.count,
     event.kind = kinds,
@@ -2075,6 +2075,9 @@ gflowui_basin_interactive_tree_data <- function(
           paste(
             "Active-component colors can be different and stable, using the",
             "continuing basin's color after a merge, or one common color.",
+            "Basin vertex color chooses that common color, and Basin vertex",
+            "size controls active vertices other than the separately styled",
+            "local maxima.",
             "Uncheck",
             "Link h to the 3D graph to leave the graph's ordinary color",
             "source visible while continuing to inspect the tree."
