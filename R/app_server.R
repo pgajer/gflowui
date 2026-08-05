@@ -4716,10 +4716,6 @@ app_server <- function(input, output, session) {
           var gd = document.getElementById(el.id) || el;
           if (!gd) return;
 
-          var cameraToRestore = window.__gflowuiReferenceCamera
-            ? JSON.parse(JSON.stringify(window.__gflowuiReferenceCamera))
-            : null;
-
           function cloneCamera(cam) {
             try {
               return JSON.parse(JSON.stringify(cam));
@@ -4745,29 +4741,20 @@ app_server <- function(input, output, session) {
             }
           }
 
-          gd.on('plotly_relayout', rememberCamera);
-          gd.on('plotly_afterplot', function() {
-            if (gd.__gflowuiSuppressRemember) return;
-            var cam = currentCamera();
-            if (cam) {
-              window.__gflowuiReferenceCamera = cloneCamera(cam);
-            }
-          });
-
-          if (cameraToRestore) {
-            gd.__gflowuiSuppressRemember = true;
-            setTimeout(function() {
-              try {
-                Plotly.relayout(gd, {'scene.camera': cameraToRestore}).then(function() {
-                  window.__gflowuiReferenceCamera = JSON.parse(JSON.stringify(cameraToRestore));
-                  gd.__gflowuiSuppressRemember = false;
-                }).catch(function() {
-                  gd.__gflowuiSuppressRemember = false;
-                });
-              } catch (e) {
-                gd.__gflowuiSuppressRemember = false;
+          if (!gd.__gflowuiCameraHooksBound) {
+            gd.on('plotly_relayout', rememberCamera);
+            gd.on('plotly_afterplot', function() {
+              if (gd.__gflowuiSuppressRemember) return;
+              var cam = currentCamera();
+              if (cam) {
+                window.__gflowuiReferenceCamera = cloneCamera(cam);
               }
-            }, 80);
+            });
+            gd.__gflowuiCameraHooksBound = true;
+          }
+          var renderedCamera = currentCamera();
+          if (renderedCamera) {
+            window.__gflowuiReferenceCamera = cloneCamera(renderedCamera);
           }
         }"
       )
@@ -14923,6 +14910,7 @@ app_server <- function(input, output, session) {
 
       p <- p %>%
         plotly::layout(
+          transition = list(duration = 0),
           margin = list(
             l = 0,
             r = if (isTRUE(tree.linked)) 150 else 0,

@@ -52,6 +52,21 @@ test_that("reference graph camera motion remains browser-local", {
   })
 })
 
+test_that("reference graph camera is injected before Plotly redraw", {
+  script.path <- system.file(
+    "app/www/reference-plot-state.js",
+    package = "gflowui"
+  )
+  expect_true(file.exists(script.path))
+  script <- paste(readLines(script.path, warn = FALSE), collapse = "\n")
+
+  expect_match(script, "shiny:value.gflowuiReferenceCamera", fixed = TRUE)
+  expect_match(script, "reference_plot", fixed = TRUE)
+  expect_match(script, "payload.layout.scene.camera = camera", fixed = TRUE)
+  expect_false(grepl("Shiny.setInputValue", script, fixed = TRUE))
+  expect_false(grepl("setTimeout(function", script, fixed = TRUE))
+})
+
 local_projects_data_sandbox <- function() {
   real_registry <- gflowui:::gflowui_registry_path()
   real_manifests <- gflowui:::gflowui_manifests_dir()
@@ -275,6 +290,15 @@ test_that("renderer selection survives transient NULL during UI rebuild", {
     rr1 <- reference_renderer_state()
     expect_equal(rr1$requested, "plotly")
     expect_equal(rr1$effective, "plotly")
+    reference.payload <- jsonlite::fromJSON(
+      as.character(output$reference_plot),
+      simplifyVector = FALSE
+    )
+    expect_equal(reference.payload$x$layout$transition$duration, 0)
+    expect_identical(
+      reference.payload$x$layout$scene$uirevision,
+      "reference-scene"
+    )
 
     session$setInputs(graph_layout_renderer = NULL)
     session$flushReact()
