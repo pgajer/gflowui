@@ -2365,6 +2365,9 @@ list_projects <- function(include_manifests = FALSE) {
 #'
 #' @param project_id Project id to remove from registry.
 #' @param delete_manifest Whether to delete the stored manifest file.
+#' @param delete_state Whether to recursively delete gflowui-generated state
+#'   stored for the project. This never deletes the external project root or
+#'   any assets referenced by the manifest.
 #'
 #' @return Invisibly returns `TRUE` when removed and `FALSE` when no matching
 #'   project id exists.
@@ -2372,7 +2375,10 @@ list_projects <- function(include_manifests = FALSE) {
 #'
 #' @examples
 #' \dontrun{unregister_project("agp_restart")}
-unregister_project <- function(project_id, delete_manifest = TRUE) {
+unregister_project <- function(
+    project_id,
+    delete_manifest = TRUE,
+    delete_state = FALSE) {
   if (!is.character(project_id) || !nzchar(project_id[1])) {
     stop("project_id must be a non-empty string.", call. = FALSE)
   }
@@ -2390,6 +2396,37 @@ unregister_project <- function(project_id, delete_manifest = TRUE) {
 
   if (isTRUE(delete_manifest) && is.character(manifest_file) && nzchar(manifest_file) && file.exists(manifest_file)) {
     unlink(manifest_file, force = TRUE)
+  }
+
+  if (isTRUE(delete_state)) {
+    state_root <- normalizePath(
+      file.path(gflowui_projects_data_dir(), "projects"),
+      mustWork = FALSE
+    )
+    state_dir <- normalizePath(
+      file.path(state_root, id),
+      mustWork = FALSE
+    )
+    if (!identical(dirname(state_dir), state_root)) {
+      warning(
+        sprintf(
+          "gflowui: refusing to delete unsafe project-state path for '%s'.",
+          id
+        ),
+        call. = FALSE
+      )
+    } else if (dir.exists(state_dir)) {
+      removed <- unlink(state_dir, recursive = TRUE, force = TRUE)
+      if (!identical(removed, 0L) || dir.exists(state_dir)) {
+        warning(
+          sprintf(
+            "gflowui: could not fully delete generated state for '%s'.",
+            id
+          ),
+          call. = FALSE
+        )
+      }
+    }
   }
 
   invisible(TRUE)

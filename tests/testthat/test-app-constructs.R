@@ -97,6 +97,71 @@ local_projects_data_sandbox <- function() {
   invisible(sandbox_dir)
 }
 
+test_that("active projects can be deleted without touching external assets", {
+  sandbox_dir <- local_projects_data_sandbox()
+  project_root <- tempfile("gflowui-delete-external-")
+  dir.create(project_root, recursive = TRUE, showWarnings = FALSE)
+  writeLines("external asset", file.path(project_root, "keep-me.txt"))
+  withr::defer(
+    unlink(project_root, recursive = TRUE, force = TRUE),
+    envir = parent.frame()
+  )
+
+  registered <- gflowui::register_project(
+    project_root = project_root,
+    project_name = "Deletable Project",
+    scan_results = FALSE
+  )
+  project_id <- registered$project_id
+  state_dir <- file.path(
+    sandbox_dir,
+    "projects",
+    project_id,
+    "working"
+  )
+  dir.create(state_dir, recursive = TRUE, showWarnings = FALSE)
+  writeLines("generated state", file.path(state_dir, "current.txt"))
+
+  shiny::testServer(gflowui:::app_server, {
+    open_project(project_id)
+    session$flushReact()
+    actions <- htmltools::renderTags(output$workspace_actions)$html
+    expect_match(actions, 'id="delete_project"', fixed = TRUE)
+    expect_match(actions, "Delete Project", fixed = TRUE)
+
+    session$setInputs(delete_project = 1L)
+    session$flushReact()
+    request <- project_delete_request()
+    expect_identical(request$id, project_id)
+    expect_identical(request$label, "Deletable Project")
+
+    session$setInputs(
+      confirm_delete_project_ack = FALSE,
+      confirm_delete_project = 1L
+    )
+    session$flushReact()
+    expect_true(project_id %in% project_registry()$id)
+    expect_true(isTRUE(rv$project.active))
+
+    session$setInputs(
+      confirm_delete_project_ack = TRUE,
+      confirm_delete_project = 2L
+    )
+    session$flushReact()
+    expect_false(project_id %in% project_registry()$id)
+    expect_false(isTRUE(rv$project.active))
+    expect_null(project_delete_request())
+  })
+
+  expect_false(file.exists(registered$manifest_file))
+  expect_false(dir.exists(file.path(
+    sandbox_dir,
+    "projects",
+    project_id
+  )))
+  expect_true(file.exists(file.path(project_root, "keep-me.txt")))
+})
+
 grouped_selector_project_id <- function() {
   listed <- gflowui::list_projects(include_manifests = TRUE)
   reg <- listed$registry
