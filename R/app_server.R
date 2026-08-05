@@ -4706,7 +4706,7 @@ app_server <- function(input, output, session) {
       }
       htmlwidgets::onRender(
         widget,
-        sprintf("function(el, x) {
+        "function(el, x) {
           var gd = document.getElementById(el.id) || el;
           if (!gd) return;
 
@@ -4737,9 +4737,6 @@ app_server <- function(input, output, session) {
             if (cam) {
               window.__gflowuiReferenceCamera = cloneCamera(cam);
             }
-            if (cam && window.Shiny && typeof window.Shiny.setInputValue === 'function') {
-              window.Shiny.setInputValue('%s', cloneCamera(cam), {priority: 'event'});
-            }
           }
 
           gd.on('plotly_relayout', rememberCamera);
@@ -4748,9 +4745,6 @@ app_server <- function(input, output, session) {
             var cam = currentCamera();
             if (cam) {
               window.__gflowuiReferenceCamera = cloneCamera(cam);
-            }
-            if (cam && window.Shiny && typeof window.Shiny.setInputValue === 'function') {
-              window.Shiny.setInputValue('%s', cloneCamera(cam), {priority: 'event'});
             }
           });
 
@@ -4769,7 +4763,7 @@ app_server <- function(input, output, session) {
               }
             }, 80);
           }
-        }", reference_plot_camera_input_id, reference_plot_camera_input_id)
+        }"
       )
     }
 
