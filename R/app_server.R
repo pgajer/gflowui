@@ -12358,6 +12358,17 @@ app_server <- function(input, output, session) {
     value <- as.character(input$basin_tree_basin_vertex_color %||% "")
     if (length(value) == 1L && !is.na(value) && nzchar(value)) {
       basin_tree_interaction$basin_vertex_color <- value
+      if (!identical(
+        shiny::isolate(basin_tree_interaction$component_colors),
+        "single"
+      )) {
+        basin_tree_interaction$component_colors <- "single"
+        shiny::updateSelectInput(
+          session,
+          "basin_tree_component_colors",
+          selected = "single"
+        )
+      }
     }
   }, ignoreInit = TRUE)
 
