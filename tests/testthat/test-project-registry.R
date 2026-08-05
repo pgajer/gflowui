@@ -37,10 +37,28 @@ test_that("register/list/unregister roundtrip persists manifest and registry", {
   expect_true(reg_result$project_id %in% names(listed$manifests))
   expect_equal(listed$manifests[[reg_result$project_id]]$project_name, "Test Project")
 
-  removed <- gflowui::unregister_project(reg_result$project_id)
+  state_dir <- file.path(
+    db_dir,
+    "projects",
+    reg_result$project_id,
+    "working"
+  )
+  dir.create(state_dir, recursive = TRUE, showWarnings = FALSE)
+  writeLines("generated state", file.path(state_dir, "current.txt"))
+
+  removed <- gflowui::unregister_project(
+    reg_result$project_id,
+    delete_state = TRUE
+  )
   expect_true(isTRUE(removed))
   expect_equal(nrow(gflowui::list_projects()), 0L)
   expect_false(file.exists(reg_result$manifest_file))
+  expect_false(dir.exists(file.path(
+    db_dir,
+    "projects",
+    reg_result$project_id
+  )))
+  expect_true(dir.exists(project_root))
 })
 
 

@@ -4,12 +4,16 @@
 \alias{unregister_project}
 \title{Unregister A gflowui Project}
 \usage{
-unregister_project(project_id, delete_manifest = TRUE)
+unregister_project(project_id, delete_manifest = TRUE, delete_state = FALSE)
 }
 \arguments{
 \item{project_id}{Project id to remove from registry.}
 
 \item{delete_manifest}{Whether to delete the stored manifest file.}
+
+\item{delete_state}{Whether to recursively delete gflowui-generated state
+stored for the project. This never deletes the external project root or
+any assets referenced by the manifest.}
 }
 \value{
 Invisibly returns \code{TRUE} when removed and \code{FALSE} when no matching

@@ -54,6 +54,7 @@ app_server <- function(input, output, session) {
     component = NA_character_
   )
   graph_color_sync_target <- shiny::reactiveVal("")
+  project_delete_request <- shiny::reactiveVal(NULL)
   occupation_density_result <- shiny::reactiveVal(NULL)
   occupation_density_status <- shiny::reactiveVal(
     "Choose an estimate, then show it on the graph."
@@ -18716,9 +18717,140 @@ app_server <- function(input, output, session) {
         "exit_project",
         "Exit Project",
         class = "btn-outline-secondary gf-btn-wide"
+      ),
+      shiny::actionButton(
+        "delete_project",
+        "Delete Project\u2026",
+        class = "btn-danger gf-btn-wide",
+        title = paste(
+          "Remove this project from gflowui.",
+          "External project files are preserved."
+        )
       )
     )
   })
+
+  shiny::observeEvent(input$delete_project, {
+    row <- active_registry_row()
+    if (!isTRUE(rv$project.active) ||
+        !is.data.frame(row) ||
+        nrow(row) != 1L) {
+      shiny::showNotification(
+        "No active project is available to delete.",
+        type = "error"
+      )
+      return()
+    }
+    request <- list(
+      id = as.character(row$id[[1L]] %||% ""),
+      label = as.character(row$label[[1L]] %||% "")
+    )
+    if (!nzchar(request$id) || !nzchar(request$label)) {
+      shiny::showNotification(
+        "The active project has an invalid registry entry.",
+        type = "error"
+      )
+      return()
+    }
+    project_delete_request(request)
+    shiny::showModal(shiny::modalDialog(
+      title = sprintf("Delete %s?", request$label),
+      easyClose = FALSE,
+      shiny::p(
+        sprintf(
+          "This removes '%s' from the gflowui project menu.",
+          request$label
+        )
+      ),
+      shiny::tags$ul(
+        shiny::tags$li(
+          "The stored gflowui manifest and generated in-app state are deleted."
+        ),
+        shiny::tags$li(
+          paste(
+            "The external project directory and scientific assets referenced",
+            "by the project are not deleted."
+          )
+        ),
+        if (isTRUE(rv$project.dirty)) shiny::tags$li(
+          "Unsaved changes in the active project will be discarded."
+        ) else NULL
+      ),
+      shiny::checkboxInput(
+        "confirm_delete_project_ack",
+        sprintf("I understand; delete %s", request$label),
+        value = FALSE
+      ),
+      footer = shiny::tagList(
+        shiny::modalButton("Cancel"),
+        shiny::actionButton(
+          "confirm_delete_project",
+          "Delete Project",
+          class = "btn-danger"
+        )
+      )
+    ))
+  }, ignoreInit = TRUE)
+
+  shiny::observeEvent(input$confirm_delete_project, {
+    request <- shiny::isolate(project_delete_request())
+    current.id <- as.character(shiny::isolate(rv$project.id) %||% "")
+    if (!is.list(request) ||
+        !nzchar(as.character(request$id %||% "")) ||
+        !identical(as.character(request$id), current.id)) {
+      shiny::showNotification(
+        "The project changed before deletion; nothing was deleted.",
+        type = "error"
+      )
+      shiny::removeModal()
+      project_delete_request(NULL)
+      return()
+    }
+    if (!isTRUE(input$confirm_delete_project_ack)) {
+      shiny::showNotification(
+        "Check the confirmation box before deleting the project.",
+        type = "warning"
+      )
+      return()
+    }
+    removed <- tryCatch(
+      unregister_project(
+        request$id,
+        delete_manifest = TRUE,
+        delete_state = TRUE
+      ),
+      error = function(error) error
+    )
+    if (inherits(removed, "error") || !isTRUE(removed)) {
+      shiny::showNotification(
+        if (inherits(removed, "error")) {
+          sprintf(
+            "Project deletion failed: %s",
+            conditionMessage(removed)
+          )
+        } else {
+          "The project is no longer present in the registry."
+        },
+        type = "error"
+      )
+      return()
+    }
+    deleted.label <- as.character(request$label %||% request$id)
+    project_registry(gflowui_load_registry())
+    close_project()
+    project_delete_request(NULL)
+    shiny::removeModal()
+    shiny::showNotification(
+      sprintf(
+        paste(
+          "Project '%s' was deleted from gflowui.",
+          "External project files were not changed."
+        ),
+        deleted.label
+      ),
+      type = "message"
+    )
+  }, ignoreInit = TRUE)
 
   shiny::observeEvent(input$project_settings, {
     if (!isTRUE(rv$project.active)) {
