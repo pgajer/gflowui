@@ -142,7 +142,6 @@ app_server <- function(input, output, session) {
     inspector_sort = "mass",
     inspector_columns = "compact",
     inspector_show_extremum_vertex = FALSE,
-    inspector_width = 620,
     plot_builder_type = "both",
     plot_show_thresholds = TRUE
   )
@@ -13160,15 +13159,6 @@ app_server <- function(input, output, session) {
     )
   }, ignoreInit = TRUE)
 
-  shiny::observeEvent(input$basin_inspector_width, {
-    value <- suppressWarnings(as.numeric(input$basin_inspector_width))
-    if (is.finite(value)) {
-      basin_display_settings$inspector_width <- as.integer(
-        max(380, min(1200, value))
-      )
-    }
-  }, ignoreInit = TRUE)
-
   activate_basin_color_source <- function(
       result = shiny::isolate(basin_result()),
       update_status = FALSE) {
@@ -19231,10 +19221,7 @@ app_server <- function(input, output, session) {
       shiny::div(
         id = "gf_reference_split",
         class = "gf-reference-split",
-        style = sprintf(
-          "--gf-general-inspector-width:%dpx;",
-          as.integer(basin_display_settings$inspector_width %||% 620)
-        ),
+        style = "--gf-general-inspector-width:620px;",
         shiny::div(
           class = "gf-reference-graph-pane",
           view_body,

@@ -3,6 +3,19 @@ test_that("application object builds", {
   expect_s3_class(app, "shiny.appobj")
 })
 
+test_that("General Inspector splitter preserves browser-local view state", {
+  script.path <- system.file(
+    "app/www/basin-inspector-state.js",
+    package = "gflowui"
+  )
+  expect_true(file.exists(script.path))
+  script <- paste(readLines(script.path, warn = FALSE), collapse = "\n")
+
+  expect_match(script, "window.localStorage.setItem", fixed = TRUE)
+  expect_match(script, "--gf-general-inspector-width", fixed = TRUE)
+  expect_false(grepl("basin_inspector_width", script, fixed = TRUE))
+})
+
 local_projects_data_sandbox <- function() {
   real_registry <- gflowui:::gflowui_registry_path()
   real_manifests <- gflowui:::gflowui_manifests_dir()
@@ -2462,11 +2475,11 @@ test_that("basin server invalidates changed fields and graph identities", {
 
     session$setInputs(basin_inspector_width = 760)
     session$flushReact()
-    expect_equal(basin_display_settings$inspector_width, 760L)
+    expect_null(basin_display_settings$inspector_width)
     resized.workspace <- htmltools::renderTags(output$workspace_view)$html
     expect_match(
       resized.workspace,
-      "--gf-general-inspector-width:760px",
+      "--gf-general-inspector-width:620px",
       fixed = TRUE
     )
 
