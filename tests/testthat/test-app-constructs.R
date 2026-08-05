@@ -1170,6 +1170,8 @@ test_that("basin server invalidates changed fields and graph identities", {
       "basin_tree_show_all",
       "basin_tree_scope",
       "basin_tree_component_colors",
+      "basin_tree_basin_vertex_color",
+      "basin_tree_basin_vertex_size",
       "basin_tree_link_graph",
       "basin_tree_merge_scope",
       "basin_tree_show_maxima_labels",
@@ -1203,6 +1205,7 @@ test_that("basin server invalidates changed fields and graph identities", {
     initial.overlay <- basin_tree_graph_overlay()
     initial.static.builds <- basin_tree_event_metrics$static_build_count
     initial.cut.computes <- basin_tree_event_metrics$cut_compute_count
+    initial.shell.renders <- basin_tree_event_metrics$shell_render_count
     expect_identical(initial.tree$scope, "proposal")
     expect_identical(initial.tree$event.index, 0L)
     expect_identical(initial.tree$n.active.vertices, 0L)
@@ -1222,6 +1225,10 @@ test_that("basin server invalidates changed fields and graph identities", {
     first.cut <- basin_tree_interactive_data()
     expect_identical(first.cut$event.index, 1L)
     expect_gt(first.cut$n.active.vertices, 0L)
+    expect_identical(
+      basin_tree_event_metrics$shell_render_count,
+      initial.shell.renders
+    )
     expect_identical(
       basin_tree_event_metrics$static_build_count,
       initial.static.builds
@@ -1270,6 +1277,21 @@ test_that("basin server invalidates changed fields and graph identities", {
     session$setInputs(basin_tree_link_graph = TRUE)
     session$flushReact()
     expect_true(is.list(basin_tree_graph_overlay()))
+    session$setInputs(
+      basin_tree_basin_vertex_color = "#16A34A",
+      basin_tree_basin_vertex_size = 1.7
+    )
+    session$flushReact()
+    styled.overlay <- basin_tree_graph_overlay()
+    expect_identical(
+      styled.overlay$basin.vertex.color,
+      "#16A34A"
+    )
+    expect_equal(styled.overlay$basin.vertex.size, 1.7)
+    expect_identical(
+      basin_tree_event_metrics$shell_render_count,
+      initial.shell.renders
+    )
     cut.computes.before.cached.backtrack <-
       basin_tree_event_metrics$cut_compute_count
     session$setInputs(basin_tree_event_commit = list(
@@ -1295,6 +1317,11 @@ test_that("basin server invalidates changed fields and graph identities", {
     expect_identical(
       unique(unname(complete.tree$component.colors)),
       "#2563EB"
+    )
+    complete.overlay <- basin_tree_graph_overlay()
+    expect_identical(
+      unique(unname(complete.overlay$component.colors)),
+      "#16A34A"
     )
     complete.domain <- basin_tree_event_domain()
     expect_gt(nrow(complete.domain$events), nrow(initial.domain$events))

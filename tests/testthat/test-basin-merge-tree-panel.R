@@ -1007,6 +1007,10 @@ test_that("topology events are exact, grouped, and deterministically ordered", {
   expect_true(any(lengths(events$merge.plateau.ids) > 0L))
   expect_true(all(nzchar(events$summary)))
   expect_true(all(nzchar(events$aria.label)))
+  expect_identical(
+    events$height.text,
+    trimws(formatC(events$height, format = "g", digits = 3))
+  )
   expect_identical(events$birth.count, lengths(events$birth.basin.ids))
   expect_identical(events$merge.count, lengths(events$merge.plateau.ids))
 
