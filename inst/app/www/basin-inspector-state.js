@@ -93,16 +93,6 @@
     );
   }
 
-  function notify(width) {
-    if (window.Shiny && typeof window.Shiny.setInputValue === "function") {
-      window.Shiny.setInputValue(
-        "basin_inspector_width",
-        Math.round(width),
-        { priority: "event" }
-      );
-    }
-  }
-
   function notifyRowChange(target) {
     if (!window.Shiny || typeof window.Shiny.setInputValue !== "function") {
       return;
@@ -192,9 +182,11 @@
       try {
         window.localStorage.setItem(storageKey, String(width));
       } catch (error) {
-        // Persistence is best-effort; the Shiny session still retains width.
+        // Persistence is best-effort in hardened browser contexts.
       }
-      notify(width);
+      // Keep splitter state browser-local. Sending the width to Shiny would
+      // invalidate workspace_view, replace the Inspector DOM, and reset its
+      // scroll position even though only the grid width changed.
     };
 
     setWidth(inspector.getBoundingClientRect().width || 620);
