@@ -13,7 +13,43 @@ test_that("General Inspector splitter preserves browser-local view state", {
 
   expect_match(script, "window.localStorage.setItem", fixed = TRUE)
   expect_match(script, "--gf-general-inspector-width", fixed = TRUE)
+  expect_match(script, "splitterLifecycleChanged", fixed = TRUE)
+  expect_false(grepl(
+    "new MutationObserver(bindSplitter)",
+    script,
+    fixed = TRUE
+  ))
   expect_false(grepl("basin_inspector_width", script, fixed = TRUE))
+})
+
+test_that("reference graph camera motion remains browser-local", {
+  skip_if_not_installed("plotly")
+  skip_if_not_installed("htmlwidgets")
+
+  shiny::testServer(gflowui:::app_server, {
+    widget <- plotly::plot_ly(
+      x = 1:2,
+      y = 1:2,
+      z = 1:2,
+      type = "scatter3d"
+    )
+    hooked <- attach_reference_plotly_camera_preserver(widget)
+    hooks <- hooked$jsHooks$render
+    expect_true(length(hooks) > 0L)
+    script <- paste(
+      vapply(
+        hooks,
+        function(hook) as.character(hook$code %||% ""),
+        character(1)
+      ),
+      collapse = "\n"
+    )
+
+    expect_match(script, "plotly_relayout", fixed = TRUE)
+    expect_match(script, "__gflowuiReferenceCamera", fixed = TRUE)
+    expect_false(grepl("Shiny.setInputValue", script, fixed = TRUE))
+    expect_false(grepl("reference_plot_camera_state", script, fixed = TRUE))
+  })
 })
 
 local_projects_data_sandbox <- function() {

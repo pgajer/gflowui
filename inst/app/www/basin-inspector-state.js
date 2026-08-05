@@ -260,6 +260,34 @@
     });
   }
 
+  function splitterLifecycleChanged(mutations) {
+    var selector = [
+      "#gf_reference_split",
+      "#gf_general_inspector_resize",
+      "#gf_general_inspector",
+      "#gf_basin_inspector"
+    ].join(",");
+    var touchesSplitter = function (node) {
+      if (!node || node.nodeType !== 1) {
+        return false;
+      }
+      if (node.matches && node.matches(selector)) {
+        return true;
+      }
+      return Boolean(node.querySelector && node.querySelector(selector));
+    };
+
+    return mutations.some(function (mutation) {
+      return Array.prototype.some.call(
+        mutation.addedNodes,
+        touchesSplitter
+      ) || Array.prototype.some.call(
+        mutation.removedNodes,
+        touchesSplitter
+      );
+    });
+  }
+
   document.addEventListener("DOMContentLoaded", function () {
     bindSplitter();
     bindBasinRecipeHandlers();
@@ -282,7 +310,11 @@
       notifyRowChange(target);
     }
   });
-  new MutationObserver(bindSplitter).observe(document.documentElement, {
+  new MutationObserver(function (mutations) {
+    if (splitterLifecycleChanged(mutations)) {
+      bindSplitter();
+    }
+  }).observe(document.documentElement, {
     childList: true,
     subtree: true
   });
