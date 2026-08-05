@@ -1342,21 +1342,6 @@ test_that("basin server invalidates changed fields and graph identities", {
     session$setInputs(basin_tree_link_graph = TRUE)
     session$flushReact()
     expect_true(is.list(basin_tree_graph_overlay()))
-    session$setInputs(
-      basin_tree_basin_vertex_color = "#16A34A",
-      basin_tree_basin_vertex_size = 1.7
-    )
-    session$flushReact()
-    styled.overlay <- basin_tree_graph_overlay()
-    expect_identical(
-      styled.overlay$basin.vertex.color,
-      "#16A34A"
-    )
-    expect_equal(styled.overlay$basin.vertex.size, 1.7)
-    expect_identical(
-      basin_tree_event_metrics$shell_render_count,
-      initial.shell.renders
-    )
     cut.computes.before.cached.backtrack <-
       basin_tree_event_metrics$cut_compute_count
     session$setInputs(basin_tree_event_commit = list(
@@ -1369,6 +1354,29 @@ test_that("basin server invalidates changed fields and graph identities", {
     expect_identical(
       basin_tree_event_metrics$cut_compute_count,
       cut.computes.before.cached.backtrack
+    )
+    session$setInputs(
+      basin_tree_basin_vertex_color = "#16A34A",
+      basin_tree_basin_vertex_size = 1.7
+    )
+    session$flushReact()
+    styled.overlay <- basin_tree_graph_overlay()
+    expect_identical(
+      styled.overlay$basin.vertex.color,
+      "#16A34A"
+    )
+    expect_identical(
+      basin_tree_interaction$component_colors,
+      "single"
+    )
+    expect_identical(
+      unique(unname(styled.overlay$component.colors)),
+      "#16A34A"
+    )
+    expect_equal(styled.overlay$basin.vertex.size, 1.7)
+    expect_identical(
+      basin_tree_event_metrics$shell_render_count,
+      initial.shell.renders
     )
     session$setInputs(
       basin_tree_scope = "complete",
