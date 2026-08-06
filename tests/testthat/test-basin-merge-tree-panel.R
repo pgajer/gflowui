@@ -982,6 +982,134 @@ test_that("interactive tree and canonical graph cut share exact levels", {
   expect_true(all(complete$maxima$peak.value >= complete$height))
 })
 
+test_that("ascent-flow connections reuse the canonical CLOSEST forest", {
+  adjacency <- list(
+    2L,
+    c(1L, 3L),
+    c(2L, 4L),
+    c(3L, 5L),
+    4L
+  )
+  edge.lengths <- lapply(adjacency, function(vertices) {
+    rep.int(1, length(vertices))
+  })
+  field <- c(3, 2, 1, 2, 4)
+  flow <- gflow::create.basin.complex(
+    adjacency,
+    edge.lengths,
+    field,
+    method = "trajectory_flow",
+    direction = "max",
+    method.params = list(
+      modulation = "CLOSEST",
+      plateau.policy = "connected_exact",
+      edge.length.quantile.thld = 1,
+      long.edge.fallback = "allow_and_flag",
+      store.trajectories = FALSE,
+      symmetric.seeding = FALSE,
+      tie.breaking = FALSE,
+      primary.assignment.policy = "backend_primary"
+    )
+  )
+  tree <- gflow::create.basin.complex(
+    adjacency,
+    edge.lengths,
+    field,
+    method = "superlevel_merge_tree",
+    direction = "max"
+  )
+  canonical <- gflow::get.basin.table(tree)
+  canonical <- canonical[
+    canonical$type == "max",
+    c("basin.id", "extremum.vertex"),
+    drop = FALSE
+  ]
+  colors <- stats::setNames(
+    c("#2563EB", "#DC2626"),
+    canonical$basin.id
+  )
+
+  high <- gflowui:::gflowui_basin_ascent_flow_edges(
+    trajectory.complex = flow,
+    active.vertices = which(field >= 2),
+    canonical = canonical,
+    basin.colors = colors
+  )
+  expect_identical(high$from, c(2L, 4L))
+  expect_identical(high$to, c(1L, 5L))
+  expect_true(all(field[high$to] >= field[high$from]))
+  expect_false(any(high$to != high$root.vertex))
+
+  full <- gflowui:::gflowui_basin_ascent_flow_edges(
+    trajectory.complex = flow,
+    active.vertices = seq_along(field),
+    canonical = canonical,
+    basin.colors = colors
+  )
+  expect_identical(full$from, c(2L, 3L, 4L))
+  expect_identical(full$to, c(1L, 2L, 5L))
+  expect_identical(full$root.vertex, c(1L, 1L, 5L))
+  expect_identical(anyDuplicated(full[c("from", "to")]), 0L)
+  expect_true(all(full$to %in% seq_along(field)))
+  expect_true(all(full$root.vertex %in% canonical$extremum.vertex))
+
+  coordinates <- cbind(
+    x = seq_along(field),
+    y = rep(0, length(field)),
+    z = rep(0, length(field))
+  )
+  spec <- gflowui:::gflowui_basin_ascent_flow_plotly_spec(
+    full,
+    coordinates,
+    color.mode = "basin",
+    opacity = 0.3,
+    width = 1.5
+  )
+  expect_identical(spec$n.edges, 3L)
+  expect_length(spec$x, 9L)
+  expect_length(spec$line$color, 9L)
+  expect_length(spec$line$colorscale, 2L)
+  expect_equal(spec$opacity, 0.3)
+  expect_equal(spec$line$width, 1.5)
+  one.basin.spec <- gflowui:::gflowui_basin_ascent_flow_plotly_spec(
+    full[full$root.vertex == 1L, , drop = FALSE],
+    coordinates,
+    color.mode = "basin"
+  )
+  expect_identical(
+    one.basin.spec$line$color,
+    unique(full$color[full$root.vertex == 1L])
+  )
+  expect_null(one.basin.spec$line$colorscale)
+
+  single <- gflowui:::gflowui_basin_ascent_flow_edges(
+    trajectory.complex = flow,
+    active.vertices = seq_along(field),
+    canonical = canonical,
+    basin.colors = colors,
+    color.mode = "single",
+    common.color = "#111827"
+  )
+  expect_identical(unique(single$color), "#111827")
+  single.spec <- gflowui:::gflowui_basin_ascent_flow_plotly_spec(
+    single,
+    coordinates,
+    color.mode = "single",
+    common.color = "#111827"
+  )
+  expect_identical(single.spec$line$color, "#111827")
+
+  expect_error(
+    gflowui:::gflowui_basin_ascent_flow_edges(
+      trajectory.complex = flow,
+      active.vertices = 3L,
+      canonical = canonical,
+      basin.colors = colors
+    ),
+    "active superlevel set is inconsistent"
+  )
+})
+
 test_that("topology events are exact, grouped, and deterministically ordered", {
   bundle <- phase5_panel_bundle("topology-events")
   state <- phase5_panel_state(bundle)

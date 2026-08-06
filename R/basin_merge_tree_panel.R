@@ -1708,6 +1708,209 @@ gflowui_basin_remap_event_index <- function(events, previous.height = NULL) {
   as.integer(events$event.index[[downward[[1L]]]])
 }
 
+.gflowui_basin_empty_ascent_flow_edges <- function() {
+  data.frame(
+    from = integer(),
+    to = integer(),
+    root.vertex = integer(),
+    basin.id = character(),
+    color = character(),
+    stringsAsFactors = FALSE
+  )
+}
+
+gflowui_basin_ascent_flow_edges <- function(
+    trajectory.complex,
+    active.vertices,
+    canonical,
+    basin.colors,
+    color.mode = c("basin", "single"),
+    common.color = "#4B5563",
+    forest.accessor = gflow::get.basin.trajectory.forest) {
+  color.mode <- match.arg(color.mode)
+  forest <- tryCatch(
+    forest.accessor(trajectory.complex, required = TRUE),
+    error = identity
+  )
+  if (inherits(forest, "error") ||
+      !is.list(forest) ||
+      !is.list(forest$next.vertex) ||
+      !is.list(forest$root.vertex)) {
+    .gflowui_basin_panel_stop(
+      "The canonical CLOSEST trajectory forest is unavailable."
+    )
+  }
+  next.vertex <- suppressWarnings(as.integer(forest$next.vertex$max))
+  root.vertex <- suppressWarnings(as.integer(forest$root.vertex$max))
+  n.vertices <- length(next.vertex)
+  if (!n.vertices ||
+      length(root.vertex) != n.vertices ||
+      any(!is.na(next.vertex) &
+        (next.vertex < 1L | next.vertex > n.vertices)) ||
+      anyNA(root.vertex) ||
+      any(root.vertex < 1L | root.vertex > n.vertices)) {
+    .gflowui_basin_panel_stop(
+      "The canonical maximum-direction trajectory forest is malformed."
+    )
+  }
+  active <- sort(unique(suppressWarnings(as.integer(active.vertices))))
+  active <- active[
+    is.finite(active) & active >= 1L & active <= n.vertices
+  ]
+  if (!length(active)) {
+    return(.gflowui_basin_empty_ascent_flow_edges())
+  }
+  from <- active[!is.na(next.vertex[active])]
+  if (!length(from)) {
+    return(.gflowui_basin_empty_ascent_flow_edges())
+  }
+  to <- next.vertex[from]
+  if (any(!to %in% active)) {
+    .gflowui_basin_panel_stop(
+      paste(
+        "The active superlevel set is inconsistent with its canonical",
+        "ascending CLOSEST trajectory forest."
+      )
+    )
+  }
+  roots <- root.vertex[from]
+  required.canonical <- c("basin.id", "extremum.vertex")
+  if (!is.data.frame(canonical) ||
+      !all(required.canonical %in% names(canonical))) {
+    .gflowui_basin_panel_stop(
+      "Canonical maximum-basin identities are unavailable."
+    )
+  }
+  canonical <- canonical[
+    !is.na(canonical$basin.id) &
+      nzchar(as.character(canonical$basin.id)),
+    required.canonical,
+    drop = FALSE
+  ]
+  root.index <- match(
+    roots,
+    suppressWarnings(as.integer(canonical$extremum.vertex))
+  )
+  if (anyNA(root.index)) {
+    .gflowui_basin_panel_stop(
+      "Trajectory roots do not map one-to-one to canonical maximum basins."
+    )
+  }
+  basin.ids <- as.character(canonical$basin.id[root.index])
+  common.color <- as.character(common.color %||% "#4B5563")
+  if (length(common.color) != 1L ||
+      is.na(common.color) ||
+      !nzchar(common.color)) {
+    common.color <- "#4B5563"
+  }
+  colors <- if (identical(color.mode, "single")) {
+    rep.int(common.color, length(from))
+  } else {
+    if (!is.character(basin.colors) || is.null(names(basin.colors))) {
+      .gflowui_basin_panel_stop(
+        "Assigned-basin connection colors must be a named character vector."
+      )
+    }
+    values <- unname(basin.colors[basin.ids])
+    if (anyNA(values) || any(!nzchar(values))) {
+      .gflowui_basin_panel_stop(
+        "Every trajectory root must have an assigned-basin connection color."
+      )
+    }
+    values
+  }
+  edges <- data.frame(
+    from = as.integer(from),
+    to = as.integer(to),
+    root.vertex = as.integer(roots),
+    basin.id = basin.ids,
+    color = as.character(colors),
+    stringsAsFactors = FALSE
+  )
+  edges[!duplicated(edges[c("from", "to")]), , drop = FALSE]
+}
+
+gflowui_basin_ascent_flow_plotly_spec <- function(
+    edges,
+    coordinates,
+    visible.vertices = seq_len(nrow(coordinates)),
+    color.mode = c("basin", "single"),
+    common.color = "#4B5563",
+    opacity = 0.25,
+    width = 1) {
+  color.mode <- match.arg(color.mode)
+  if (!is.data.frame(edges) ||
+      !all(c("from", "to", "color") %in% names(edges)) ||
+      !is.matrix(coordinates) ||
+      ncol(coordinates) < 3L) {
+    .gflowui_basin_panel_stop(
+      "Ascent-flow plotting requires valid edges and 3D coordinates."
+    )
+  }
+  visible <- unique(suppressWarnings(as.integer(visible.vertices)))
+  visible <- visible[
+    is.finite(visible) &
+      visible >= 1L &
+      visible <= nrow(coordinates)
+  ]
+  opacity <- suppressWarnings(as.numeric(opacity))
+  if (length(opacity) != 1L || !is.finite(opacity)) opacity <- 0.25
+  width <- suppressWarnings(as.numeric(width))
+  if (length(width) != 1L || !is.finite(width)) width <- 1
+  keep <- edges$from %in% visible & edges$to %in% visible
+  edges <- edges[keep, , drop = FALSE]
+  if (!nrow(edges)) {
+    return(list(
+      n.edges = 0L,
+      x = numeric(),
+      y = numeric(),
+      z = numeric(),
+      line = list(),
+      opacity = max(0, min(1, opacity))
+    ))
+  }
+  rows <- seq_len(nrow(edges))
+  xyz <- matrix(NA_real_, nrow = 3L * nrow(edges), ncol = 3L)
+  xyz[3L * rows - 2L, ] <- coordinates[edges$from, 1:3, drop = FALSE]
+  xyz[3L * rows - 1L, ] <- coordinates[edges$to, 1:3, drop = FALSE]
+  line <- list(
+    width = max(0.5, min(8, width))
+  )
+  if (identical(color.mode, "single")) {
+    color <- as.character(common.color %||% "#4B5563")
+    if (length(color) != 1L || is.na(color) || !nzchar(color)) {
+      color <- "#4B5563"
+    }
+    line$color <- color
+  } else {
+    palette <- unique(as.character(edges$color))
+    if (length(palette) == 1L) {
+      line$color <- palette[[1L]]
+    } else {
+      code <- match(as.character(edges$color), palette) - 1L
+      color.values <- rep(NA_real_, nrow(xyz))
+      color.values[3L * rows - 2L] <- code
+      color.values[3L * rows - 1L] <- code
+      maximum <- length(palette) - 1L
+      line$color <- color.values
+      line$cmin <- 0
+      line$cmax <- maximum
+      line$colorscale <- lapply(seq_along(palette), function(index) {
+        list((index - 1L) / maximum, palette[[index]])
+      })
+      line$showscale <- FALSE
+    }
+  }
+  list(
+    n.edges = nrow(edges),
+    x = xyz[, 1],
+    y = xyz[, 2],
+    z = xyz[, 3],
+    line = line,
+    opacity = max(0, min(1, opacity))
+  )
+}
+
 gflowui_basin_interactive_cut <- function(
     structure,
     events,
@@ -1768,7 +1971,7 @@ gflowui_basin_interactive_cut <- function(
   c(structure[c(
     "scope", "requested.scope.ids", "scope.ids", "component",
     "context.token", "continuation", "layout", "points", "vertical",
-    "horizontal"
+    "horizontal", "palette"
   )], list(
     events = events,
     event = event,
@@ -2093,6 +2296,22 @@ gflowui_basin_interactive_tree_data <- function(
             "marker sizes, label visibility, and label sizes. Merge plateaus",
             "can be shown only at the current h, accumulated after they have",
             "been reached, or hidden."
+          )
+        ),
+        shiny::p(
+          paste(
+            "Canonical ascent-flow connections optionally draw the fixed",
+            "maximum-direction CLOSEST trajectory forest on the linked 3D",
+            "graph. Every active nonmaximum vertex contributes exactly one",
+            "graph edge to its next ascending vertex; following those edges",
+            "terminates at that vertex's canonically assigned local maximum.",
+            "These are graph edges, not direct geometric rays to a maximum.",
+            "Exact equal-value plateaus use the connected-plateau routing",
+            "stored by gflow::create.basin.complex(). Assigned-basin colors",
+            "identify the destination maximum even after superlevel-set",
+            "components merge; one common color, opacity, and width are",
+            "available for a simpler overlay. The connection controls are",
+            "available only while h is linked to the 3D graph."
           )
         ),
         shiny::p(
