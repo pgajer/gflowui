@@ -157,6 +157,11 @@ app_server <- function(input, output, session) {
     basin_vertex_color = "#2563EB",
     basin_vertex_size = 1,
     link_graph = TRUE,
+    show_ascent_connections = FALSE,
+    connection_color_mode = "basin",
+    connection_color = "#4B5563",
+    connection_opacity = 0.25,
+    connection_width = 1,
     show_maxima_labels = TRUE,
     maxima_color = "#111827",
     maxima_size = 1,
@@ -198,6 +203,11 @@ app_server <- function(input, output, session) {
     basin_tree_interaction$basin_vertex_color <- "#2563EB"
     basin_tree_interaction$basin_vertex_size <- 1
     basin_tree_interaction$link_graph <- TRUE
+    basin_tree_interaction$show_ascent_connections <- FALSE
+    basin_tree_interaction$connection_color_mode <- "basin"
+    basin_tree_interaction$connection_color <- "#4B5563"
+    basin_tree_interaction$connection_opacity <- 0.25
+    basin_tree_interaction$connection_width <- 1
     basin_tree_interaction$show_maxima_labels <- TRUE
     basin_tree_interaction$maxima_color <- "#111827"
     basin_tree_interaction$maxima_size <- 1
@@ -9160,6 +9170,52 @@ app_server <- function(input, output, session) {
     if (!is.finite(basin.vertex.size)) {
       basin.vertex.size <- 1
     }
+    connection.color.mode <- as.character(
+      basin_tree_interaction$connection_color_mode %||% "basin"
+    )
+    if (!connection.color.mode %in% c("basin", "single")) {
+      connection.color.mode <- "basin"
+    }
+    connection.color <- as.character(
+      basin_tree_interaction$connection_color %||% "#4B5563"
+    )
+    if (length(connection.color) != 1L ||
+        is.na(connection.color) ||
+        !nzchar(connection.color)) {
+      connection.color <- "#4B5563"
+    }
+    connection.opacity <- suppressWarnings(as.numeric(
+      basin_tree_interaction$connection_opacity %||% 0.25
+    ))
+    if (!is.finite(connection.opacity)) connection.opacity <- 0.25
+    connection.opacity <- max(0, min(1, connection.opacity))
+    connection.width <- suppressWarnings(as.numeric(
+      basin_tree_interaction$connection_width %||% 1
+    ))
+    if (!is.finite(connection.width)) connection.width <- 1
+    connection.width <- max(0.5, min(8, connection.width))
+    show.ascent.connections <- isTRUE(
+      basin_tree_interaction$show_ascent_connections
+    )
+    ascent.edges <- .gflowui_basin_empty_ascent_flow_edges()
+    if (show.ascent.connections && length(active)) {
+      result <- basin_result()
+      if (!is.list(result) ||
+          !inherits(result$basin, "basin_complex")) {
+        stop(
+          "The canonical trajectory-flow basin complex is unavailable.",
+          call. = FALSE
+        )
+      }
+      ascent.edges <- gflowui_basin_ascent_flow_edges(
+        trajectory.complex = result$basin,
+        active.vertices = active,
+        canonical = data$canonical,
+        basin.colors = tree$palette,
+        color.mode = connection.color.mode,
+        common.color = connection.color
+      )
+    }
     overlay <- list(
       tree = tree,
       active.vertices = sort(unique(active)),
@@ -9173,6 +9229,14 @@ app_server <- function(input, output, session) {
         basin_tree_interaction$basin_vertex_color %||% "#2563EB"
       ),
       basin.vertex.size = max(0.5, min(3, basin.vertex.size)),
+      ascent.flow = list(
+        show = show.ascent.connections,
+        edges = ascent.edges,
+        color.mode = connection.color.mode,
+        common.color = connection.color,
+        opacity = connection.opacity,
+        width = connection.width
+      ),
       show.maxima.labels = isTRUE(
         basin_tree_interaction$show_maxima_labels
       ),
@@ -11259,6 +11323,21 @@ app_server <- function(input, output, session) {
         basin_tree_interaction$basin_vertex_size %||% 1
       ),
       link.graph = isTRUE(basin_tree_interaction$link_graph),
+      show.ascent.connections = isTRUE(
+        basin_tree_interaction$show_ascent_connections
+      ),
+      connection.color.mode = as.character(
+        basin_tree_interaction$connection_color_mode %||% "basin"
+      ),
+      connection.color = as.character(
+        basin_tree_interaction$connection_color %||% "#4B5563"
+      ),
+      connection.opacity = as.numeric(
+        basin_tree_interaction$connection_opacity %||% 0.25
+      ),
+      connection.width = as.numeric(
+        basin_tree_interaction$connection_width %||% 1
+      ),
       merge.scope = as.character(
         basin_tree_interaction$merge_scope %||% "current"
       ),
@@ -11706,6 +11785,67 @@ app_server <- function(input, output, session) {
               max = 3,
               step = 0.1,
               value = interaction.settings$merge.label.size
+            )
+          ),
+          shiny::conditionalPanel(
+            condition = "input.basin_tree_link_graph",
+            shiny::div(
+              class = "gf-basin-tree-connection-controls",
+              shiny::h6("Canonical ascent-flow connections"),
+              shiny::checkboxInput(
+                "basin_tree_show_ascent_connections",
+                paste(
+                  "Show each active nonmaximum vertex's next",
+                  "CLOSEST-ascent connection"
+                ),
+                value = interaction.settings$show.ascent.connections
+              ),
+              shiny::conditionalPanel(
+                condition = "input.basin_tree_show_ascent_connections",
+                shiny::div(
+                  class = "gf-basin-tree-control-grid",
+                  shiny::selectInput(
+                    "basin_tree_connection_color_mode",
+                    "Connection colors",
+                    choices = c(
+                      "Match assigned basin colors" = "basin",
+                      "One common color" = "single"
+                    ),
+                    selected =
+                      interaction.settings$connection.color.mode
+                  ),
+                  shiny::conditionalPanel(
+                    condition = paste(
+                      "input.basin_tree_connection_color_mode ===",
+                      "'single'"
+                    ),
+                    shiny::selectInput(
+                      "basin_tree_connection_color",
+                      "Connection color",
+                      choices = basin_color_choices(
+                        interaction.settings$connection.color
+                      ),
+                      selected = interaction.settings$connection.color
+                    )
+                  ),
+                  shiny::sliderInput(
+                    "basin_tree_connection_opacity",
+                    "Connection opacity",
+                    min = 0,
+                    max = 1,
+                    step = 0.05,
+                    value = interaction.settings$connection.opacity
+                  ),
+                  shiny::sliderInput(
+                    "basin_tree_connection_width",
+                    "Connection width",
+                    min = 0.5,
+                    max = 8,
+                    step = 0.25,
+                    value = interaction.settings$connection.width
+                  )
+                )
+              )
             )
           )
         ),
@@ -12373,6 +12513,48 @@ app_server <- function(input, output, session) {
     basin_tree_interaction$link_graph <- isTRUE(
       input$basin_tree_link_graph
     )
+  }, ignoreInit = TRUE)
+
+  shiny::observeEvent(input$basin_tree_show_ascent_connections, {
+    basin_tree_interaction$show_ascent_connections <- isTRUE(
+      input$basin_tree_show_ascent_connections
+    )
+  }, ignoreInit = TRUE)
+
+  shiny::observeEvent(input$basin_tree_connection_color_mode, {
+    value <- as.character(
+      input$basin_tree_connection_color_mode %||% "basin"
+    )
+    if (value %in% c("basin", "single")) {
+      basin_tree_interaction$connection_color_mode <- value
+    }
+  }, ignoreInit = TRUE)
+
+  shiny::observeEvent(input$basin_tree_connection_color, {
+    value <- as.character(input$basin_tree_connection_color %||% "")
+    if (length(value) == 1L && !is.na(value) && nzchar(value)) {
+      basin_tree_interaction$connection_color <- value
+    }
+  }, ignoreInit = TRUE)
+
+  shiny::observeEvent(input$basin_tree_connection_opacity, {
+    value <- suppressWarnings(as.numeric(
+      input$basin_tree_connection_opacity
+    ))
+    if (is.finite(value)) {
+      basin_tree_interaction$connection_opacity <-
+        max(0, min(1, value))
+    }
+  }, ignoreInit = TRUE)
+
+  shiny::observeEvent(input$basin_tree_connection_width, {
+    value <- suppressWarnings(as.numeric(
+      input$basin_tree_connection_width
+    ))
+    if (is.finite(value)) {
+      basin_tree_interaction$connection_width <-
+        max(0.5, min(8, value))
+    }
   }, ignoreInit = TRUE)
 
   shiny::observeEvent(input$basin_tree_merge_scope, {
@@ -14044,6 +14226,36 @@ app_server <- function(input, output, session) {
       p <- plotly::plot_ly(source = reference_plotly_source)
 
       if (isTRUE(tree.linked)) {
+        ascent.flow <- tree.overlay$ascent.flow
+        if (is.list(ascent.flow) &&
+            isTRUE(ascent.flow$show) &&
+            is.data.frame(ascent.flow$edges) &&
+            nrow(ascent.flow$edges)) {
+          ascent.spec <- gflowui_basin_ascent_flow_plotly_spec(
+            edges = ascent.flow$edges,
+            coordinates = coords,
+            visible.vertices = idx,
+            color.mode = ascent.flow$color.mode %||% "basin",
+            common.color = ascent.flow$common.color %||% "#4B5563",
+            opacity = ascent.flow$opacity %||% 0.25,
+            width = ascent.flow$width %||% 1
+          )
+          if (ascent.spec$n.edges > 0L) {
+            p <- p %>%
+              plotly::add_trace(
+                type = "scatter3d",
+                mode = "lines",
+                x = ascent.spec$x,
+                y = ascent.spec$y,
+                z = ascent.spec$z,
+                name = "Canonical CLOSEST ascent flow",
+                hoverinfo = "skip",
+                line = ascent.spec$line,
+                opacity = ascent.spec$opacity,
+                showlegend = FALSE
+              )
+          }
+        }
         inactive.rows <- !(
           plot_data$vertex %in% tree.overlay$active.vertices
         )
@@ -15404,6 +15616,62 @@ app_server <- function(input, output, session) {
       tree_layers <- list()
       tree_base_colors <- NULL
       if (isTRUE(tree.linked)) {
+        ascent.flow <- tree.overlay$ascent.flow
+        if (is.list(ascent.flow) &&
+            isTRUE(ascent.flow$show) &&
+            is.data.frame(ascent.flow$edges) &&
+            nrow(ascent.flow$edges)) {
+          from.view <- match(ascent.flow$edges$from, keep_idx)
+          to.view <- match(ascent.flow$edges$to, keep_idx)
+          keep.connections <- is.finite(from.view) &
+            is.finite(to.view) &
+            from.view >= 1L & from.view <= nn_view &
+            to.view >= 1L & to.view <= nn_view
+          if (any(keep.connections)) {
+            connection.segments <- cbind(
+              as.integer(from.view[keep.connections]),
+              as.integer(to.view[keep.connections])
+            )
+            connection.colors <- grDevices::adjustcolor(
+              as.character(
+                ascent.flow$edges$color[keep.connections]
+              ),
+              alpha.f = max(
+                0,
+                min(1, as.numeric(ascent.flow$opacity %||% 0.25))
+              )
+            )
+            tree_layers[[length(tree_layers) + 1L]] <- list(
+              fun = function(
+                  ctx,
+                  connection_segments,
+                  connection_colors,
+                  connection_width) {
+                segments <- as.matrix(connection_segments)
+                if (!nrow(segments)) {
+                  return(invisible(NULL))
+                }
+                vertices <- as.vector(t(segments))
+                rgl::segments3d(
+                  ctx$X[vertices, , drop = FALSE],
+                  col = rep(connection_colors, each = 2L),
+                  lwd = max(0.5, connection_width),
+                  lit = FALSE
+                )
+                invisible(NULL)
+              },
+              args = list(
+                connection_segments = connection.segments,
+                connection_colors = connection.colors,
+                connection_width = max(
+                  0.5,
+                  min(8, as.numeric(ascent.flow$width %||% 1))
+                )
+              ),
+              with_ctx = TRUE
+            )
+          }
+        }
         tree_base_colors <- tree.overlay$vertex.colors[keep_idx]
         active.view <- keep_idx %in% tree.overlay$active.vertices
         if (any(!active.view)) {

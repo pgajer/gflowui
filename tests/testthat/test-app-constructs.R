@@ -1262,6 +1262,11 @@ test_that("basin server invalidates changed fields and graph identities", {
       "basin_tree_basin_vertex_color",
       "basin_tree_basin_vertex_size",
       "basin_tree_link_graph",
+      "basin_tree_show_ascent_connections",
+      "basin_tree_connection_color_mode",
+      "basin_tree_connection_color",
+      "basin_tree_connection_opacity",
+      "basin_tree_connection_width",
       "basin_tree_merge_scope",
       "basin_tree_show_maxima_labels",
       "basin_tree_maxima_color",
@@ -1303,6 +1308,14 @@ test_that("basin server invalidates changed fields and graph identities", {
     expect_true(all(
       initial.overlay$vertex.colors == initial.overlay$inactive.color
     ))
+    expect_false(initial.overlay$ascent.flow$show)
+    expect_identical(
+      initial.overlay$ascent.flow$color.mode,
+      "basin"
+    )
+    expect_equal(initial.overlay$ascent.flow$opacity, 0.25)
+    expect_equal(initial.overlay$ascent.flow$width, 1)
+    expect_identical(nrow(initial.overlay$ascent.flow$edges), 0L)
     initial.domain <- basin_tree_event_domain()
     expect_lt(nrow(initial.domain$events), 100L)
     session$setInputs(basin_tree_event_commit = list(
@@ -1431,6 +1444,79 @@ test_that("basin server invalidates changed fields and graph identities", {
     floor.tree <- basin_tree_interactive_data()
     expect_true(floor.tree$event$component.floor[[1L]])
     expect_identical(floor.tree$n.active.vertices, 6529L)
+    shell.renders.before.connections <-
+      basin_tree_event_metrics$shell_render_count
+    cut.computes.before.connections <-
+      basin_tree_event_metrics$cut_compute_count
+    session$setInputs(basin_tree_show_ascent_connections = TRUE)
+    session$flushReact()
+    floor.overlay <- basin_tree_graph_overlay()
+    forest <- gflow::get.basin.trajectory.forest(
+      first$basin,
+      required = TRUE
+    )
+    expected.connections <- sum(!is.na(forest$next.vertex$max))
+    expect_true(floor.overlay$ascent.flow$show)
+    expect_identical(
+      nrow(floor.overlay$ascent.flow$edges),
+      expected.connections
+    )
+    expect_identical(
+      anyDuplicated(
+        floor.overlay$ascent.flow$edges[c("from", "to")]
+      ),
+      0L
+    )
+    expect_true(all(
+      floor.overlay$ascent.flow$edges$from %in%
+        floor.overlay$active.vertices
+    ))
+    expect_true(all(
+      floor.overlay$ascent.flow$edges$to %in%
+        floor.overlay$active.vertices
+    ))
+    expect_true(all(
+      floor.overlay$ascent.flow$edges$root.vertex %in%
+        first$basin$basin.table$extremum.vertex[
+          first$basin$basin.table$type == "max"
+        ]
+    ))
+    expect_identical(
+      basin_tree_event_metrics$cut_compute_count,
+      cut.computes.before.connections
+    )
+    expect_identical(
+      basin_tree_event_metrics$shell_render_count,
+      shell.renders.before.connections
+    )
+    session$setInputs(
+      basin_tree_connection_color_mode = "single",
+      basin_tree_connection_color = "#7C3AED",
+      basin_tree_connection_opacity = 0.4,
+      basin_tree_connection_width = 2.25
+    )
+    session$flushReact()
+    single.connection.overlay <- basin_tree_graph_overlay()
+    expect_identical(
+      unique(single.connection.overlay$ascent.flow$edges$color),
+      "#7C3AED"
+    )
+    expect_equal(
+      single.connection.overlay$ascent.flow$opacity,
+      0.4
+    )
+    expect_equal(
+      single.connection.overlay$ascent.flow$width,
+      2.25
+    )
+    expect_identical(
+      basin_tree_event_metrics$cut_compute_count,
+      cut.computes.before.connections
+    )
+    expect_identical(
+      basin_tree_event_metrics$shell_render_count,
+      shell.renders.before.connections
+    )
     session$setInputs(
       basin_tree_scope = "proposal",
       basin_tree_component_colors = "distinct"

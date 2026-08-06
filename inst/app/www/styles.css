@@ -1296,6 +1296,22 @@ body.gf-general-inspector-resizing {
   font-weight: 650;
 }
 
+.gf-basin-tree-connection-controls {
+  margin-top: 0.75rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid #dbe3ea;
+}
+
+.gf-basin-tree-connection-controls h6 {
+  margin: 0 0 0.35rem;
+  color: #334155;
+  font-weight: 650;
+}
+
+.gf-basin-tree-connection-controls > .checkbox {
+  margin: 0;
+}
+
 .gf-basin-tree-interactive-frame {
   display: flex;
   flex-direction: column;
