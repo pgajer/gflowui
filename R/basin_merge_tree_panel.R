@@ -1911,6 +1911,54 @@ gflowui_basin_ascent_flow_plotly_spec <- function(
   )
 }
 
+gflowui_basin_maximum_label_annotations <- function(
+    vertices,
+    labels,
+    coordinates,
+    font.size,
+    color) {
+  vertices <- suppressWarnings(as.integer(vertices))
+  labels <- as.character(labels)
+  if (!is.matrix(coordinates) || ncol(coordinates) < 3L ||
+      length(vertices) != length(labels)) {
+    .gflowui_basin_panel_stop(
+      "Maximum-label annotations require matched vertices, labels, and 3D coordinates."
+    )
+  }
+  keep <- is.finite(vertices) &
+    vertices >= 1L &
+    vertices <= nrow(coordinates) &
+    !is.na(labels) &
+    nzchar(labels)
+  vertices <- vertices[keep]
+  labels <- labels[keep]
+  font.size <- suppressWarnings(as.numeric(font.size))
+  if (length(font.size) != 1L || !is.finite(font.size) || font.size <= 0) {
+    font.size <- 9
+  }
+  color <- as.character(color)
+  if (length(color) != 1L || is.na(color) || !nzchar(color)) {
+    color <- "#111827"
+  }
+  lapply(seq_along(vertices), function(index) {
+    vertex <- vertices[[index]]
+    list(
+      x = unname(coordinates[vertex, 1]),
+      y = unname(coordinates[vertex, 2]),
+      z = unname(coordinates[vertex, 3]),
+      text = labels[[index]],
+      showarrow = FALSE,
+      xanchor = "center",
+      yanchor = "bottom",
+      yshift = 6,
+      font = list(
+        size = font.size,
+        color = color
+      )
+    )
+  })
+}
+
 gflowui_basin_interactive_cut <- function(
     structure,
     events,

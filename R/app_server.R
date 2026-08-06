@@ -14531,6 +14531,7 @@ app_server <- function(input, output, session) {
       }
 
       basin_source <- basin_source_state()
+      tree.maximum.annotations <- list()
       show_density_maxima <- isTRUE(basin_display_settings$show_maxima)
       show_density_minima <- isTRUE(basin_display_settings$show_minima)
       if (!isTRUE(tree.linked) &&
@@ -14633,22 +14634,30 @@ app_server <- function(input, output, session) {
         ]
         if (nrow(maxima)) {
           label.active <- isTRUE(tree.overlay$show.maxima.labels)
+          label.font.size <- max(
+            9,
+            point_size * 2.2 * tree.overlay$maxima.label.size
+          )
+          if (label.active) {
+            tree.maximum.annotations <-
+              gflowui_basin_maximum_label_annotations(
+                vertices = maxima$extremum.vertex,
+                labels = maxima$label,
+                coordinates = coords,
+                font.size = label.font.size,
+                color = tree.overlay$maxima.color
+              )
+          }
           p <- p %>%
             plotly::add_trace(
               type = "scatter3d",
-              mode = if (label.active) {
-                "markers+text"
-              } else {
-                "markers"
-              },
+              mode = "markers",
               x = coords[maxima$extremum.vertex, 1],
               y = coords[maxima$extremum.vertex, 2],
               z = coords[maxima$extremum.vertex, 3],
               key = maxima$extremum.vertex,
               customdata = maxima$extremum.vertex,
               name = "Active local maxima",
-              text = if (label.active) maxima$label else NULL,
-              textposition = "top center",
               hovertext = sprintf(
                 "%s<br>maximum vertex=%d<br>peak=%s",
                 maxima$label,
@@ -14665,18 +14674,6 @@ app_server <- function(input, output, session) {
                 symbol = "diamond",
                 line = list(color = "#FFFFFF", width = 1.3)
               ),
-              textfont = if (label.active) {
-                list(
-                  size = max(
-                    9,
-                    point_size * 2.2 *
-                      tree.overlay$maxima.label.size
-                  ),
-                  color = tree.overlay$maxima.color
-                )
-              } else {
-                NULL
-              },
               showlegend = TRUE
             )
         }
@@ -15181,6 +15178,9 @@ app_server <- function(input, output, session) {
               yaxis = list(title = "", showgrid = FALSE, zeroline = FALSE, visible = FALSE),
               zaxis = list(title = "", showgrid = FALSE, zeroline = FALSE, visible = FALSE)
             )
+            if (length(tree.maximum.annotations)) {
+              sc$annotations <- tree.maximum.annotations
+            }
             saved_cam <- isolate(reference_plot_camera_state())
             if (is.list(saved_cam)) {
               sc$camera <- saved_cam
