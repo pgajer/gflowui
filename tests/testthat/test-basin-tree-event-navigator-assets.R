@@ -35,6 +35,14 @@ test_that("event navigator previews locally and commits through one structured i
   )
   expect_match(javascript, "Release to apply to the graph", fixed = TRUE)
   expect_match(javascript, "aria-valuenow", fixed = TRUE)
+  expect_match(
+    javascript,
+    "gflowui-basin-ascent-flow-style",
+    fixed = TRUE
+  )
+  expect_match(javascript, "applyAscentFlowStyle", fixed = TRUE)
+  expect_match(javascript, "window.Plotly.restyle", fixed = TRUE)
+  expect_match(javascript, "canonical_ascent_flow", fixed = TRUE)
 })
 
 test_that("event navigator styling is horizontal and responsive", {

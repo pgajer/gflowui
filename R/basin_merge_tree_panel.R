@@ -2307,10 +2307,11 @@ gflowui_basin_interactive_tree_data <- function(
             "terminates at that vertex's canonically assigned local maximum.",
             "These are graph edges, not direct geometric rays to a maximum.",
             "Exact equal-value plateaus use the connected-plateau routing",
-            "stored by gflow::create.basin.complex(). Assigned-basin colors",
-            "identify the destination maximum even after superlevel-set",
-            "components merge; one common color, opacity, and width are",
-            "available for a simpler overlay. The connection controls are",
+            "stored by gflow::create.basin.complex(). Connection color,",
+            "opacity, and width style this fixed forest without changing",
+            "its trajectories or basin assignments. These style updates are",
+            "applied directly to the existing 3D layer rather than rebuilding",
+            "the graph. The connection controls are",
             "available only while h is linked to the 3D graph."
           )
         ),
