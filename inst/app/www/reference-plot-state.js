@@ -43,18 +43,31 @@
     return null;
   }
 
+  function clearReferencePlotListeners(graph) {
+    if (!graph || typeof graph.removeAllListeners !== "function") {
+      return;
+    }
+    try {
+      graph.removeAllListeners();
+    } catch (error) {
+      // A replacement may race with Plotly's disposal of the old graph div.
+    }
+    graph.__gflowuiCameraHooksBound = false;
+  }
+
   function preserveReferenceCamera(event) {
     if (!event || event.name !== "reference_plot") {
       return;
     }
+    var graph = document.getElementById("reference_plot");
     var camera = currentReferenceCamera();
     var payload = plotlyPayload(event.value);
-    if (!camera || !payload || !payload.layout) {
-      return;
+    if (camera && payload && payload.layout) {
+      payload.layout.scene = payload.layout.scene || {};
+      payload.layout.scene.camera = camera;
+      window.__gflowuiReferenceCamera = cloneCamera(camera);
     }
-    payload.layout.scene = payload.layout.scene || {};
-    payload.layout.scene.camera = camera;
-    window.__gflowuiReferenceCamera = cloneCamera(camera);
+    clearReferencePlotListeners(graph);
   }
 
   function bindReferenceCameraPreserver() {

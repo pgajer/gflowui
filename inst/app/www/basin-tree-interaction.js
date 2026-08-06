@@ -73,8 +73,8 @@
     width = Math.max(0.5, Math.min(8, Number(payload.width)));
     window.Plotly.restyle(plot, {
       "line.color": payload.color,
-      "line.width": Number.isFinite(width) ? width : 1,
-      opacity: Number.isFinite(opacity) ? opacity : 0.25
+      "line.width": Number.isFinite(width) ? width : 2,
+      opacity: Number.isFinite(opacity) ? opacity : 1
     }, [traceIndex]);
   }
 
