@@ -1288,7 +1288,6 @@ test_that("basin server invalidates changed fields and graph identities", {
       "basin_tree_basin_vertex_size",
       "basin_tree_link_graph",
       "basin_tree_show_ascent_connections",
-      "basin_tree_connection_color_mode",
       "basin_tree_connection_color",
       "basin_tree_connection_opacity",
       "basin_tree_connection_width",
@@ -1317,6 +1316,25 @@ test_that("basin server invalidates changed fields and graph identities", {
         info = control.id
       )
     }
+    expect_match(tree.shell, "Connection color", fixed = TRUE)
+    expect_match(
+      tree.shell,
+      '<option value="#2563EB" selected>Blue</option>',
+      fixed = TRUE
+    )
+    expect_match(tree.shell, ">Crimson</option>", fixed = TRUE)
+    expect_match(tree.shell, ">Purple</option>", fixed = TRUE)
+    expect_match(tree.shell, ">Black</option>", fixed = TRUE)
+    expect_false(grepl(
+      "basin_tree_connection_color_mode",
+      tree.shell,
+      fixed = TRUE
+    ))
+    expect_false(grepl(
+      "Match assigned basin colors",
+      tree.shell,
+      fixed = TRUE
+    ))
     panel.model <- basin_merge_tree_model_for_state(analysis, first)
     expect_identical(panel.model$direction.maximum.count, 352L)
     expect_identical(panel.model$component.maximum.count, 352L)
@@ -1337,13 +1355,11 @@ test_that("basin server invalidates changed fields and graph identities", {
       initial.overlay$vertex.colors == initial.overlay$inactive.color
     ))
     expect_false(initial.overlay$ascent.flow$show)
-    expect_identical(
-      initial.overlay$ascent.flow$color.mode,
-      "basin"
-    )
-    expect_equal(initial.overlay$ascent.flow$opacity, 0.25)
-    expect_equal(initial.overlay$ascent.flow$width, 1)
     expect_identical(nrow(initial.overlay$ascent.flow$edges), 0L)
+    initial.connection.style <- basin_tree_connection_style()
+    expect_identical(initial.connection.style$color, "#2563EB")
+    expect_equal(initial.connection.style$opacity, 0.25)
+    expect_equal(initial.connection.style$width, 1)
     expect_false(basin_plot_workspace_open())
     session$setInputs(basin_plot_workspace_open = TRUE)
     session$flushReact()
@@ -1548,25 +1564,34 @@ test_that("basin server invalidates changed fields and graph identities", {
       basin_tree_event_metrics$shell_render_count,
       shell.renders.before.connections
     )
+    expect_identical(
+      unique(floor.overlay$ascent.flow$edges$color),
+      "#2563EB"
+    )
+    overlay.computes.before.connection.style <-
+      basin_tree_event_metrics$graph_overlay_compute_count
     session$setInputs(
-      basin_tree_connection_color_mode = "single",
       basin_tree_connection_color = "#7C3AED",
       basin_tree_connection_opacity = 0.4,
       basin_tree_connection_width = 2.25
     )
     session$flushReact()
-    single.connection.overlay <- basin_tree_graph_overlay()
+    connection.style <- basin_tree_connection_style()
     expect_identical(
-      unique(single.connection.overlay$ascent.flow$edges$color),
+      connection.style$color,
       "#7C3AED"
     )
     expect_equal(
-      single.connection.overlay$ascent.flow$opacity,
+      connection.style$opacity,
       0.4
     )
     expect_equal(
-      single.connection.overlay$ascent.flow$width,
+      connection.style$width,
       2.25
+    )
+    expect_identical(
+      basin_tree_event_metrics$graph_overlay_compute_count,
+      overlay.computes.before.connection.style
     )
     expect_identical(
       basin_tree_event_metrics$cut_compute_count,

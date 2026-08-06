@@ -49,6 +49,35 @@
     });
   }
 
+  function applyAscentFlowStyle(payload) {
+    var plot;
+    var traceIndex;
+    var opacity;
+    var width;
+    if (!payload) {
+      return;
+    }
+    plot = document.getElementById(payload.plot_id || "reference_plot");
+    if (!plot || !Array.isArray(plot.data) || !window.Plotly ||
+        typeof window.Plotly.restyle !== "function") {
+      return;
+    }
+    traceIndex = plot.data.findIndex(function (trace) {
+      return trace && trace.meta &&
+        trace.meta.gflowui_layer === "canonical_ascent_flow";
+    });
+    if (traceIndex < 0) {
+      return;
+    }
+    opacity = Math.max(0, Math.min(1, Number(payload.opacity)));
+    width = Math.max(0.5, Math.min(8, Number(payload.width)));
+    window.Plotly.restyle(plot, {
+      "line.color": payload.color,
+      "line.width": Number.isFinite(width) ? width : 1,
+      opacity: Number.isFinite(opacity) ? opacity : 0.25
+    }, [traceIndex]);
+  }
+
   function setButtonState(index, count) {
     var previous = document.getElementById("basin_tree_previous_event");
     var next = document.getElementById("basin_tree_next_event");
@@ -232,6 +261,10 @@
     window.Shiny.addCustomMessageHandler(
       "gflowui-basin-tree-event-domain",
       applyPayload
+    );
+    window.Shiny.addCustomMessageHandler(
+      "gflowui-basin-ascent-flow-style",
+      applyAscentFlowStyle
     );
     state.messageHandlerRegistered = true;
   }
