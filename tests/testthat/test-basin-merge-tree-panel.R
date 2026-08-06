@@ -1098,6 +1098,8 @@ test_that("ascent-flow connections reuse the canonical CLOSEST forest", {
     common.color = "#111827"
   )
   expect_identical(single.spec$line$color, "#111827")
+  expect_equal(single.spec$opacity, 1)
+  expect_equal(single.spec$line$width, 2)
 
   expect_error(
     gflowui:::gflowui_basin_ascent_flow_edges(
