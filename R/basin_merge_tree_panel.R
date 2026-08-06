@@ -1836,8 +1836,8 @@ gflowui_basin_ascent_flow_plotly_spec <- function(
     visible.vertices = seq_len(nrow(coordinates)),
     color.mode = c("basin", "single"),
     common.color = "#4B5563",
-    opacity = 0.25,
-    width = 1) {
+    opacity = 1,
+    width = 2) {
   color.mode <- match.arg(color.mode)
   if (!is.data.frame(edges) ||
       !all(c("from", "to", "color") %in% names(edges)) ||
@@ -1854,9 +1854,9 @@ gflowui_basin_ascent_flow_plotly_spec <- function(
       visible <= nrow(coordinates)
   ]
   opacity <- suppressWarnings(as.numeric(opacity))
-  if (length(opacity) != 1L || !is.finite(opacity)) opacity <- 0.25
+  if (length(opacity) != 1L || !is.finite(opacity)) opacity <- 1
   width <- suppressWarnings(as.numeric(width))
-  if (length(width) != 1L || !is.finite(width)) width <- 1
+  if (length(width) != 1L || !is.finite(width)) width <- 2
   keep <- edges$from %in% visible & edges$to %in% visible
   edges <- edges[keep, , drop = FALSE]
   if (!nrow(edges)) {

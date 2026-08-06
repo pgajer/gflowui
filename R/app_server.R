@@ -160,8 +160,8 @@ app_server <- function(input, output, session) {
     link_graph = TRUE,
     show_ascent_connections = FALSE,
     connection_color = "#2563EB",
-    connection_opacity = 0.25,
-    connection_width = 1,
+    connection_opacity = 1,
+    connection_width = 2,
     show_maxima_labels = TRUE,
     maxima_color = "#111827",
     maxima_size = 1,
@@ -205,8 +205,8 @@ app_server <- function(input, output, session) {
     basin_tree_interaction$link_graph <- TRUE
     basin_tree_interaction$show_ascent_connections <- FALSE
     basin_tree_interaction$connection_color <- "#2563EB"
-    basin_tree_interaction$connection_opacity <- 0.25
-    basin_tree_interaction$connection_width <- 1
+    basin_tree_interaction$connection_opacity <- 1
+    basin_tree_interaction$connection_width <- 2
     basin_tree_interaction$show_maxima_labels <- TRUE
     basin_tree_interaction$maxima_color <- "#111827"
     basin_tree_interaction$maxima_size <- 1
@@ -227,12 +227,12 @@ app_server <- function(input, output, session) {
     }
     opacity <- suppressWarnings(as.numeric(shiny::isolate(
       basin_tree_interaction$connection_opacity
-    ) %||% 0.25))
-    if (length(opacity) != 1L || !is.finite(opacity)) opacity <- 0.25
+    ) %||% 1))
+    if (length(opacity) != 1L || !is.finite(opacity)) opacity <- 1
     width <- suppressWarnings(as.numeric(shiny::isolate(
       basin_tree_interaction$connection_width
-    ) %||% 1))
-    if (length(width) != 1L || !is.finite(width)) width <- 1
+    ) %||% 2))
+    if (length(width) != 1L || !is.finite(width)) width <- 2
     list(
       color = color,
       opacity = max(0, min(1, opacity)),
@@ -11334,10 +11334,10 @@ app_server <- function(input, output, session) {
         basin_tree_interaction$connection_color %||% "#2563EB"
       ),
       connection.opacity = as.numeric(
-        basin_tree_interaction$connection_opacity %||% 0.25
+        basin_tree_interaction$connection_opacity %||% 1
       ),
       connection.width = as.numeric(
-        basin_tree_interaction$connection_width %||% 1
+        basin_tree_interaction$connection_width %||% 2
       ),
       merge.scope = as.character(
         basin_tree_interaction$merge_scope %||% "current"
