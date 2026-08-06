@@ -1691,6 +1691,26 @@ body.gf-general-inspector-resizing {
   box-shadow: 0 6px 20px rgba(26, 47, 51, 0.06);
 }
 
+.gf-basin-plot-workspace-summary {
+  cursor: pointer;
+  color: #1e3a8a;
+}
+
+.gf-basin-plot-workspace-summary::marker {
+  color: #2563eb;
+}
+
+.gf-basin-plot-workspace-heading {
+  font-size: 0.95rem;
+  font-weight: 650;
+}
+
+.gf-basin-plot-workspace-body {
+  margin-top: 0.65rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid rgba(37, 99, 235, 0.16);
+}
+
 .gf-basin-plot-workspace-header,
 .gf-basin-plot-card-header {
   display: flex;
