@@ -1098,18 +1098,43 @@ test_that("basin server invalidates changed fields and graph identities", {
       'aria-live="polite"',
       fixed = TRUE
     )
-    plot.shell <- htmltools::renderTags(
-      output$basin_plot_workspace_ui
-    )$html
-    expect_match(plot.shell, 'role="region"', fixed = TRUE)
+    workspace.details <- regmatches(
+      tree.shell,
+      regexpr(
+        '<details id="gf_basin_plot_workspace"[^>]*>',
+        tree.shell,
+        perl = TRUE
+      )
+    )
+    expect_length(workspace.details, 1L)
     expect_match(
-      plot.shell,
+      workspace.details,
+      'class="gf-basin-plot-workspace"',
+      fixed = TRUE
+    )
+    expect_match(workspace.details, 'role="region"', fixed = TRUE)
+    expect_match(
+      workspace.details,
       'aria-labelledby="gf_basin_plot_workspace_heading"',
       fixed = TRUE
     )
+    expect_false(grepl(" open", workspace.details, fixed = TRUE))
+    expect_match(
+      workspace.details,
+      "basin_plot_workspace_open",
+      fixed = TRUE
+    )
+    expect_match(
+      tree.shell,
+      'id="gf_basin_plot_workspace_heading"',
+      fixed = TRUE
+    )
+    plot.shell <- htmltools::renderTags(
+      output$basin_plot_workspace_ui
+    )$html
     expect_match(
       plot.shell,
-      'id="gf_basin_plot_workspace_heading"',
+      'class="gf-basin-plot-workspace-body"',
       fixed = TRUE
     )
     inspector.shell <- htmltools::renderTags(
@@ -1300,6 +1325,9 @@ test_that("basin server invalidates changed fields and graph identities", {
     initial.static.builds <- basin_tree_event_metrics$static_build_count
     initial.cut.computes <- basin_tree_event_metrics$cut_compute_count
     initial.shell.renders <- basin_tree_event_metrics$shell_render_count
+    initial.tree.renders <- basin_tree_event_metrics$tree_render_count
+    initial.overlay.computes <-
+      basin_tree_event_metrics$graph_overlay_compute_count
     expect_identical(initial.tree$scope, "proposal")
     expect_identical(initial.tree$event.index, 0L)
     expect_identical(initial.tree$n.active.vertices, 0L)
@@ -1316,6 +1344,37 @@ test_that("basin server invalidates changed fields and graph identities", {
     expect_equal(initial.overlay$ascent.flow$opacity, 0.25)
     expect_equal(initial.overlay$ascent.flow$width, 1)
     expect_identical(nrow(initial.overlay$ascent.flow$edges), 0L)
+    expect_false(basin_plot_workspace_open())
+    session$setInputs(basin_plot_workspace_open = TRUE)
+    session$flushReact()
+    expect_true(basin_plot_workspace_open())
+    expect_identical(
+      basin_tree_event_metrics$shell_render_count,
+      initial.shell.renders
+    )
+    expect_identical(
+      basin_tree_event_metrics$static_build_count,
+      initial.static.builds
+    )
+    expect_identical(
+      basin_tree_event_metrics$cut_compute_count,
+      initial.cut.computes
+    )
+    expect_identical(
+      basin_tree_event_metrics$tree_render_count,
+      initial.tree.renders
+    )
+    expect_identical(
+      basin_tree_event_metrics$graph_overlay_compute_count,
+      initial.overlay.computes
+    )
+    session$setInputs(basin_plot_workspace_open = FALSE)
+    session$flushReact()
+    expect_false(basin_plot_workspace_open())
+    expect_identical(
+      basin_tree_event_metrics$shell_render_count,
+      initial.shell.renders
+    )
     initial.domain <- basin_tree_event_domain()
     expect_lt(nrow(initial.domain$events), 100L)
     session$setInputs(basin_tree_event_commit = list(
@@ -2254,7 +2313,7 @@ test_that("basin server invalidates changed fields and graph identities", {
     )$html
     expect_match(
       plot.workspace,
-      "Selection Diagnostics and Metric Plots",
+      "gf-basin-plot-workspace-body",
       fixed = TRUE
     )
     expect_match(

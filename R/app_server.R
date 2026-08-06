@@ -76,6 +76,7 @@ app_server <- function(input, output, session) {
     basin_analysis_session_active <<- FALSE
   })
   basin_inspector_open <- shiny::reactiveVal(FALSE)
+  basin_plot_workspace_open <- shiny::reactiveVal(FALSE)
   basin_selected_keys <- shiny::reactiveVal(character())
   basin_color_map <- shiny::reactiveVal(
     structure(character(), names = character())
@@ -608,6 +609,7 @@ app_server <- function(input, output, session) {
     basin_complete_viewer_open(FALSE)
     reset_basin_tree_interaction()
     basin_inspector_open(FALSE)
+    basin_plot_workspace_open(FALSE)
     basin_selected_keys(character())
     basin_color_map(structure(character(), names = character()))
     basin_plot_specs(list())
@@ -667,6 +669,16 @@ app_server <- function(input, output, session) {
       input$basin_plot_show_thresholds
     )
   }, ignoreInit = FALSE, ignoreNULL = TRUE)
+  shiny::observeEvent(input$basin_plot_workspace_open, {
+    basin_plot_workspace_open(
+      isTRUE(input$basin_plot_workspace_open)
+    )
+  }, ignoreInit = TRUE)
+  shiny::observeEvent(basin_inspector_open(), {
+    if (!isTRUE(basin_inspector_open())) {
+      basin_plot_workspace_open(FALSE)
+    }
+  }, ignoreInit = TRUE)
 
   shiny::observe({
     renderer_val <- normalize_live_renderer_choice(input$graph_layout_renderer, default = "")
@@ -11482,7 +11494,36 @@ app_server <- function(input, output, session) {
         attempt.status
       ) else NULL,
       proposal.summary,
-      shiny::uiOutput("basin_plot_workspace_ui"),
+      shiny::tags$details(
+        id = "gf_basin_plot_workspace",
+        class = "gf-basin-plot-workspace",
+        role = "region",
+        `aria-labelledby` = "gf_basin_plot_workspace_heading",
+        `data-display-source` = as.character(
+          model$display.source %||% "none"
+        ),
+        open = if (isTRUE(shiny::isolate(
+          basin_plot_workspace_open()
+        ))) "open" else NULL,
+        ontoggle = paste(
+          "Shiny.setInputValue(",
+          "'basin_plot_workspace_open',",
+          "this.open,",
+          "{priority: 'event'}",
+          ")"
+        ),
+        shiny::tags$summary(
+          class = "gf-basin-plot-workspace-summary",
+          shiny::span(
+            id = "gf_basin_plot_workspace_heading",
+            class = "gf-basin-plot-workspace-heading",
+            role = "heading",
+            `aria-level` = "5",
+            "Selection Diagnostics and Metric Plots"
+          )
+        ),
+        shiny::uiOutput("basin_plot_workspace_ui")
+      ),
       if (!identical(model$display.source, "current")) basin_linked_status_tag(
         state,
         "gf-basin-tree-linked-status"
@@ -12847,21 +12888,14 @@ app_server <- function(input, output, session) {
       basin_display_settings$plot_builder_type %||% "both"
     )
     specs <- basin_plot_specs()
-    shiny::tags$section(
-      id = "gf_basin_plot_workspace",
-      class = "gf-basin-plot-workspace",
-      role = "region",
-      `aria-labelledby` = "gf_basin_plot_workspace_heading",
+    shiny::div(
+      class = "gf-basin-plot-workspace-body",
       `data-display-source` = as.character(
         analysis$display.source %||% "none"
       ),
       shiny::div(
         class = "gf-basin-plot-workspace-header",
         shiny::div(
-          shiny::h5(
-            id = "gf_basin_plot_workspace_heading",
-            "Selection Diagnostics and Metric Plots"
-          ),
           shiny::p(
             paste(
               "The three default mass plots contain every maximum basin in",
