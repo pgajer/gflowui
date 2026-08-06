@@ -4776,14 +4776,76 @@ app_server <- function(input, output, session) {
 
           function rememberCamera(ev) {
             if (gd.__gflowuiSuppressRemember) return;
+            window.__gflowuiReferenceDragState.suppressUntil = Date.now() + 600;
             var cam = ev && ev['scene.camera'] ? ev['scene.camera'] : currentCamera();
             if (cam) {
               window.__gflowuiReferenceCamera = cloneCamera(cam);
             }
           }
 
+          function bindReferenceDragGuard() {
+            window.__gflowuiReferenceDragState =
+              window.__gflowuiReferenceDragState ||
+              {active: false, x: 0, y: 0, suppressUntil: 0};
+            if (window.__gflowuiReferenceDragGuardBound) return;
+            var state = window.__gflowuiReferenceDragState;
+            var startsInReferencePlot = function(ev) {
+              var graph = document.getElementById('reference_plot');
+              return !!(graph && ev.target && graph.contains(ev.target));
+            };
+            var start = function(ev) {
+              if (!startsInReferencePlot(ev)) return;
+              state.active = true;
+              state.x = ev.clientX;
+              state.y = ev.clientY;
+            };
+            var move = function(ev) {
+              if (!state.active && !(ev.buttons > 0 && startsInReferencePlot(ev))) {
+                return;
+              }
+              var dx = ev.clientX - state.x;
+              var dy = ev.clientY - state.y;
+              if ((dx * dx + dy * dy) > 16) {
+                state.suppressUntil = Date.now() + 500;
+              }
+            };
+            var finish = function() {
+              state.active = false;
+            };
+            window.addEventListener('pointerdown', start, true);
+            window.addEventListener('pointermove', move, true);
+            window.addEventListener('pointerup', finish, true);
+            window.addEventListener('pointercancel', finish, true);
+            window.addEventListener('mousedown', start, true);
+            window.addEventListener('mousemove', move, true);
+            window.addEventListener('mouseup', finish, true);
+            window.__gflowuiReferenceDragGuardBound = true;
+          }
+
+          function forwardVertexClick(ev) {
+            var point = ev && ev.points && ev.points.length ? ev.points[0] : null;
+            if (!point) return;
+            var payload = {
+              key: point.key,
+              customdata: point.customdata,
+              text: point.text
+            };
+            setTimeout(function() {
+              var dragState = window.__gflowuiReferenceDragState || {};
+              if (Date.now() < (dragState.suppressUntil || 0)) return;
+              if (!(window.Shiny && typeof window.Shiny.setInputValue === 'function')) return;
+              window.Shiny.setInputValue(
+                'plotly_click-reference_plot_source',
+                payload,
+                {priority: 'event'}
+              );
+            }, 180);
+          }
+
           if (!gd.__gflowuiCameraHooksBound) {
+            bindReferenceDragGuard();
             gd.on('plotly_relayout', rememberCamera);
+            gd.on('plotly_click', forwardVertexClick);
             gd.on('plotly_afterplot', function() {
               if (gd.__gflowuiSuppressRemember) return;
               var cam = currentCamera();
@@ -4801,9 +4863,11 @@ app_server <- function(input, output, session) {
       )
     }
 
-    register_reference_plotly_click_only <- function(widget) {
-      widget <- plotly::event_register(widget, "plotly_click")
-      widget$x$shinyEvents <- list("plotly_click")
+    register_reference_plotly_browser_local_events <- function(widget) {
+      # An empty shinyEvents vector is replaced with Plotly's full default
+      # event set during plotly_build(). Keep only a trace-inapplicable
+      # sentinel so 3D camera and click events remain browser-local.
+      widget$x$shinyEvents <- list("plotly_sunburstclick")
       widget
     }
 
@@ -14234,7 +14298,7 @@ app_server <- function(input, output, session) {
                 zaxis = list(visible = FALSE)
               )
             )
-        p_empty <- register_reference_plotly_click_only(p_empty)
+        p_empty <- register_reference_plotly_browser_local_events(p_empty)
         p_empty <- attach_reference_plotly_camera_preserver(p_empty)
         return(p_empty)
       }
@@ -15188,7 +15252,7 @@ app_server <- function(input, output, session) {
             sc
           }
         )
-      p <- register_reference_plotly_click_only(p)
+      p <- register_reference_plotly_browser_local_events(p)
       p <- attach_reference_plotly_camera_preserver(p)
       p
     })
