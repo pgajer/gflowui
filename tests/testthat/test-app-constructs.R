@@ -31,7 +31,8 @@ test_that("reference graph camera motion remains browser-local", {
       x = 1:2,
       y = 1:2,
       z = 1:2,
-      type = "scatter3d"
+      type = "scatter3d",
+      mode = "markers"
     )
     hooked <- attach_reference_plotly_camera_preserver(widget)
     hooks <- hooked$jsHooks$render
@@ -47,11 +48,17 @@ test_that("reference graph camera motion remains browser-local", {
 
     expect_match(script, "plotly_relayout", fixed = TRUE)
     expect_match(script, "__gflowuiReferenceCamera", fixed = TRUE)
-    expect_false(grepl("Shiny.setInputValue", script, fixed = TRUE))
+    expect_match(script, "__gflowuiReferenceDragState", fixed = TRUE)
+    expect_match(script, "window.addEventListener('pointermove'", fixed = TRUE)
+    expect_match(script, "plotly_click-reference_plot_source", fixed = TRUE)
     expect_false(grepl("reference_plot_camera_state", script, fixed = TRUE))
 
-    click.only <- register_reference_plotly_click_only(widget)
-    expect_identical(click.only$x$shinyEvents, list("plotly_click"))
+    browser.local <- register_reference_plotly_browser_local_events(widget)
+    browser.local <- plotly::plotly_build(browser.local)
+    expect_identical(
+      browser.local$x$shinyEvents,
+      list("plotly_sunburstclick")
+    )
   })
 })
 
