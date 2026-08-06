@@ -4801,6 +4801,12 @@ app_server <- function(input, output, session) {
       )
     }
 
+    register_reference_plotly_click_only <- function(widget) {
+      widget <- plotly::event_register(widget, "plotly_click")
+      widget$x$shinyEvents <- list("plotly_click")
+      widget
+    }
+
     parse_plotly_event_input <- function(event_id) {
       raw_val <- input[[event_id]]
       if (is.null(raw_val)) {
@@ -14228,7 +14234,7 @@ app_server <- function(input, output, session) {
                 zaxis = list(visible = FALSE)
               )
             )
-        p_empty <- plotly::event_register(p_empty, "plotly_click")
+        p_empty <- register_reference_plotly_click_only(p_empty)
         p_empty <- attach_reference_plotly_camera_preserver(p_empty)
         return(p_empty)
       }
@@ -15182,7 +15188,7 @@ app_server <- function(input, output, session) {
             sc
           }
         )
-      p <- plotly::event_register(p, "plotly_click")
+      p <- register_reference_plotly_click_only(p)
       p <- attach_reference_plotly_camera_preserver(p)
       p
     })

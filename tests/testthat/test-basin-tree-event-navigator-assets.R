@@ -43,6 +43,16 @@ test_that("event navigator previews locally and commits through one structured i
   expect_match(javascript, "applyAscentFlowStyle", fixed = TRUE)
   expect_match(javascript, "window.Plotly.restyle", fixed = TRUE)
   expect_match(javascript, "canonical_ascent_flow", fixed = TRUE)
+  expect_match(
+    javascript,
+    "Number.isFinite(opacity) ? opacity : 1",
+    fixed = TRUE
+  )
+  expect_match(
+    javascript,
+    "Number.isFinite(width) ? width : 2",
+    fixed = TRUE
+  )
 })
 
 test_that("event navigator styling is horizontal and responsive", {

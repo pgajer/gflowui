@@ -49,6 +49,9 @@ test_that("reference graph camera motion remains browser-local", {
     expect_match(script, "__gflowuiReferenceCamera", fixed = TRUE)
     expect_false(grepl("Shiny.setInputValue", script, fixed = TRUE))
     expect_false(grepl("reference_plot_camera_state", script, fixed = TRUE))
+
+    click.only <- register_reference_plotly_click_only(widget)
+    expect_identical(click.only$x$shinyEvents, list("plotly_click"))
   })
 })
 
@@ -63,6 +66,8 @@ test_that("reference graph camera is injected before Plotly redraw", {
   expect_match(script, "shiny:value.gflowuiReferenceCamera", fixed = TRUE)
   expect_match(script, "reference_plot", fixed = TRUE)
   expect_match(script, "payload.layout.scene.camera = camera", fixed = TRUE)
+  expect_match(script, "graph.removeAllListeners()", fixed = TRUE)
+  expect_match(script, "graph.__gflowuiCameraHooksBound = false", fixed = TRUE)
   expect_false(grepl("Shiny.setInputValue", script, fixed = TRUE))
   expect_false(grepl("setTimeout(function", script, fixed = TRUE))
 })
