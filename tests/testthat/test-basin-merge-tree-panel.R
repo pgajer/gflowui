@@ -1112,6 +1112,36 @@ test_that("ascent-flow connections reuse the canonical CLOSEST forest", {
   )
 })
 
+test_that("active maximum annotations use one fixed font size", {
+  coordinates <- cbind(
+    x = c(1, 2, 3, 4),
+    y = c(4, 3, 2, 1),
+    z = c(0, 1, 2, 3)
+  )
+  annotations <- gflowui:::gflowui_basin_maximum_label_annotations(
+    vertices = c(1L, 3L, 4L),
+    labels = c("M9", "M1", "M17"),
+    coordinates = coordinates,
+    font.size = 11,
+    color = "#111827"
+  )
+
+  expect_length(annotations, 3L)
+  expect_identical(
+    vapply(annotations, `[[`, character(1), "text"),
+    c("M9", "M1", "M17")
+  )
+  expect_identical(
+    vapply(annotations, function(annotation) annotation$font$size, numeric(1)),
+    rep(11, 3L)
+  )
+  expect_true(all(vapply(
+    annotations,
+    function(annotation) identical(annotation$showarrow, FALSE),
+    logical(1)
+  )))
+})
+
 test_that("topology events are exact, grouped, and deterministically ordered", {
   bundle <- phase5_panel_bundle("topology-events")
   state <- phase5_panel_state(bundle)
