@@ -10,3 +10,6 @@
 renv/library/
 renv/staging/
 renv/python/
+Rplots.pdf
+output/
+tmp/
