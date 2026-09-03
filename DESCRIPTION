@@ -25,7 +25,7 @@ Imports:
     jsonlite,
     zip
 Suggests:
-    ivue (>= 0.0.0.9001),
+    ivue (>= 0.1.0),
     geosmooth,
     grip,
     htmltools,
