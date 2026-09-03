@@ -402,21 +402,6 @@ app_server <- function(input, output, session) {
     }, once = TRUE)
     invisible(TRUE)
   }
-  resolve_gflow_plot3d_fn <- function(base_name) {
-    if (!requireNamespace("gflow", quietly = TRUE)) {
-      stop("Package 'gflow' is required for 3D graph rendering.", call. = FALSE)
-    }
-    ns <- asNamespace("gflow")
-    preferred <- sprintf("%s.widget", base_name)
-    legacy <- sprintf("%s.html", base_name)
-    if (exists(preferred, envir = ns, inherits = FALSE)) {
-      return(get(preferred, envir = ns, inherits = FALSE))
-    }
-    if (exists(legacy, envir = ns, inherits = FALSE)) {
-      return(get(legacy, envir = ns, inherits = FALSE))
-    }
-    stop(sprintf("Neither '%s' nor '%s' is available in gflow.", preferred, legacy), call. = FALSE)
-  }
   endpoint_session_id <- paste(session$token %||% "session", as.integer(Sys.time()), sep = "-")
   quadform_layout_revision <- shiny::reactiveVal(0L)
 
@@ -12539,13 +12524,13 @@ app_server <- function(input, output, session) {
           }
         }
       }
-      post_layers <- c(
+      post_layers <- gflowui_ivue_layers(c(
         basin_layers,
         extrema_layers,
         endpoint_layers,
         arm_layers,
         subject_layers
-      )
+      ))
 
       make_plain_widget <- function(base_color = "gray70") {
         base_color_use <- if (isTRUE(dim_background_active)) {
@@ -12553,16 +12538,16 @@ app_server <- function(input, output, session) {
         } else {
           base_color
         }
-        plot_fn <- resolve_gflow_plot3d_fn("plot3D.plain")
-        plot_fn(
+        ivue::plot3D.plain(
           X = coords_view,
-          radius = if (identical(vertex_mode, "sphere")) sphere_radius else NULL,
-          size = point_size,
+          point.type = vertex_mode,
+          sphere.radius = if (identical(vertex_mode, "sphere")) sphere_radius else NULL,
+          point.size = point_size,
           col = base_color_use,
-          widget.width = 1700L,
-          widget.height = 1000L,
+          width = NULL,
+          height = 1000L,
           background.color = "white",
-          post.layers = post_layers
+          layers = post_layers
         )
       }
 
@@ -12579,75 +12564,42 @@ app_server <- function(input, output, session) {
         if (isTRUE(dim_background_active)) {
           cltr_col_tbl <- grDevices::adjustcolor(cltr_col_tbl, alpha.f = background_alpha_use)
         }
-        tryCatch(
-          resolve_gflow_plot3d_fn("plot3D.cltrs")(
-            X = coords_view,
-            cltr = vv,
-            cltr.col.tbl = cltr_col_tbl,
-            show.cltr.labels = FALSE,
-            show.legend = FALSE,
-            legend.title = as.character(src$label %||% src_key),
-            radius = if (identical(vertex_mode, "sphere")) sphere_radius else NA_real_,
-            widget.width = 1700L,
-            widget.height = 1000L,
-            background.color = "white",
-            post.layers = post_layers
-          ),
-          error = function(e) make_plain_widget()
+        ivue::plot3D.cltrs(
+          X = coords_view,
+          groups = vv,
+          scale = ivue::color.scale.groups(vv, colors = cltr_col_tbl),
+          legend.show = FALSE,
+          legend.title = as.character(src$label %||% src_key),
+          point.type = vertex_mode,
+          point.size = point_size,
+          sphere.radius = if (identical(vertex_mode, "sphere")) sphere_radius else NULL,
+          width = NULL,
+          height = 1000L,
+          background.color = "white",
+          layers = post_layers
         )
       } else {
         vv <- suppressWarnings(as.numeric(values_view))
         if (all(!is.finite(vv))) {
           make_plain_widget()
         } else {
-          color_encoding <- gflowui_numeric_color_encoding(
-            values = vv,
-            transform = src$color_transform %||% "identity",
-            title = src$colorbar_title %||% src$label
+          encoding <- gflowui_ivue_numeric(vv, src,
+            shiny::reactiveValuesToList(density_display_settings),
+            alpha = if (isTRUE(dim_background_active)) background_alpha_use else 1)
+          ivue::plot3D.cont(
+            X = coords_view,
+            values = encoding$values,
+            scale = encoding$scale,
+            point.type = vertex_mode,
+            point.size = point_size,
+            sphere.radius = if (identical(vertex_mode, "sphere")) sphere_radius else NULL,
+            legend.title = as.character(src$label %||% src_key),
+            legend.show = FALSE,
+            width = NULL,
+            height = 1000L,
+            background.color = "white",
+            layers = post_layers
           )
-          if (identical(as.character(src$color_transform %||% "identity"), "density_asinh")) {
-            density_colors <- numeric_arm_colors(
-              color_encoding$mapped_values,
-              palette = "Viridis",
-              alpha = if (isTRUE(dim_background_active)) background_alpha_use else 1,
-              color_limits = color_encoding$color_limits,
-              palette_colors = gflowui_density_palette(
-                low = density_display_settings$low %||% "yellow",
-                midpoint = density_display_settings$midpoint %||% "none",
-                high = density_display_settings$high %||% "red",
-                low_alpha = density_display_settings$low_alpha %||% 0.2,
-                midpoint_alpha = density_display_settings$midpoint_alpha %||% 1,
-                high_alpha = density_display_settings$high_alpha %||% 1
-              )
-            )
-            make_plain_widget(density_colors)
-          } else {
-            cont_palette <- if (isTRUE(dim_background_active)) {
-              function(x) grDevices::adjustcolor(grDevices::hcl.colors(length(x), "Viridis"), alpha.f = background_alpha_use)
-            } else {
-              NULL
-            }
-            tryCatch(
-              resolve_gflow_plot3d_fn("plot3D.cont")(
-                X = coords_view,
-                y = color_encoding$mapped_values,
-                subset = rep(TRUE, nn_view),
-                non.highlight.type = if (identical(vertex_mode, "sphere")) "sphere" else "point",
-                highlight.type = if (identical(vertex_mode, "sphere")) "sphere" else "point",
-                point.size = point_size,
-                radius = if (identical(vertex_mode, "sphere")) sphere_radius else NULL,
-                color.palette = cont_palette,
-                palette.type = "value",
-                legend.title = as.character(src$label %||% src_key),
-                legend.show = FALSE,
-                widget.width = 1700L,
-                widget.height = 1000L,
-                background.color = "white",
-                post.layers = post_layers
-              ),
-              error = function(e) make_plain_widget()
-            )
-          }
         }
       }
     })
@@ -15806,46 +15758,25 @@ app_server <- function(input, output, session) {
         if (length(lev) < 1L) {
           return(NULL)
         }
-        col_tbl <- unname(as.character(pal_info$colors[lev]))
-        counts <- table(factor(pal_info$values, levels = lev))
-        labs <- sprintf("%s (%s)", lev, format(as.integer(counts), big.mark = ","))
+        colors <- grDevices::adjustcolor(pal_info$colors,
+          alpha.f = gflowui_ivue_background_alpha(subject_overlay_active()))
+        mapping <- ivue::map.colors(pal_info$values,
+          ivue::color.scale.groups(pal_info$values, colors = colors))
+        col_tbl <- mapping$legend$color
+        labs <- gflowui_ivue_legend_labels(mapping$legend)
       } else if (identical(src_type, "numeric")) {
-        if (!requireNamespace("gflow", quietly = TRUE)) {
+        if (!requireNamespace("ivue", quietly = TRUE)) {
           return(NULL)
         }
         vals <- suppressWarnings(as.numeric(values_view))
-        vals <- vals[is.finite(vals)]
-        if (length(vals) < 2L) {
+        if (!any(is.finite(vals))) {
           return(NULL)
         }
-        quantize_for_legend <- tryCatch(
-          utils::getFromNamespace("quantize.for.legend", "gflow"),
-          error = function(e) NULL
-        )
-        if (!is.function(quantize_for_legend)) {
-          return(NULL)
-        }
-        q <- tryCatch(
-          quantize_for_legend(
-            y = vals,
-            quantize.method = "uniform",
-            quantize.wins.p = 0.01,
-            quantize.round = FALSE,
-            quantize.dig.lab = 2,
-            start = 1 / 6,
-            end = 0,
-            n.levels = 10
-          ),
-          error = function(e) NULL
-        )
-        if (is.null(q) || length(q$y.col.tbl %||% character(0)) < 1L) {
-          return(NULL)
-        }
-        col_tbl <- unname(as.character(q$y.col.tbl))
-        labs <- as.character(q$legend.labs %||% names(q$y.col.tbl))
-        if (length(labs) != length(col_tbl)) {
-          labs <- as.character(names(q$y.col.tbl))
-        }
+        encoding <- gflowui_ivue_numeric(vals, src,
+          shiny::reactiveValuesToList(density_display_settings),
+          alpha = gflowui_ivue_background_alpha(subject_overlay_active()))
+        col_tbl <- encoding$legend$color
+        labs <- gflowui_ivue_legend_labels(encoding$legend)
       } else {
         return(NULL)
       }
@@ -15855,7 +15786,7 @@ app_server <- function(input, output, session) {
           class = "gf-rgl-legend-item",
           shiny::span(
             class = "gf-rgl-legend-swatch",
-            style = sprintf("background:%s;", col_tbl[[ii]])
+            style = sprintf("background:%s;", gflowui_ivue_css_color(col_tbl[[ii]]))
           ),
           shiny::span(class = "gf-rgl-legend-label", labs[[ii]])
         )
