@@ -1,7 +1,8 @@
 gflowui_require_ivue <- function() {
   if (!requireNamespace("ivue", quietly = TRUE) ||
-      utils::packageVersion("ivue") < "0.0.0.9001") {
-    stop("Install ivue >= 0.0.0.9001 for 3D widget rendering.", call. = FALSE)
+      utils::packageVersion("ivue") < "0.1.0" ||
+      !"plot3D.groups" %in% getNamespaceExports("ivue")) {
+    stop("Install current ivue >= 0.1.0 with plot3D.groups support for 3D widget rendering.", call. = FALSE)
   }
 }
 
@@ -50,7 +51,7 @@ gflowui_ivue_numeric <- function(values, src, density_settings = list(), alpha =
       palette = palette, na.color = "#9ca3af")
   } else {
     scale <- ivue::color.scale.cont(mapped, mode = "binned", winsor.p = 0.01,
-      digits = 2, palette = function(n) grDevices::adjustcolor(
+      palette = function(n) grDevices::adjustcolor(
         grDevices::rainbow(n, start = 1/6, end = 0), alpha.f = alpha))
   }
   mapping <- ivue::map.colors(mapped, scale)

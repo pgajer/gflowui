@@ -12564,7 +12564,7 @@ app_server <- function(input, output, session) {
         if (isTRUE(dim_background_active)) {
           cltr_col_tbl <- grDevices::adjustcolor(cltr_col_tbl, alpha.f = background_alpha_use)
         }
-        ivue::plot3D.cltrs(
+        ivue::plot3D.groups(
           X = coords_view,
           groups = vv,
           scale = ivue::color.scale.groups(vv, colors = cltr_col_tbl),
