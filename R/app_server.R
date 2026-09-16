@@ -12562,7 +12562,7 @@ app_server <- function(input, output, session) {
         vv <- pal_info$values
         cltr_col_tbl <- pal_info$colors
         if (isTRUE(dim_background_active)) {
-          cltr_col_tbl <- grDevices::adjustcolor(cltr_col_tbl, alpha.f = background_alpha_use)
+          cltr_col_tbl <- gflowui_ivue_group_colors(cltr_col_tbl, alpha = background_alpha_use)
         }
         ivue::plot3D.groups(
           X = coords_view,
@@ -15758,8 +15758,8 @@ app_server <- function(input, output, session) {
         if (length(lev) < 1L) {
           return(NULL)
         }
-        colors <- grDevices::adjustcolor(pal_info$colors,
-          alpha.f = gflowui_ivue_background_alpha(subject_overlay_active()))
+        colors <- gflowui_ivue_group_colors(pal_info$colors,
+          alpha = gflowui_ivue_background_alpha(subject_overlay_active()))
         mapping <- ivue::map.colors(pal_info$values,
           ivue::color.scale.groups(pal_info$values, colors = colors))
         col_tbl <- mapping$legend$color

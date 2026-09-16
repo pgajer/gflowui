@@ -30,6 +30,12 @@ gflowui_ivue_background_alpha <- function(subject_overlay) {
   min(1, max(0.05, alpha))
 }
 
+gflowui_ivue_group_colors <- function(colors, alpha = 1) {
+  # adjustcolor drops names, including when alpha is unchanged. The group
+  # scale needs those names to associate each colour with its category.
+  stats::setNames(grDevices::adjustcolor(colors, alpha.f = alpha), names(colors))
+}
+
 gflowui_ivue_numeric <- function(values, src, density_settings = list(), alpha = 1) {
   gflowui_require_ivue()
   values <- suppressWarnings(as.numeric(values))

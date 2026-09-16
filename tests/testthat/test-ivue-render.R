@@ -46,6 +46,34 @@ test_that("app plotting uses ivue instead of private gflow lookups", {
   expect_match(body, "ivue::plot3D.groups", fixed = TRUE)
   expect_false(grepl("resolve_gflow_plot3d_fn", body, fixed = TRUE))
   expect_false(grepl("quantize.for.legend", body, fixed = TRUE))
+  expect_false(grepl("ivue::plot3D.cltrs", body, fixed = TRUE))
+  expect_equal(length(gregexpr("gflowui_ivue_group_colors(", body,
+    fixed = TRUE)[[1]]), 2L)
+})
+
+test_that("categorical opacity preserves group names for legends and widgets", {
+  skip_if_not_installed("ivue")
+  skip_if_not_installed("rgl")
+  colors <- stats::setNames(c("#FF000080", "#0000FFFF", "#008000"),
+    c("", "Missing", "group C"))
+  groups <- c("", "Missing", "group C", NA_character_, "", "group C")
+  X <- matrix(seq_len(18), ncol = 3)
+  for (alpha in c(1, 0.22)) {
+    adjusted <- gflowui_ivue_group_colors(colors, alpha)
+    expect_identical(names(adjusted), names(colors))
+    expect_identical(unname(adjusted), grDevices::adjustcolor(colors, alpha.f = alpha))
+    expect_silent(scale <- ivue::color.scale.groups(groups, colors = adjusted))
+    mapping <- ivue::map.colors(groups, scale)
+    expect_identical(mapping$colors[!is.na(groups)],
+      unname(adjusted[match(groups[!is.na(groups)], names(adjusted))]))
+    expect_equal(mapping$legend$count, c(2L, 1L, 2L, 1L))
+    for (type in c("point", "sphere")) {
+      widget <- ivue::plot3D.groups(X, groups, scale = scale,
+        point.type = type, legend.show = FALSE)
+      expect_identical(attr(widget, "ivue")$colors, mapping$colors)
+      expect_equal(attr(widget, "ivue")$mapping$legend, mapping$legend)
+    }
+  }
 })
 
 test_that("nearby values retain distinguishable application legend labels", {
