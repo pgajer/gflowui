@@ -13,3 +13,11 @@ renv/python/
 Rplots.pdf
 output/
 tmp/
+
+# Relocated documents and study bundles; do not recreate them in the package.
+/dev/subject15_eot_comparison_2026-08-06
+/output/pdf/subject15_eot_basin_comparison_report.pdf
+/dev/basins_subject15_benchmark_2026-07-28.md
+/dev/benchmark_basins_reference.R
+/dev/basins_renderer_final_state_qa_2026-07-28.md
+/dev/qa_basins_renderer_reference.R
