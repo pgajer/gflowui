@@ -14952,85 +14952,86 @@ app_server <- function(input, output, session) {
               shiny::div(
                 class = "gf-endpoint-section",
                 shiny::uiOutput("endpoint_candidate_metrics")
+              )
+            )
+          ),
+          bslib::accordion_panel(
+            "Endpoint Layout",
+            value = "workflow_endpoint_layout",
+            shiny::tagList(
+              shiny::div(
+                class = "gf-graph-row gf-graph-layout-row",
+                shiny::span(class = "gf-graph-row-label", "Label size:"),
+                shiny::sliderInput(
+                  "endpoint_label_size",
+                  label = NULL,
+                  min = 0.4,
+                  max = 3.0,
+                  value = parse_scale_multiplier(input$endpoint_label_size %||% 1, default = 1),
+                  step = 0.1,
+                  width = "205px"
+                ),
+                shiny::span(
+                  class = "gf-graph-dims",
+                  sprintf(
+                    "%.1fx",
+                    parse_scale_multiplier(input$endpoint_label_size %||% 1, default = 1)
+                  )
+                )
               ),
-              shiny::hr(),
-              shiny::tags$details(
-                class = "gf-endpoint-metrics-details",
-                shiny::tags$summary("Endpoint Layout"),
-                shiny::div(
-                  class = "gf-graph-row gf-graph-layout-row",
-                  shiny::span(class = "gf-graph-row-label", "Label size:"),
-                  shiny::sliderInput(
-                    "endpoint_label_size",
-                    label = NULL,
-                    min = 0.4,
-                    max = 3.0,
-                    value = parse_scale_multiplier(input$endpoint_label_size %||% 1, default = 1),
-                    step = 0.1,
-                    width = "205px"
-                  ),
-                  shiny::span(
-                    class = "gf-graph-dims",
-                    sprintf(
-                      "%.1fx",
-                      parse_scale_multiplier(input$endpoint_label_size %||% 1, default = 1)
+              shiny::div(
+                class = "gf-graph-row gf-graph-layout-row",
+                shiny::span(class = "gf-graph-row-label", "Label offset:"),
+                shiny::selectInput(
+                  "endpoint_label_offset",
+                  label = NULL,
+                  choices = stats::setNames(
+                    c(
+                      "0x", "0.50x", "1x", "1.50x", "2x", "2.50x", "3x",
+                      "3.50x", "4x", "4.50x", "5x"
+                    ),
+                    c(
+                      "0x", "0.50x", "1x", "1.50x", "2x", "2.50x", "3x",
+                      "3.50x", "4x", "4.50x", "5x"
                     )
-                  )
-                ),
-                shiny::div(
-                  class = "gf-graph-row gf-graph-layout-row",
-                  shiny::span(class = "gf-graph-row-label", "Label offset:"),
-                  shiny::selectInput(
-                    "endpoint_label_offset",
-                    label = NULL,
-                    choices = stats::setNames(
-                      c(
-                        "0x", "0.50x", "1x", "1.50x", "2x", "2.50x", "3x",
-                        "3.50x", "4x", "4.50x", "5x"
-                      ),
-                      c(
-                        "0x", "0.50x", "1x", "1.50x", "2x", "2.50x", "3x",
-                        "3.50x", "4x", "4.50x", "5x"
-                      )
-                    ),
-                    selected = as.character(input$endpoint_label_offset %||% "1x"),
-                    width = "170px"
-                  )
-                ),
-                shiny::div(
-                  class = "gf-graph-row gf-graph-layout-row",
-                  shiny::span(class = "gf-graph-row-label", "Marker size:"),
-                  shiny::selectInput(
-                    "endpoint_marker_size",
-                    label = NULL,
-                    choices = stats::setNames(
-                      c("0.75x", "1x", "1.25x", "1.50x", "2x", "2.50x", "3x"),
-                      c("0.75x", "1x", "1.25x", "1.50x", "2x", "2.50x", "3x")
-                    ),
-                    selected = as.character(input$endpoint_marker_size %||% "1x"),
-                    width = "170px"
-                  )
-                ),
-                shiny::div(
-                  class = "gf-graph-row gf-graph-layout-row",
-                  shiny::span(class = "gf-graph-row-label", "Marker color:"),
-                  shiny::selectInput(
-                    "endpoint_marker_color",
-                    label = NULL,
-                    choices = c(
-                      "Red" = "#ef4444",
-                      "Orange" = "#f97316",
-                      "Gold" = "#eab308",
-                      "Green" = "#22c55e",
-                      "Teal" = "#14b8a6",
-                      "Blue" = "#3b82f6",
-                      "Purple" = "#8b5cf6",
-                      "Pink" = "#ec4899",
-                      "Black" = "#111827"
-                    ),
-                    selected = as.character(input$endpoint_marker_color %||% "#ef4444"),
-                    width = "170px"
-                  )
+                  ),
+                  selected = as.character(input$endpoint_label_offset %||% "1x"),
+                  width = "170px"
+                )
+              ),
+              shiny::div(
+                class = "gf-graph-row gf-graph-layout-row",
+                shiny::span(class = "gf-graph-row-label", "Marker size:"),
+                shiny::selectInput(
+                  "endpoint_marker_size",
+                  label = NULL,
+                  choices = stats::setNames(
+                    c("0.75x", "1x", "1.25x", "1.50x", "2x", "2.50x", "3x"),
+                    c("0.75x", "1x", "1.25x", "1.50x", "2x", "2.50x", "3x")
+                  ),
+                  selected = as.character(input$endpoint_marker_size %||% "1x"),
+                  width = "170px"
+                )
+              ),
+              shiny::div(
+                class = "gf-graph-row gf-graph-layout-row",
+                shiny::span(class = "gf-graph-row-label", "Marker color:"),
+                shiny::selectInput(
+                  "endpoint_marker_color",
+                  label = NULL,
+                  choices = c(
+                    "Red" = "#ef4444",
+                    "Orange" = "#f97316",
+                    "Gold" = "#eab308",
+                    "Green" = "#22c55e",
+                    "Teal" = "#14b8a6",
+                    "Blue" = "#3b82f6",
+                    "Purple" = "#8b5cf6",
+                    "Pink" = "#ec4899",
+                    "Black" = "#111827"
+                  ),
+                  selected = as.character(input$endpoint_marker_color %||% "#ef4444"),
+                  width = "170px"
                 )
               )
             )
@@ -15210,6 +15211,7 @@ app_server <- function(input, output, session) {
           "workflow_condexp_structure",
           "workflow_basin_structure",
           "workflow_endpoint_structure",
+          "workflow_endpoint_layout",
           "workflow_arm_structure",
           "workflow_analysis"
         )
