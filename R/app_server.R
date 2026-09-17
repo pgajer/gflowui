@@ -4515,6 +4515,11 @@ app_server <- function(input, output, session) {
 
           function rememberCamera(ev) {
             if (gd.__gflowuiSuppressRemember) return;
+            // Redraws and resizes can expose the default camera while Plotly
+            // rebuilds the scene. Only camera interaction events are authoritative.
+            if (!ev || !Object.keys(ev).some(function(key) {
+              return key === 'scene.camera' || key.indexOf('scene.camera.') === 0;
+            })) return;
             var cam = ev && ev['scene.camera'] ? ev['scene.camera'] : currentCamera();
             if (cam) {
               window.__gflowuiReferenceCamera = cloneCamera(cam);
@@ -4524,17 +4529,13 @@ app_server <- function(input, output, session) {
             }
           }
 
+          if (gd.__gflowuiRememberCamera) {
+            gd.removeListener('plotly_relayout', gd.__gflowuiRememberCamera);
+            gd.removeListener('plotly_relayouting', gd.__gflowuiRememberCamera);
+          }
+          gd.__gflowuiRememberCamera = rememberCamera;
           gd.on('plotly_relayout', rememberCamera);
-          gd.on('plotly_afterplot', function() {
-            if (gd.__gflowuiSuppressRemember) return;
-            var cam = currentCamera();
-            if (cam) {
-              window.__gflowuiReferenceCamera = cloneCamera(cam);
-            }
-            if (cam && window.Shiny && typeof window.Shiny.setInputValue === 'function') {
-              window.Shiny.setInputValue('%s', cloneCamera(cam), {priority: 'event'});
-            }
-          });
+          gd.on('plotly_relayouting', rememberCamera);
 
           if (cameraToRestore) {
             gd.__gflowuiSuppressRemember = true;
@@ -4551,7 +4552,7 @@ app_server <- function(input, output, session) {
               }
             }, 80);
           }
-        }", reference_plot_camera_input_id, reference_plot_camera_input_id)
+        }", reference_plot_camera_input_id)
       )
     }
 
