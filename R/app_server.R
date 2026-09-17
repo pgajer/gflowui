@@ -12936,6 +12936,50 @@ app_server <- function(input, output, session) {
     )
   })
 
+  graph_method_name_editor <- shiny::reactiveVal(NULL)
+  shiny::observeEvent(input$graph_method_edit_names, {
+    choices <- graph_method_name_choices(active_manifest())
+    if (!length(choices)) return()
+    graph_method_name_editor(list(project_id = rv$project.id, choices = choices))
+    shiny::showModal(shiny::modalDialog(
+      title = "Edit graph / embedding method names",
+      shiny::p("These names apply across all sample sets in this project."),
+      lapply(seq_along(choices), function(ii) {
+        shiny::textInput(
+          paste0("graph_method_name_", ii),
+          label = names(choices)[[ii]], value = names(choices)[[ii]]
+        )
+      }),
+      footer = shiny::tagList(
+        shiny::modalButton("Cancel"),
+        shiny::actionButton("graph_method_save_names", "Save names", class = "btn-primary")
+      )
+    ))
+  }, ignoreInit = TRUE)
+
+  shiny::observeEvent(input$graph_method_save_names, {
+    editor <- graph_method_name_editor()
+    if (is.null(editor) || !identical(editor$project_id, rv$project.id)) return()
+    ctx <- active_project_context()
+    if (is.null(ctx)) return()
+    labels <- vapply(seq_along(editor$choices), function(ii) {
+      scalar_chr(input[[paste0("graph_method_name_", ii)]], default = "")
+    }, character(1))
+    names(labels) <- unname(editor$choices)
+    result <- tryCatch({
+      payload <- load_or_init_active_manifest(ctx)
+      payload$manifest <- rename_graph_method_entries(payload$manifest, labels)
+      save_active_manifest(payload)
+    }, error = function(e) e)
+    if (inherits(result, "error")) {
+      shiny::showNotification(conditionMessage(result), type = "error")
+      return()
+    }
+    graph_method_name_editor(NULL)
+    shiny::removeModal()
+    shiny::showNotification("Method names saved.", type = "message")
+  }, ignoreInit = TRUE)
+
   shiny::observeEvent(input$set_reference_graph_inline, {
     gs <- graph_structure_state()
     if (!is.null(gs$error)) {
@@ -14550,8 +14594,9 @@ app_server <- function(input, output, session) {
         selector_rows <- if (isTRUE(graph_ui$grouped_selector_enabled) &&
             length(graph_ui$selector_fields %||% list()) > 0L) {
           rows <- lapply(graph_ui$selector_fields, function(spec) {
+            is_method <- identical(spec$field, "graph_method")
             shiny::div(
-              class = "gf-graph-row gf-graph-row-tight",
+              class = if (is_method) "gf-graph-row gf-graph-method-row" else "gf-graph-row gf-graph-row-tight",
               shiny::span(class = "gf-graph-row-label", paste0(as.character(spec$label %||% "Selector"), ":")),
               shiny::selectInput(
                 as.character(spec$input_id %||% ""),
@@ -14559,6 +14604,10 @@ app_server <- function(input, output, session) {
                 choices = spec$choices %||% c(),
                 selected = as.character(spec$selected %||% ""),
                 width = "205px"
+              ),
+              if (is_method) shiny::actionButton(
+                "graph_method_edit_names", "Edit names\u2026",
+                class = "btn-light btn-sm gf-btn-inline"
               )
             )
           })

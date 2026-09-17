@@ -395,6 +395,49 @@ gflowui_make_server_graph_structure_helpers <- function(rv) {
     stats::setNames(ordered_vals, display)
   }
 
+  graph_method_name_choices <- function(manifest) {
+    graph_sets <- manifest$graph_sets %||% list()
+    fields <- graph_selector_schema(manifest, graph_sets)$fields
+    method <- Filter(function(field) identical(field$field, "graph_method"), fields)
+    if (length(method) != 1L) return(character(0))
+    values <- vapply(graph_sets, function(gs) graph_set_field_value(gs, "graph_method"), character(1))
+    graph_selector_choices(values, method[[1L]])
+  }
+
+  rename_graph_method_entries <- function(manifest, labels) {
+    choices <- graph_method_name_choices(manifest)
+    if (!length(choices) || !is.character(labels) || is.null(names(labels)) ||
+        anyDuplicated(names(labels)) || !setequal(names(labels), unname(choices))) {
+      stop("The available methods have changed. Close and reopen Edit names.", call. = FALSE)
+    }
+    labels <- trimws(labels)
+    if (anyNA(labels) || any(!nzchar(labels))) {
+      stop("Enter a name for every method.", call. = FALSE)
+    }
+    if (anyDuplicated(tolower(labels))) {
+      stop("Use a different name for each method.", call. = FALSE)
+    }
+    in_metadata <- is.list(manifest$metadata$graph_selector_schema)
+    schema <- if (in_metadata) manifest$metadata$graph_selector_schema else manifest$graph_selector_schema
+    if (is.character(schema$fields)) schema$fields <- as.list(schema$fields)
+    for (ii in seq_along(schema$fields)) {
+      field <- schema$fields[[ii]]
+      field_name <- if (is.character(field)) field[[1L]] else field$field %||% field$id %||% field$name
+      if (!identical(field_name, "graph_method")) next
+      if (is.character(field)) field <- list(field = field_name)
+      label_map <- normalize_selector_labels(field$labels)
+      label_map[names(labels)] <- labels
+      field$labels <- label_map
+      schema$fields[[ii]] <- field
+    }
+    if (in_metadata) {
+      manifest$metadata$graph_selector_schema <- schema
+    } else {
+      manifest$graph_selector_schema <- schema
+    }
+    manifest
+  }
+
   graph_set_k_values <- function(graph_sets, set_id) {
     if (!is.list(graph_sets) || length(graph_sets) < 1L || !nzchar(as.character(set_id %||% ""))) {
       return(integer(0))
@@ -1310,6 +1353,8 @@ gflowui_make_server_graph_structure_helpers <- function(rv) {
     graph_set_choices = graph_set_choices,
     graph_selector_schema = graph_selector_schema,
     graph_selector_choices = graph_selector_choices,
+    graph_method_name_choices = graph_method_name_choices,
+    rename_graph_method_entries = rename_graph_method_entries,
     graph_set_k_values = graph_set_k_values,
     graph_k_choices = graph_k_choices,
     collect_outcomes_from_condexp = collect_outcomes_from_condexp,
