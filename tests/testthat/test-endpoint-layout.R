@@ -1,4 +1,4 @@
-test_that("Endpoint Layout follows Endpoints and retains its open state on edits", {
+test_that("Endpoint Layout is nested in Endpoints and retains its open state on edits", {
   root <- tempfile("endpoint-layout-")
   dir.create(root)
   on.exit(unlink(root, recursive = TRUE), add = TRUE)
@@ -24,21 +24,21 @@ test_that("Endpoint Layout follows Endpoints and retains its open state on edits
       items <- panels()
       items[grepl(paste0('data-value="', id, '"'), items, fixed = TRUE)]
     }
-    items <- panels()
-    endpoints <- which(grepl('data-value="workflow_endpoint_structure"', items, fixed = TRUE))
-    layout <- which(grepl('data-value="workflow_endpoint_layout"', items, fixed = TRUE))
-    expect_length(layout, 1L)
-    expect_equal(layout, endpoints + 1L)
-    expect_false(grepl('id="endpoint_label_size"', panel("workflow_endpoint_structure"), fixed = TRUE))
-
-    session$setInputs(workflow_accordion = c("workflow_endpoint_structure", "workflow_endpoint_layout"))
+    expect_length(panel("workflow_endpoint_layout"), 0L)
+    expect_match(panel("workflow_endpoint_structure"), 'id="endpoint_layout_details"', fixed = TRUE)
+    expect_match(panel("workflow_endpoint_structure"), 'id="endpoint_label_size"', fixed = TRUE)
+    layout_is_open <- function() {
+      grepl('<details[^>]*id="endpoint_layout_details"[^>]*open="open"',
+        panel("workflow_endpoint_structure"))
+    }
+    expect_false(layout_is_open())
+    session$setInputs(workflow_accordion = "workflow_endpoint_structure", endpoint_layout_open = TRUE)
     changes <- list(endpoint_label_size = 1.6, endpoint_label_offset = "2x",
       endpoint_marker_size = "1.50x", endpoint_marker_color = "#3b82f6")
     for (id in names(changes)) {
       do.call(session$setInputs, changes[id])
-      html <- panel("workflow_endpoint_layout")
-      expect_match(html, 'aria-expanded="true"', fixed = TRUE)
-      expect_match(html, 'class="accordion-collapse collapse show"', fixed = TRUE)
+      expect_true(layout_is_open())
+      expect_match(panel("workflow_endpoint_structure"), 'aria-expanded="true"', fixed = TRUE)
     }
     state <- reference_renderer_state()
     expect_equal(state$endpoint_label_size, 1.6)
@@ -47,10 +47,10 @@ test_that("Endpoint Layout follows Endpoints and retains its open state on edits
     expect_identical(state$endpoint_marker_color, "#3b82f6")
 
     # Shiny temporarily unbinds the accordion while replacing its markup.
-    session$setInputs(workflow_accordion = NULL, endpoint_label_size = 1.8)
-    expect_match(panel("workflow_endpoint_layout"), 'aria-expanded="true"', fixed = TRUE)
-    session$setInputs(workflow_accordion = "workflow_endpoint_structure")
+    session$setInputs(workflow_accordion = NULL, endpoint_layout_open = NULL, endpoint_label_size = 1.8)
+    expect_true(layout_is_open())
+    session$setInputs(workflow_accordion = "workflow_endpoint_structure", endpoint_layout_open = FALSE)
     session$setInputs(endpoint_label_size = 2)
-    expect_match(panel("workflow_endpoint_layout"), 'aria-expanded="false"', fixed = TRUE)
+    expect_false(layout_is_open())
   })
 })
