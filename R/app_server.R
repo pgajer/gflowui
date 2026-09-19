@@ -15213,6 +15213,7 @@ app_server <- function(input, output, session) {
     }
 
     available_panels <- c(
+      if (is.list(overview_ui)) "workflow_overview" else character(0),
       if (isTRUE(rv$project.show.data)) "workflow_data" else character(0),
       if (isTRUE(has_asset_views)) {
         c(
@@ -15265,7 +15266,7 @@ app_server <- function(input, output, session) {
       do.call(
         bslib::accordion,
         c(
-          list(id = "workflow_accordion", open = open.panels, multiple = TRUE),
+          list(id = "workflow_accordion", open = if (length(open.panels)) open.panels else FALSE, multiple = TRUE),
           panels
         )
       )
