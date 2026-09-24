@@ -75,3 +75,36 @@ def test_matrix_publishes_terminal_rows_after_supervisor_exceptions(tmp_path,mon
         manifest=read_json(Path(row['run_dir'])/'manifest.json')
         assert manifest['status']=='failed' and 'AccessDenied' in manifest['reason']
         assert manifest['peak_rss_bytes'] is None
+
+
+def test_report_preserves_unknown_and_measured_failed_outcomes(tmp_path,monkeypatch):
+    import csv
+    from common import atomic_json
+    from report import report
+    def denied(process): raise run_pilot.MonitoringUnavailable('test live RSS denial')
+    monkeypatch.setattr(run_pilot,'owned_process_rss',denied)
+    unknown=tmp_path/'unknown';unknown.mkdir()
+    timing=run_pilot.supervise([sys.executable,'-c','import time;time.sleep(30)'],unknown)
+    assert timing['status']=='failed' and timing['peak_rss_bytes'] is None
+    atomic_json(unknown/'manifest.json',timing)
+    measured=tmp_path/'measured';measured.mkdir()
+    numeric=dict(status='resource_limited',reason='memory_limit',peak_rss_bytes=3*1024**3)
+    atomic_json(measured/'manifest.json',numeric)
+    rows=[dict(graph_id='fixture',method='metric_mds',seed=i,run_dir=str(path),**outcome)
+          for i,path,outcome in [(17,unknown,timing),(29,measured,numeric)]]
+    atomic_json(tmp_path/'pilot_results.json',dict(commit='fixture',runs=rows))
+    atomic_json(tmp_path/'catalog/gallery.json',dict(gallery_count=0))
+    atomic_json(tmp_path/'cohort.json',dict(records=[]))
+    (tmp_path/'FINDINGS.md').write_text('old report')
+    report(tmp_path)
+    text=(tmp_path/'FINDINGS.md').read_text()
+    assert 'old report' not in text
+    assert 'unknown (no complete RSS sample)' in text and '3.000 GiB' in text
+    assert timing['reason'] in text and 'memory_limit' in text
+    with (tmp_path/'scores.csv').open() as stream: scores=list(csv.DictReader(stream))
+    assert [r['status'] for r in scores]==['failed','resource_limited']
+    assert scores[0]['peak_rss_bytes']=='' and int(scores[1]['peak_rss_bytes'])==3*1024**3
+    failures=read_json(tmp_path/'termination_diagnostics.json')['stopped_runs']
+    assert failures[0]['peak_rss_bytes'] is None and failures[0]['reason']==timing['reason']
+    assert failures[1]['peak_rss_bytes']==3*1024**3
+    assert (tmp_path/'deliverables.json').exists()

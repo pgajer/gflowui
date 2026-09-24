@@ -21,6 +21,10 @@ def format_replicates(values):
     return text+(f" [{s['minimum']:.6g}, {s['maximum']:.6g}]" if s['count']>1 else ' (single run)')
 
 
+def format_memory(value):
+    return 'unknown (no complete RSS sample)' if value is None else f'{value/1024**3:.3f} GiB'
+
+
 def report(root):
     root=Path(root)
     runs=read_json(root/'pilot_results.json')
@@ -81,7 +85,7 @@ def report(root):
        '',f"{sum(t['termination']=='iteration_limit' for t in terminations)} component optimizations reached their iteration limit. "
        'Completed means that finite coordinates and scores were saved, not that an optimum was established. '
        'Full optimizer termination records are in termination_diagnostics.json.',
-       '', *[f"- {x['graph_id']}, {x['method']}, seed {x['seed']}: {x['reason']}; sampled peak RSS {x['peak_rss_bytes']/1024**3:.3f} GiB." for x in failures],
+       '', *[f"- {x['graph_id']}, {x['method']}, seed {x['seed']}: {x['reason']}; sampled peak RSS {format_memory(x['peak_rss_bytes'])}." for x in failures],
        '', '## Scores (mean [minimum, maximum]; lower is better)','',
        'Ranges describe the observed completed seeds, not confidence intervals. A single deterministic run '
        'does not estimate variability. Stopped and unavailable cells are counted but have no score.', '',
