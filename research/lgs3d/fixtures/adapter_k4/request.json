@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "graph_id": "complete-four",
+  "graph_sha256": "fb0e9c0aec092247a9ee43d5fe7b274a09fa471906c349abffe29bb84cea37a4",
+  "vertex_file": "vertices.csv",
+  "vertex_sha256": "aedc974d38dfabc0e93d53a547fbfd93d1e122037e20e1d7248e8360fd6b02a2",
+  "edge_file": "edges.csv",
+  "edge_sha256": "3addb7924d6e47f5915b8fcb561a86cbd1f3e411b8d43b206247e40b8894d2db",
+  "dimension": 3,
+  "seed": 17,
+  "locality_k": 3,
+  "parameters": {
+    "walk_depth": 10,
+    "walk_decay": 0.1,
+    "repulsion_alpha": 0.2,
+    "epochs": 60
+  },
+  "output_directory": "../../outputs/adapter_k4"
+}

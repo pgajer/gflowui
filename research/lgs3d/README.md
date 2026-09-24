@@ -1,10 +1,10 @@
-# Experimental LGS source interpretation and 2D reproduction
+# Experimental LGS paper-form 3D adapter
 
 This directory contains the phases 01–02 source interpretation and 2D reference
 reproduction, plus the phase03 paper-form numerical implementation. The explicitly
 selected variant is `lgs-paper-union-v1`; it has a genuine 3D optimizer and retains
-the separate 2D upstream baseline. It has not been integrated into gflowui. There
-is no portable request adapter or performance benchmark yet. See [METHOD.md](METHOD.md) for material paper/code differences
+the separate 2D upstream baseline. It has not been integrated into gflowui. The standalone JSON/CSV adapter and bounded locality experiment are described in
+[CONTRACT.md](CONTRACT.md). See [METHOD.md](METHOD.md) for material paper/code differences
 and the explicitly named selected paper variant.
 
 ## Reproduce locally
@@ -59,14 +59,11 @@ array initialization, safe collisions, permutation-invariant tied neighborhoods,
 and perfect radius-2 neighborhood scores on a straight path. Passing those tests
 means the discrepancy is reproducible, not that the behavior has been fixed.
 
-No invalid-input or resource-safe adapter is provided. Test-only native entry
-points assume valid tiny matrices and can crash on malformed inputs. Do not
-use them for external requests. Runs here are tiny, serial and normally take
-seconds; the reproduction report records process peak memory and elapsed time.
-No 2-GiB RSS supervisor is implemented at this phase. The phase-04 adapter must
-enforce the proposed 600-second/2-GiB job limits and test interruptions/timeouts
-before any scaling run. No large graph downloads or scaling runs are needed
-for this reproduction. No quality comparison among embedding methods is claimed.
+The native 2D oracle is test-only and assumes valid tiny matrices. External
+requests use `run.py`, which validates inputs and supervises the separate
+paper-form worker with time and memory limits. The reference-reproduction script
+itself remains a tiny serial diagnostic, not an external-input service.
+No quality comparison among embedding methods is claimed.
 
 ## Source and artifact boundaries
 
@@ -83,8 +80,8 @@ warnings from deprecated NumPy C APIs and the local linker are recorded in the
 build log; the extension loads and its native calls are exercised by tests.
 
 The phase03 implementation preserves the selected paper-form pair objective with
-genuine D-dimensional updates. The eventual adapter contract, schemas, resource guards,
-cache, locality sweep and scientific demonstration belong to later phases.
+genuine D-dimensional updates. The portable adapter, schemas, resource guards, cache and locality sweep are
+separate from the unchanged native 2D oracle.
 Package-build exclusion for this research directory is not changed here and
 must be resolved by the integration owner before any merge.
 
@@ -126,5 +123,28 @@ of a global optimum. The optimizer reports floating-point stagnation separately.
 A disconnected attractive-pair graph makes the positive-alpha logarithmic
 objective unbounded below; such runs carry a warning instead of adding repair
 constraints. The all-vertex collision guard costs O(n) per pair, so a full epoch
-has O(n^3 D) worst-case work. No scaling or resource-enforcement claim is made.
+has O(n^3 D) worst-case work. The CLI resource enforcement and its limits are documented separately in CONTRACT.md.
 `results/phase03_summary.json` records the committed-code numerical demonstration.
+
+## Portable adapter and locality experiment (phase 04)
+
+```sh
+research/lgs3d/.venv/bin/python research/lgs3d/run.py research/lgs3d/fixtures/adapter_k4/request.json
+OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 research/lgs3d/.venv/bin/python research/lgs3d/scripts/locality_sweep.py --output research/lgs3d/outputs/locality-sweep
+```
+
+The first command returns finite raw 3D coordinates for a four-vertex complete
+graph, preserving the deliberately unsorted input IDs. Repeat it to validate a
+cache hit. See CONTRACT.md for hashes, all fields, failure statuses, limits,
+atomic publication and interruption semantics. The full unittest command above
+also exercises this CLI in isolated task-local temporary directories.
+
+The serial sweep uses a 48-vertex path, a 7-by-7 grid, and two 24-vertex cliques
+joined by one bridge; seeds 17, 314 and 2026; 60 epochs; walk depth 10, decay 0.1
+and repulsion 0.2. Requested k values 16,32,64,128,256 are clipped/deduplicated,
+including n-1. Starts match across k for each graph/seed. Every run is reported,
+including failures; there is no best-seed selection. Basic distance, identity
+edge and radius-1/radius-2 neighborhood errors use independently checked formulas.
+The script uses measured runtime with a factor-two cubic projection to admit or
+skip optional 128- and 2,000-vertex scaling runs under the same limits. This
+preflight is conservative evidence, not a performance guarantee.

@@ -1,0 +1,158 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "LGS paper-form request v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "dimension",
+    "edge_file",
+    "edge_sha256",
+    "graph_id",
+    "graph_sha256",
+    "locality_k",
+    "parameters",
+    "schema_version",
+    "seed",
+    "vertex_file",
+    "vertex_sha256"
+  ],
+  "properties": {
+    "graph_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "vertex_file": {
+      "type": "string",
+      "minLength": 1
+    },
+    "edge_file": {
+      "type": "string",
+      "minLength": 1
+    },
+    "initial_coordinate_file": {
+      "type": "string",
+      "minLength": 1
+    },
+    "output_directory": {
+      "type": "string",
+      "minLength": 1
+    },
+    "graph_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "vertex_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "edge_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "initial_coordinate_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "schema_version": {
+      "const": 1
+    },
+    "dimension": {
+      "type": "integer",
+      "enum": [
+        2,
+        3
+      ]
+    },
+    "seed": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 18446744073709551615
+    },
+    "locality_k": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "parameters": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "walk_depth",
+        "walk_decay",
+        "repulsion_alpha"
+      ],
+      "properties": {
+        "max_pair_displacement": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "movement_tolerance": {
+          "type": "number",
+          "minimum": 0
+        },
+        "max_backtracks": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "collision_distance": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "epochs": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "repulsion_alpha": {
+          "type": "number",
+          "minimum": 0
+        },
+        "schedule_epsilon": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "exclusiveMaximum": 1
+        },
+        "transition_epochs": {
+          "type": "integer",
+          "minimum": 2
+        },
+        "armijo": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "exclusiveMaximum": 1
+        },
+        "walk_depth": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "walk_decay": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "exclusiveMaximum": 1
+        }
+      }
+    },
+    "job_limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "wall_seconds": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 600
+        },
+        "memory_mib": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2048
+        }
+      }
+    }
+  },
+  "dependentRequired": {
+    "initial_coordinate_file": [
+      "initial_coordinate_sha256"
+    ],
+    "initial_coordinate_sha256": [
+      "initial_coordinate_file"
+    ]
+  }
+}

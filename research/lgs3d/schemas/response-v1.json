@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "LGS paper-form response v1",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "status",
+    "termination"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "status": {
+      "enum": [
+        "completed",
+        "invalid_input",
+        "unsupported",
+        "resource_limited",
+        "failed",
+        "cancelled",
+        "busy"
+      ]
+    },
+    "termination": {
+      "type": "string"
+    },
+    "coordinate_path": {
+      "type": "string"
+    },
+    "coordinate_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "variant": {
+      "const": "lgs-paper-union-v1"
+    },
+    "dimension": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "cache_hit": {
+      "type": "boolean"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "completed"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "method",
+          "variant",
+          "dimension",
+          "graph_id",
+          "graph_sha256",
+          "input_hashes",
+          "parameters",
+          "seed",
+          "locality_k",
+          "implementation",
+          "upstream_commit",
+          "environment",
+          "elapsed_seconds",
+          "peak_memory_bytes",
+          "objective",
+          "quality",
+          "coordinate_path",
+          "coordinate_sha256",
+          "warnings",
+          "cache_key",
+          "cache_identity",
+          "vertex_count",
+          "epochs_completed",
+          "resource_measurement"
+        ]
+      },
+      "else": {
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "coordinate_path"
+              ]
+            },
+            {
+              "required": [
+                "coordinate_sha256"
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
