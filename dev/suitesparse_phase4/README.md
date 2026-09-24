@@ -57,3 +57,14 @@ hashes, parameters, coordinate checksum/path containment and exact vertex order.
 Both the main graph hash and distinct csv-graph-v1 identity are recorded.
 The dependency's own response and complete objective history remain in results.
 No shared cache writes or library installation occurs during app viewing.
+
+## Reports and viewer
+
+After both complete matrices exist, run `report_lgs.py DATA_ROOT`, then include
+`phase04_results.json` after all five existing result indexes in the main viewer
+export command. This preserves all previous runs and adds actual gallery
+admission outcomes. The separately labeled synthetic locality panel is driven
+by `phase04_lgs_summary.json`, not by invented gallery embeddings. The ZIP
+includes its synthetic raw coordinates, vertex identities, graphs, results and
+source manifests, as well as accepted dependency mathematics/license documents.
+Run `test_lgs_adapter.py` and the main comparison R regressions before publishing.

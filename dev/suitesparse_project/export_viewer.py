@@ -107,7 +107,7 @@ def build(root,index_names):
         if path.is_file(): extras[str(path.relative_to(root))]=asset(path)
     if (root/'phase04_lgs_summary.json').exists():
         for row in read_json(root/'phase04_lgs_summary.json')['validation_rows']:
-            for key in ['result_path','coordinates_path']:
+            for key in ['result_path','coordinates_path','vertices_path','manifest_path','graph_path']:
                 if row.get(key): extras[row[key]]=asset(root/row[key])
     atomic_json(root/'viewer_manifest.json',dict(schema_version=1,kind='gflowui_embedding_comparison',
         title='SuiteSparse 3D Embedding Comparison',graphs=graphs,runs=runs,artifacts=extras,

@@ -50,6 +50,9 @@ def report(root):
             row['result_sha256']=sha256(dest/'result.json')
             row['coordinates_path']=str((dest/'coords_raw.csv').relative_to(root))
             row['coordinates_sha256']=sha256(dest/'coords_raw.csv')
+            for key,path in [('vertices',dest/'vertices.json'),('manifest',dest/'manifest.json'),
+                ('graph',root/'lgs_validation/graphs'/r['graph_id'].replace('/','__')/'graph.json')]:
+                row[key+'_path']=str(path.relative_to(root));row[key+'_sha256']=sha256(path)
         rows.append(row)
     cases=[]
     for r in gallery['runs']:
