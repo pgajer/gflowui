@@ -41,6 +41,8 @@ test_that("renaming method labels preserves method values, graphs and selection"
 })
 
 test_that("method name editor saves names across project reopening", {
+  # Saves within one timestamp tick must still invalidate the manifest reader.
+  testthat::local_mocked_bindings(.gflowui_now=function()"2026-09-24 00:00:00",.package="gflowui")
   root <- tempfile("method-names-")
   dir.create(root)
   on.exit(unlink(root, recursive = TRUE), add = TRUE)

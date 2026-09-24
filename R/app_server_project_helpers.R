@@ -43,6 +43,7 @@ gflowui_make_server_project_helpers <- function(
   )
 
   project_registry <- shiny::reactiveVal(gflowui_load_registry())
+  manifest_revision <- shiny::reactiveVal(0L)
 
   build_new_project_manifest <- function(
       project_id,
@@ -235,6 +236,7 @@ gflowui_make_server_project_helpers <- function(
   })
 
   active_manifest <- shiny::reactive({
+    manifest_revision()
     row <- active_registry_row()
     if (is.null(row)) {
       return(NULL)
@@ -507,6 +509,9 @@ gflowui_make_server_project_helpers <- function(
     now <- .gflowui_now()
     payload$manifest$updated_at <- now
     gflowui_write_manifest(payload$manifest, payload$manifest_file)
+    # Registry timestamps can be identical for successive saves in one second.
+    # A successful disk write must invalidate the reader independently of time.
+    manifest_revision(shiny::isolate(manifest_revision()) + 1L)
 
     reg <- payload$reg
     idx <- payload$idx
