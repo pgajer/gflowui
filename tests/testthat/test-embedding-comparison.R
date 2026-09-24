@@ -56,6 +56,15 @@ test_that("sampled evaluation and vector exports preserve intervals and selected
   expect_identical(index$table$evaluation[1],"uniform_pair_sample")
   expect_equal(index$table$chord_error_lower[1],.08)
   expect_equal(index$table$evaluated_pairs[1],100)
+  app_manifest<-shiny::reactiveVal(list(metadata=list(embedding_comparison=list(schema_version=1L,data_root=root))))
+  shiny::testServer(gflowui_ec_server,args=list(manifest=app_manifest),{
+    session$flushReact();session$setInputs(graph="A",run="A1")
+    plot<-jsonlite::fromJSON(output$metric_plot,simplifyVector=FALSE)
+    line<-Filter(function(trace)identical(trace$mode,"lines"),plot$x$data)[[1]]
+    expect_equal(unlist(line$x[1:2]),c(.08,.12))
+    expect_match(output$evaluation_note,"approximate 95%",fixed=TRUE)
+    expect_match(as.character(output$quality_table),"0.08",fixed=TRUE)
+  })
   dest<-tempfile("publication-");dir.create(dest);on.exit(unlink(dest,recursive=TRUE),add=TRUE)
   zip<-gflowui_ec_export(index,list(graph_id="A",run_id="A1"),dest)
   stage<-file.path(dest,"unzipped");utils::unzip(zip,exdir=stage)
