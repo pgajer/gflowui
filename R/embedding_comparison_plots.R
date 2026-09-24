@@ -58,20 +58,19 @@ gflowui_ec_quality_outputs <- function(input,output,session,index,cohort,current
   })
   output$sensitivity <- shiny::renderUI({
     idx <- index();items <- list(shiny::p("Seed ranges are observed minima/maxima, not confidence intervals. Reversed ties change only ID priority, not the layout; close rankings may depend on this choice."))
-    if(!is.null(idx$artifacts[["replicate_summary.json"]])) {
-      rows <- gflowui_ec_json(gflowui_ec_asset(idx$root,idx$artifacts[["replicate_summary.json"]]))$runs
-      rows <- Filter(function(r)identical(r$graph_id,graph_id()) && identical(r$metric,"chord_error"),rows)
-      table <- do.call(rbind,lapply(rows,function(r)data.frame(Method=unname(gflowui_ec_methods()[r$method]),Count=r$count,Mean=gflowui_ec_number(r$mean),Minimum=gflowui_ec_number(r$minimum),Maximum=gflowui_ec_number(r$maximum))))
-      items <- c(items,list(shiny::h5("Euclidean error across main-pilot seeds"),gflowui_ec_html_table(table)))
-    }
-    if(!is.null(idx$artifacts[["tie_sensitivity.json"]])) {
-      rows <- gflowui_ec_json(gflowui_ec_asset(idx$root,idx$artifacts[["tie_sensitivity.json"]]))$runs
+    table <- gflowui_ec_seed_ranges(idx$table, graph_id())
+    items <- c(items,list(shiny::h5("Euclidean error across available seeds"),
+      shiny::p("Settings are grouped separately. Available counts include only completed, finite scores. Listed counts include unavailable entries, which are not attempted jobs."),
+      gflowui_ec_html_table(table)))
+    for (artifact in c("tie_sensitivity.json", "phase03_tie_sensitivity.json", "phase03_trimap_graph_ties.json")) if(!is.null(idx$artifacts[[artifact]])) {
+      rows <- gflowui_ec_json(gflowui_ec_asset(idx$root,idx$artifacts[[artifact]]))$runs
       rows <- Filter(function(r)identical(r$graph_id,graph_id()),rows)
       table <- do.call(rbind,lapply(rows,function(r)data.frame(Method=unname(gflowui_ec_methods()[r$method]),Seed=r$seed,
         "Continuity (k=20)"=gflowui_ec_number(r$original$continuity_20),"Reversed ties"=gflowui_ec_number(r$reversed_id_priority$continuity_20),
         "Maximum change"=gflowui_ec_number(r$max_absolute_change),check.names=FALSE)))
       items <- c(items,list(shiny::p("Maximum change is the largest absolute difference across trustworthiness and continuity at all evaluated neighborhood sizes. One-seed results do not establish seed stability.")))
-      items <- c(items,list(shiny::h5("Tie sensitivity: seed 17 only"),gflowui_ec_html_table(table)))
+      title <- if (identical(artifact,"tie_sensitivity.json")) "Baseline tie sensitivity: seed 17" else "Additional-method tie sensitivity: seed 17"
+      items <- c(items,list(shiny::h5(title),gflowui_ec_html_table(table)))
     }
     shiny::tagList(items)
   })

@@ -154,8 +154,11 @@ gflowui_ec_server <- function(id,manifest) {
     output$title <- shiny::renderText(paste(graph_id(),active_label(),sep=" — "))
     output$view_status <- shiny::renderText({
       g <- graph();s <- current()$result
-      sprintf("%s vertices; %s edges; %s components (%s isolates). Components are packed only for display; %s cross-component pairs excluded. %s vertices selected.",
+      text <- sprintf("%s vertices; %s edges; %s components (%s isolates). Components are packed only for display; %s cross-component pairs excluded. %s vertices selected.",
         g$n_vertices,g$n_edges,g$n_components,g$n_isolates,s$cross_component_pairs_excluded,length(selected_vertices()))
+      if (identical(s$method,"trimap")) text <- paste(text,
+        "Caution: this landmark-feature variant produced repeated feature rows and extreme triplet weights in the pilot. Its large-scale, poor layouts are retained; a separate graph-distance variant is also available.")
+      text
     })
     output$overview <- shiny::renderUI({
       g <- graph()

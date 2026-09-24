@@ -2,7 +2,8 @@
 
 This experiment keeps the Phase 1 gallery cohort and evaluation contract fixed.
 It adds six public backends through the shared, deterministic 64-landmark
-distance features. The input is not an adjacency-row embedding. Neighborhoods
+distance features. The input is not an adjacency-row embedding. The prepared
+float64 features are converted to float32 at the backend boundary. Neighborhoods
 inferred internally by a backend never replace the original graph used for
 display or scoring. Components with fewer than five vertices retain the
 explicitly identified classical placement from the pilot.
@@ -14,6 +15,7 @@ explicitly identified classical placement from the pilot.
 | PaCMAP | pacmap 0.9.1 | 3D, seeded Annoy, random initialization, 100/100/250 iterations | Apache-2.0 |
 | LocalMAP | pacmap 0.9.1 | Same route; local-distance threshold 10 | Apache-2.0 |
 | TriMAP | trimap 1.1.5 | 3D; exact feature kNN via public `knn_tuple`; NumPy and serial/parallel Numba RNGs seeded; 400 iterations | Apache-2.0 |
+| TriMAP (graph distances) | trimap 1.1.5 | Public precomputed original-graph distance route; same 3D optimizer/seed budget | Apache-2.0 |
 | PHATE | phate 2.0.0 | 3D; automatic diffusion time; no additional PCA/landmarks; metric SGD-MDS | GPL-2.0 |
 | NCVis | d5c8b96e3b3bb131e12cf2d46daa8635ae1ce339 | 3D; one thread; 50 epochs and 20 initialization epochs | MIT |
 | LargeVis | feb8121e8eb9652477f7f564903d189ee663796f | 3D; feature input; one thread; 20 million sampled edges | Apache-2.0 |
@@ -37,6 +39,24 @@ internal potential distances are not evaluation targets. Actual MDS stopping
 iteration is not exposed, and convergence warnings must not be suppressed.
 
 ## Private environments and native builds
+
+The original feature-based cohort is retained, including poor TriMAP outcomes.
+Repeated landmark-feature rows trigger the backend's tiny local-distance floor,
+very large triplet weights, and sometimes repeated vertices within a constraint.
+The recorded diagnostic reproduces the saved triplet/weight hashes exactly.
+A separately named graph-distance variant avoids substituting a tuned result
+for that experiment. It uses `use_dist_matrix=True` on original graph distances,
+with upstream internal neighbor tie handling, not feature-distance neighbors.
+The pinned backend's distance route fails at n<=62 because its neighbor
+partition index reaches n. Its wrapper therefore explicitly marks components
+below 63 as classical small-component placements; none of the four pilot graphs'
+nontrivial components is this small. This limit is not a claim that TriMAP is
+mathematically restricted to 63 vertices. Both input tracks remain visible.
+
+Run only the extra variant with `--methods trimap_graph --result-name
+phase03_trimap_graph_results.json`, using its freshly validated contract. The
+original 72-row index is not replaced. Contract source hashes are checked before
+cohort execution; the two experiments keep their own numerical-source commits.
 
 Create a separate Python 3.12 virtual environment and install `requirements.txt`.
 Do not modify the accepted pilot environment or global R/Python libraries.

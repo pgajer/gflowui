@@ -11,4 +11,6 @@ sys.path.insert(0,str(Path(__file__).resolve().parent))
 from adapters import embed
 
 if __name__=='__main__':
-    pilot.run(read_json(sys.argv[1]),embedder=embed,input_type='landmark_distance_features')
+    request=read_json(sys.argv[1])
+    pilot.run(request,embedder=embed,input_type=('original_graph_distances' if request['method']=='trimap_graph'
+                                               else 'landmark_distance_features'))

@@ -82,7 +82,7 @@ def run(request, embedder=embed, input_type=None):
         initial=None
         if method=='metric_mds_edge_kk':
             initial=Path(request['initial_run'])/f'component_{component:03d}'/'coords.csv'
-        small=len(ids)<5
+        small=len(ids)<request.get('small_component_cutoff',5)
         with warnings.catch_warnings(record=True) as captured:
             warnings.simplefilter('always')
             if small:

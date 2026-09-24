@@ -5,7 +5,7 @@ import subprocess
 import numpy as np
 from scipy.spatial.distance import cdist
 
-METHODS=['pacmap','localmap','trimap','phate','largevis','ncvis']
+METHODS=['pacmap','localmap','trimap','phate','largevis','ncvis','trimap_graph']
 
 
 def exact_feature_neighbors(x, ids, count):
@@ -58,15 +58,21 @@ def embed(method, adjacency, ids, d, features, seed, dest, initial=None):
                       termination='fixed 450-iteration schedule; no convergence claim',
                       internal_preprocessing='global min/max scalar normalization, then feature centering')
         if method=='localmap': detail['low_dist_threshold']=float(model.low_dist_thres)
-    elif method=='trimap':
+    elif method in ('trimap','trimap_graph'):
         from trimap import TRIMAP
         seed_numba(seed)
         inliers=min(12,n-2)
-        neighbors,distances=exact_feature_neighbors(x,ids,min(n,inliers+50))
         settings=dict(n_dims=3,n_inliers=inliers,n_outliers=4,n_random=3,
                       distance='euclidean',lr=.1,n_iters=400,weight_temp=.5,
                       apply_pca=False,opt_method='dbd')
-        model=TRIMAP(knn_tuple=(neighbors,distances),**settings)
+        if method=='trimap_graph':
+            if n<63: raise ValueError('public TriMAP distance route requires at least 63 vertices; outer placement handles smaller components')
+            model=TRIMAP(use_dist_matrix=True,**settings)
+            x=np.array(d,dtype=np.float32,copy=True)
+            detail['input']='original graph shortest-path distances'
+        else:
+            neighbors,distances=exact_feature_neighbors(x,ids,min(n,inliers+50))
+            model=TRIMAP(knn_tuple=(neighbors,distances),**settings)
         # Import/JIT initialization may consume the Python RNG; reset immediately
         # before fitting rather than relying on the seed before backend import.
         np.random.seed(seed)
@@ -77,6 +83,13 @@ def embed(method, adjacency, ids, d, features, seed, dest, initial=None):
         import hashlib
         detail['triplets_sha256']=hashlib.sha256(model.triplets.tobytes()).hexdigest()
         detail['weights_sha256']=hashlib.sha256(model.weights.tobytes()).hexdigest()
+        detail['degenerate_triplets']=int(np.sum((model.triplets[:,0]==model.triplets[:,1])|
+                                                 (model.triplets[:,0]==model.triplets[:,2])|
+                                                 (model.triplets[:,1]==model.triplets[:,2])))
+        detail['weight_quantiles']=np.quantile(model.weights,[0,.5,.9,.99,1]).tolist()
+        if method=='trimap_graph':
+            detail['settings']['use_dist_matrix']=True
+            detail['neighbors']='upstream precomputed graph-distance route; upstream argpartition/argsort ties'
     elif method=='phate':
         from phate import PHATE
         settings=dict(n_components=3,knn=min(5,n-1),decay=40,t='auto',n_landmark=None,

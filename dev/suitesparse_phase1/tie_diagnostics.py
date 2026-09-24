@@ -32,11 +32,13 @@ def validate_coverage(data,index,index_hash):
     return data
 
 
-def diagnostic(root):
+def diagnostic(root,index_name='pilot_results.json',output_name='tie_sensitivity.json'):
     root=Path(root)
-    index=read_json(root/'pilot_results.json')
+    if any(Path(name).name!=name or not name.endswith('.json') for name in (index_name,output_name)) or index_name==output_name:
+        raise ValueError('index/output must be distinct plain JSON filenames')
+    index=read_json(root/index_name)
     rows=[]
-    index_hash=sha256(root/'pilot_results.json')
+    index_hash=sha256(root/index_name)
     for run in eligible_runs(index):
         dest=Path(run['run_dir']); manifest=read_json(dest/'manifest.json')
         if not verified_cached(dest,manifest['run_key']):
@@ -79,12 +81,14 @@ def diagnostic(root):
         diagnostic='reverse lexical vertex-ID tie priority; fixed layouts and graph distances',
         coverage='completed main-cohort seed-17 runs only; not a new embedding experiment',runs=rows)
     validate_coverage(complete,index,index_hash)
-    if sha256(root/'pilot_results.json')!=index_hash:
+    if sha256(root/index_name)!=index_hash:
         raise ValueError('result index changed during diagnostic')
     # Do not publish a prefix. Cancellation preserves any prior complete artifact.
-    atomic_json(root/'tie_sensitivity.json',complete)
+    atomic_json(root/output_name,complete)
 
 
 if __name__=='__main__':
     parser=argparse.ArgumentParser();parser.add_argument('root')
-    diagnostic(parser.parse_args().root)
+    parser.add_argument('--index',default='pilot_results.json')
+    parser.add_argument('--output',default='tie_sensitivity.json')
+    args=parser.parse_args();diagnostic(args.root,args.index,args.output)

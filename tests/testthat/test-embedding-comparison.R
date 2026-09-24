@@ -158,3 +158,15 @@ test_that("bundle figure settings record disabled edges and selected-vertex labe
     expect_true(saved$edges);expect_true(saved$labels)
   })
 })
+test_that("seed ranges separate settings and retain failures without invented scores", {
+  rows <- data.frame(graph_id=rep("g",5),method=c("A","A","A","A","B"),
+    settings=c("one","one","one","two","one"),status=c("completed","completed","failed","completed","unsupported"),
+    chord_error=c(.2,.4,NA,.8,NA))
+  result <- gflowui_ec_seed_ranges(rows,"g")
+  expect_equal(result$Available,c(2L,1L,0L))
+  expect_equal(result$Listed,c(3L,1L,1L))
+  expect_equal(result$Mean,c(.3,.8,NA))
+  expect_equal(result$Minimum,c(.2,.8,NA))
+  expect_equal(result$Maximum,c(.4,.8,NA))
+  expect_equal(nrow(gflowui_ec_seed_ranges(rows,"absent")),0L)
+})

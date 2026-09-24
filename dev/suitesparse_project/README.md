@@ -2,8 +2,9 @@
 
 The viewer reads saved, validated assets. Changing the graph, layout, metric or
 camera never invokes an embedding optimizer or recomputes a quality score.
-Phase 2 adds the interface to the accepted four-graph pilot; it does not add new
-scientific runs or claim that the future methods are already available.
+Phase 2 added the interface to the accepted four-graph pilot. Phase 3 provides
+additional feature-based backends through a separate result index, preserving
+all baseline results. Methods are available only when completed assets exist.
 
 ## Build and register
 
@@ -20,6 +21,18 @@ creating display diagnostics. No original coordinates or scores are changed.
 The display-only Shepard sample contains up to 2,000 uniformly sampled unordered
 pairs per component with seed 2718. All pilot quality scores remain exact.
 Edge histograms contain every edge, before component display packing.
+
+After the complete Phase 3 matrix and its diagnostics are generated, include it
+explicitly without dropping the original indexes:
+
+    python dev/suitesparse_project/report_expansion.py /path/to/pilot-data
+    python dev/suitesparse_project/export_viewer.py /path/to/pilot-data --indexes pilot_results.json lle_landmarks16.json lle_landmarks32.json phase03_results.json
+
+This adds PaCMAP, LocalMAP, TriMAP, PHATE, LargeVis and NCVis results. Their input
+track is shared landmark-distance features; backend preprocessing/settings and
+limitations are described in ../suitesparse_phase3/README.md and each run record.
+The seed-range panel groups different settings separately and includes the new
+methods. LGS remains unavailable until its separate integration gate.
 
 ## Walkthrough
 

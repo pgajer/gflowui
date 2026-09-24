@@ -18,6 +18,10 @@ def test_invalid_adapters_do_not_silently_fallback(tmp_path):
     with pytest.raises(ValueError,match='constant'):
         embed('pacmap',None,['a']*8,None,np.ones((8,3)),17,tmp_path)
 
+def test_trimap_graph_small_input_is_not_silently_misinterpreted(tmp_path):
+    with pytest.raises(ValueError,match='at least 63'):
+        embed('trimap_graph',None,[str(i) for i in range(6)],np.ones((6,6)),np.arange(18).reshape(6,3),17,tmp_path)
+
 def test_shared_component_pipeline_and_isolate(tmp_path):
     import sys,importlib.util
     from pathlib import Path

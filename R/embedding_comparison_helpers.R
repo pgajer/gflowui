@@ -31,7 +31,8 @@ gflowui_ec_methods <- function() c(
   metric_mds = "Metric MDS", metric_mds_edge_kk = "Metric MDS + edge-KK",
   weighted_grip = "Weighted GRIP", isomap_graph = "Isomap (original graph)",
   umap = "UMAP", lle = "LLE", pacmap = "PaCMAP", localmap = "LocalMAP",
-  trimap = "TriMAP", phate = "PHATE", largevis = "LargeVis", ncvis = "NCVis", lgs = "LGS"
+  trimap = "TriMAP (landmark features)", trimap_graph = "TriMAP (graph distances)",
+  phate = "PHATE", largevis = "LargeVis", ncvis = "NCVis", lgs = "LGS"
 )
 
 gflowui_ec_metrics <- function() c(
@@ -53,6 +54,21 @@ gflowui_ec_definitions <- function() list(
   interpretation = "Do not combine fitted-scale and identity-scale measures into a single ranking. Fixed-path preservation alone does not establish unfolding.",
   uncertainty = "Observed seed ranges are not confidence intervals. Reverse-ID tie sensitivity changes convention, not layout."
 )
+
+gflowui_ec_seed_ranges <- function(table, graph_id, metric = "chord_error") {
+  rows <- table[table$graph_id == graph_id, , drop = FALSE]
+  if (!nrow(rows)) return(data.frame())
+  groups <- unique(rows[c("method", "settings")])
+  do.call(rbind, lapply(seq_len(nrow(groups)), function(i) {
+    rr <- rows[rows$method == groups$method[i] & rows$settings == groups$settings[i], , drop = FALSE]
+    values <- rr[[metric]][rr$status == "completed" & is.finite(rr[[metric]])]
+    data.frame(Method = groups$method[i], Settings = groups$settings[i],
+      Available = length(values), Listed = nrow(rr),
+      Mean = if (length(values)) mean(values) else NA_real_,
+      Minimum = if (length(values)) min(values) else NA_real_,
+      Maximum = if (length(values)) max(values) else NA_real_, check.names = FALSE)
+  }))
+}
 
 gflowui_ec_load_index <- function(root) {
   root <- normalizePath(root, mustWork = TRUE)
@@ -85,6 +101,10 @@ gflowui_ec_load_index <- function(root) {
     method <- unname(gflowui_ec_methods()[run$method])
     if (is.na(method)) method <- run$method
     settings <- if (identical(run$method, "lle")) sprintf("%s landmarks", gflowui_ec_text(run$parameters, "unknown")) else "fixed pilot settings"
+    if (run$method %in% c("pacmap","localmap","trimap","phate","largevis","ncvis")) {
+      settings <- sprintf("%s landmarks; fixed backend settings", gflowui_ec_text(run$parameters,"unknown"))
+    }
+    if (identical(run$method,"trimap_graph")) settings <- "graph distances; 400 iterations"
     term <- if (is.null(result)) gflowui_ec_text(run$reason, run$status) else {
       details <- vapply(result$components, function(c) {
         if (isTRUE(c$small_component_placement)) return("")

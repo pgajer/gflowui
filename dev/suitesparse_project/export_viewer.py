@@ -87,16 +87,19 @@ def build(root,index_names):
                 row['id']=identity(dict(index=filename,**row))
             if row['id'] in seen: continue
             seen.add(row['id']);runs.append(row)
-    available={r['method'] for r in runs}
+    available={(r['graph_id'],r['method']) for r in runs}
     for graph in graphs:
         for method in PLANNED:
-            if method not in available:
+            if (graph['id'],method) not in available:
                 runs.append(dict(id=identity(dict(graph=graph['id'],method=method,status='unsupported')),
                     graph_id=graph['id'],method=method,seed=None,status='unsupported',
                     reason='Not integrated in this project phase; no validated layout available.'))
     extras={}
     for name in ['FINDINGS.md','scores.csv','replicate_summary.json','tie_sensitivity.json','landmark_sensitivity.json',
-                 'catalog/gallery.json','cohort.json','deliverables.json']:
+                 'catalog/gallery.json','cohort.json','deliverables.json',
+                 'PHASE03_FINDINGS.md','phase03_scores.csv','phase03_replicate_summary.json',
+                 'phase03_capabilities.json','phase03_tie_sensitivity.json','phase03_trimap_graph_ties.json',
+                 'phase03_trimap_scale_diagnosis.json']:
         if (root/name).exists(): extras[name]=asset(root/name)
     atomic_json(root/'viewer_manifest.json',dict(schema_version=1,kind='gflowui_embedding_comparison',
         title='SuiteSparse 3D Embedding Comparison',graphs=graphs,runs=runs,artifacts=extras,

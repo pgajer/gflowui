@@ -11,8 +11,10 @@ from common import atomic_json,read_json,sha256,identity
 from run_pilot import supervise,verified_cached,allocation_preflight
 from adapters import METHODS
 
-def run(root,contracts,methods,native_manifests=()):
+def run(root,contracts,methods,native_manifests=(),result_name='phase03_results.json'):
     root=Path(root).resolve();source=Path(__file__).resolve().parent
+    if Path(result_name).name!=result_name or not result_name.endswith('.json'):
+        raise ValueError('result name must be a plain JSON filename')
     if subprocess.check_output(['git','status','--porcelain'],text=True).strip():
         raise RuntimeError('commit source before cohort execution')
     revision=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
@@ -27,7 +29,11 @@ def run(root,contracts,methods,native_manifests=()):
     if binary: env['largevis_binary_sha256']=sha256(binary)
     validated={}
     for path in contracts:
-        for record in read_json(path)['results']:
+        data=read_json(path)
+        for name in ['adapters.py','feature_worker.py','probe.py']:
+            if data.get('code',{}).get(name)!=sha256(source/name):
+                raise ValueError('stale or unverified adapter contract: '+name)
+        for record in data['results']:
             if record['method'] in validated: raise ValueError('duplicate method contract')
             validated[record['method']]=record
     rows=[]
@@ -47,6 +53,7 @@ def run(root,contracts,methods,native_manifests=()):
                     environment=env,adapter_contract=contract,
                     limits=dict(seconds=600,memory_bytes=2*1024**3))
                 request['allocation_preflight']=allocation_preflight(info,64,2*1024**3)
+                request['small_component_cutoff']=63 if method=='trimap_graph' else 5
                 key=identity(request)
                 dest=root/'runs'/graph['graph_id'].replace('/','__')/f'{method}_seed{seed}_{key[:12]}'
                 if not verified_cached(dest,key):
@@ -69,12 +76,13 @@ def run(root,contracts,methods,native_manifests=()):
                            elapsed_seconds=manifest['elapsed_seconds'],peak_rss_bytes=manifest['peak_rss_bytes'])
                 if row['status']=='completed': row['scores']=read_json(dest/'result.json')['summary']
                 rows.append(row)
-                atomic_json(root/'phase03_results.json',dict(schema_version=1,commit=revision,runs=rows))
+                atomic_json(root/result_name,dict(schema_version=1,commit=revision,runs=rows))
                 print(graph['graph_id'],method,seed,row['status'],round(row['elapsed_seconds'],2),flush=True)
-    atomic_json(root/'phase03_results.json',dict(schema_version=1,commit=revision,runs=rows))
+    atomic_json(root/result_name,dict(schema_version=1,commit=revision,runs=rows))
 
 if __name__=='__main__':
     p=argparse.ArgumentParser();p.add_argument('root');p.add_argument('--contracts',nargs='+',required=True)
     p.add_argument('--methods',choices=METHODS,nargs='+',default=METHODS)
     p.add_argument('--native-manifests',nargs='*',default=[])
-    a=p.parse_args();run(a.root,a.contracts,a.methods,a.native_manifests)
+    p.add_argument('--result-name',default='phase03_results.json')
+    a=p.parse_args();run(a.root,a.contracts,a.methods,a.native_manifests,a.result_name)
