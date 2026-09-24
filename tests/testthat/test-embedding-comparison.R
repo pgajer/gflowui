@@ -63,7 +63,7 @@ test_that("sampled evaluation and vector exports preserve intervals and selected
     line<-Filter(function(trace)identical(trace$mode,"lines"),plot$x$data)[[1]]
     expect_equal(unlist(line$x[1:2]),c(.08,.12))
     expect_match(output$evaluation_note,"approximate 95%",fixed=TRUE)
-    expect_match(as.character(output$quality_table),"0.08",fixed=TRUE)
+    expect_match(paste(as.character(output$quality_table),collapse="\n"),"0.08",fixed=TRUE)
   })
   dest<-tempfile("publication-");dir.create(dest);on.exit(unlink(dest,recursive=TRUE),add=TRUE)
   zip<-gflowui_ec_export(index,list(graph_id="A",run_id="A1"),dest)
