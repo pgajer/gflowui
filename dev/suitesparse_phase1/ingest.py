@@ -26,4 +26,4 @@ if __name__ == '__main__':
             print(results[-1],flush=True)
     atomic_json(root/'cohort.json',dict(schema_version=1,selection='all_metadata_eligible_gallery_members',
          target_count='6–8',actual_count=len(results),records=results,
-         limitation='Only four gallery matrices meet the frozen limits; no non-gallery substitutes.'))
+         limitation=f'{len(results)} gallery matrices meet the frozen limits; no non-gallery substitutes.'))

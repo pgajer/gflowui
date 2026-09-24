@@ -68,11 +68,39 @@ def supervise(command, dest, seconds=600, memory=2*1024**3):
 
 
 def verified_cached(dest,key):
+    dest=Path(dest)
     path=dest/'manifest.json'
     if not path.exists(): return False
-    data=read_json(path)
-    return (data.get('run_key')==key and data.get('status')=='completed'
-            and all((dest/f).is_file() and sha256(dest/f)==h for f,h in data['artifacts'].items()))
+    try:
+        data=read_json(path)
+        artifacts=data['artifacts']
+        required={'request.json','result.json','coords_raw.csv','coords_display.csv','vertices.json'}
+        if (data.get('run_key')!=key or data.get('status')!='completed'
+                or not isinstance(artifacts,dict) or not required.issubset(artifacts)):
+            return False
+        for name,digest in artifacts.items():
+            relative=Path(name)
+            file=dest/relative
+            if (relative.is_absolute() or '..' in relative.parts or '\\' in name
+                    or not file.resolve().is_relative_to(dest.resolve())
+                    or not file.is_file() or sha256(file)!=digest):
+                return False
+        return True
+    except (OSError,ValueError,KeyError,TypeError,AttributeError):
+        return False
+
+
+def allocation_preflight(info,landmarks,memory):
+    """Reject known prepared inputs alone exceeding budget; not a peak-RSS forecast."""
+    n=max(info['component_sizes'],default=0)
+    # Exact float64 distances, int32 predecessors, and float64 landmark features.
+    distance=8*n*n
+    predecessor=4*n*n
+    features=8*n*min(n,landmarks)
+    known=distance+predecessor+features
+    return dict(component_vertices=n,distance_bytes=distance,predecessor_bytes=predecessor,
+                feature_bytes=features,known_prepared_bytes=known,admitted=known<=memory,
+                caveat='Necessary allocation check only; excludes optimizer, scoring, imports and copies. RSS supervision remains mandatory.')
 
 
 def run(root,methods=METHODS,landmarks=64,result_name='pilot_results.json'):
@@ -103,6 +131,7 @@ def run(root,methods=METHODS,landmarks=64,result_name='pilot_results.json'):
                 payload=dict(schema_version=1,graph_dir=str(graph_dir),graph_sha256=info['graph_sha256'],
                         method=method,seed=seed,landmarks=landmarks,code=code,commit=revision,environment=env,
                         limits=dict(seconds=600,memory_bytes=2*1024**3))
+                payload['allocation_preflight']=allocation_preflight(info,landmarks,payload['limits']['memory_bytes'])
                 initial=previous.get((token,'metric_mds',seed))
                 if method=='metric_mds_edge_kk':
                     if not initial or read_json(initial/'manifest.json')['status']!='completed':
@@ -121,7 +150,11 @@ def run(root,methods=METHODS,landmarks=64,result_name='pilot_results.json'):
                     payload['output']=str(dest)
                     atomic_json(dest/'request.json',payload)
                     print(record['graph_id'],method,seed,'running',flush=True)
-                    timing=supervise([sys.executable,str(source/'worker.py'),str(dest/'request.json')],dest)
+                    if payload['allocation_preflight']['admitted']:
+                        timing=supervise([sys.executable,str(source/'worker.py'),str(dest/'request.json')],dest)
+                    else:
+                        timing=dict(status='resource_limited',reason='prepared_allocation_preflight',
+                                    elapsed_seconds=0.,peak_rss_bytes=0,limits=payload['limits'])
                     if timing['status']=='completed' and not (dest/'result.json').exists():
                         timing.update(status='failed',reason='missing result')
                     artifacts={str(f.relative_to(dest)):sha256(f) for f in sorted(dest.rglob('*'))
@@ -130,7 +163,8 @@ def run(root,methods=METHODS,landmarks=64,result_name='pilot_results.json'):
                 previous[token,method,seed]=dest
                 manifest=read_json(dest/'manifest.json')
                 row=dict(graph_id=record['graph_id'],method=method,seed=seed,status=manifest['status'],
-                         run_dir=str(dest),elapsed_seconds=manifest['elapsed_seconds'],peak_rss_bytes=manifest['peak_rss_bytes'])
+                         reason=manifest.get('reason'),run_dir=str(dest),elapsed_seconds=manifest['elapsed_seconds'],
+                         peak_rss_bytes=manifest['peak_rss_bytes'])
                 if row['status']=='completed': row['scores']=read_json(dest/'result.json')['summary']
                 rows.append(row)
                 atomic_json(root/result_name,dict(schema_version=1,commit=revision,runs=rows))

@@ -12,7 +12,7 @@ from graphs import convert,prepare,matrix_from_archive
 from metrics import validate_coords,score_component,fixed_path_lengths,rank_quality,aggregate
 from catalog import admission,parse_metadata
 from common import atomic_json,sha256
-from run_pilot import supervise,verified_cached
+from run_pilot import supervise,verified_cached,allocation_preflight
 
 
 def path(n):
@@ -184,9 +184,25 @@ def test_supervisor_and_cache(tmp_path):
     result=supervise([sys.executable,'-c','import time; time.sleep(5)'],tmp_path,seconds=.1)
     assert result['status']=='resource_limited' and result['reason']=='timeout'
     artifact=tmp_path/'result.json';atomic_json(artifact,{'value':1})
-    atomic_json(tmp_path/'manifest.json',dict(status='completed',run_key='x',artifacts={'result.json':sha256(artifact)}))
+    names=['result.json','request.json','coords_raw.csv','coords_display.csv','vertices.json']
+    for name in names[1:]: (tmp_path/name).write_text('fixture')
+    artifacts={name:sha256(tmp_path/name) for name in names}
+    manifest=dict(status='completed',run_key='x',artifacts=artifacts)
+    atomic_json(tmp_path/'manifest.json',manifest)
     assert verified_cached(tmp_path,'x') and not verified_cached(tmp_path,'y')
     atomic_json(artifact,{'value':2});assert not verified_cached(tmp_path,'x')
+    for invalid in [{},dict(manifest,artifacts={}),dict(manifest,artifacts=dict(artifacts,**{'../outside':'x'}))]:
+        atomic_json(tmp_path/'manifest.json',invalid)
+        assert not verified_cached(tmp_path,'x')
+    (tmp_path/'manifest.json').write_text('{invalid')
+    assert not verified_cached(tmp_path,'x')
+
+
+def test_allocation_preflight():
+    check=allocation_preflight(dict(component_sizes=[100,1000]),64,2*1024**3)
+    assert check['known_prepared_bytes']==12*1000**2+8*1000*64
+    assert check['admitted']
+    assert not allocation_preflight(dict(component_sizes=[20000]),64,2*1024**3)['admitted']
 
 
 def test_six_real_adapters(tmp_path):

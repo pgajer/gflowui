@@ -107,6 +107,10 @@ limits, one heavy job at a time, one requested numerical thread. RSS is sampled
 every 0.1 second: brief peaks may be missed and enforcement may overshoot. The
 budget covers preparation, embedding, scoring, imports, and R subprocesses, not
 just optimizer time. Timeout/cancellation kills only that process group.
+Before launch, reject jobs whose known prepared dense arrays alone exceed the
+budget (8-byte distances, 4-byte predecessors and 8-byte landmark features for
+the largest component). This necessary allocation check is not a peak-memory
+forecast: optimizer/scoring copies and package loading still require supervision.
 
 Run identities cover graph, code, environment, method, parameters, seed and parent
 MDS manifest. Cache reads verify every recorded artifact hash. A failed or corrupt
@@ -119,6 +123,8 @@ and unavailable paired refinements. `graph.json` records conversion and structur
 Each run has coordinates, explicit vertex order, component input hashes, scores,
 backend metadata, warnings, process log, and a checksummed manifest. `FINDINGS.md`
 summarizes the saved results without claiming universal superiority.
+`termination_diagnostics.json` distinguishes execution from convergence, and
+`landmark_sensitivity.json` records the 16/32/64-landmark LLE comparison.
 
 Tests include analytic/folded paths, independently accumulated fixed paths and
 chord sums, rigid/scale transformations, independent scikit-learn rank checks,
