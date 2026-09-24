@@ -23,7 +23,7 @@ gflowui_ec_publication_render <- function(table,settings,directory) {
       height<-max(6,2.8+.24*nrow(rr))
       if(ext=="pdf")grDevices::pdf(path,width=10,height=height,useDingbats=FALSE) else grDevices::svg(path,width=10,height=height)
       tryCatch({
-        graphics::par(mar=c(5.5,17,5,1),family="sans",cex=.85)
+        graphics::par(mar=c(7,17,5,1),family="sans",cex=.85)
         graphics::plot(rr[[key]],y,type="n",xlim=extent,ylim=c(.5,nrow(rr)+.5),yaxt="n",ylab="",xlab=metrics[[key]],bty="l")
         graphics::axis(2,at=y,labels=labels,las=1,tick=FALSE,cex.axis=.8)
         if(!is.na(active))graphics::abline(v=rr[[key]][active],col="#737A80",lty=2)
@@ -33,8 +33,8 @@ gflowui_ec_publication_render <- function(table,settings,directory) {
         if(!is.na(active))graphics::points(rr[[key]][active],y[active],pch=1,col="#39434A",cex=1.4,lwd=1.2)
         graphics::title(main=paste(settings$graph_id,"-",metrics[[key]]),line=3,cex.main=1)
         graphics::mtext(note,side=3,line=1.5,cex=.75)
-        graphics::mtext("Gray dashed line / open circle: displayed run. Original graph targets; components evaluated separately.",side=1,line=3.4,cex=.7)
-        if(sampled)graphics::mtext("Intervals condition on fixed coordinates; they do not describe optimizer-seed variability.",side=1,line=4.5,cex=.7)
+        graphics::mtext("Gray dashed line / open circle: displayed run. Original graph targets; components evaluated separately.",side=1,line=4.5,cex=.7)
+        if(sampled)graphics::mtext("Intervals condition on fixed coordinates; they do not describe optimizer-seed variability.",side=1,line=5.7,cex=.7)
       },finally=grDevices::dev.off())
       out<-c(out,file)
     }
