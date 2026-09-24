@@ -46,6 +46,17 @@ O(n^3 D) worst-case collision guard, <=2000vertices/component and
 layouts. No smaller epoch budget or substitute optimizer is used to force
 gallery completion. Failed attempts are retained in distinct directories.
 
+The shared supervisor handles vanished processes separately from denied RSS.
+For a still-running process whose psutil RSS read is denied, it makes one POSIX
+`ps` query with a 0.5-second deadline and records that fallback measurement.
+If the process remains unmeasurable, the owned worker is stopped/reaped and the
+run is recorded as failed with a monitoring reason, not zero memory or an
+optimizer failure. The LGS matrix records unexpected supervisor exceptions too,
+then continues with later cases. Time/memory limit breaches remain distinct.
+Matrix completion means every case has an outcome, not that every optimizer
+succeeded. Read the statuses; `compare_rerun.py ORIGINAL_INDEX RERUN_INDEX OUTPUT`
+separately verifies all34 corrective cases and exact coordinate/score equality.
+
 The paper-form objective can be unbounded below when the attractive constraints
 are disconnected and repulsion is positive. Safeguarded pair steps do not imply
 full-objective descent. Poor128-vertex quality and objective growth are retained.

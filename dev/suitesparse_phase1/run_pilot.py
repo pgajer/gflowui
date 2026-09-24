@@ -15,6 +15,44 @@ METHODS=['metric_mds','metric_mds_edge_kk','weighted_grip','isomap_graph','umap'
 SEEDS=[17,29,43]
 
 
+class MonitoringUnavailable(RuntimeError):
+    """A live owned process cannot be reliably measured within the poll budget."""
+
+
+def owned_process_rss(process):
+    """One bounded POSIX ps fallback; never substitute zero for denied live RSS."""
+    try:
+        return process.memory_info().rss,'psutil'
+    except psutil.NoSuchProcess:
+        return 0,'vanished'
+    except psutil.AccessDenied:
+        try:
+            if not process.is_running() or process.status()==psutil.STATUS_ZOMBIE:
+                return 0,'vanished'
+        except psutil.NoSuchProcess:
+            return 0,'vanished'
+        except psutil.AccessDenied:
+            pass
+        try:
+            raw=subprocess.check_output(['ps','-o','rss=','-p',str(process.pid)],
+                text=True,stderr=subprocess.DEVNULL,timeout=.5).strip()
+            # A single PID must produce exactly one nonnegative integer in KiB.
+            if not raw.isascii() or not raw.isdecimal(): raise ValueError('invalid RSS response')
+            rss=int(raw)*1024
+            if not process.is_running(): return 0,'vanished'
+            return rss,'ps_fallback'
+        except psutil.NoSuchProcess:
+            return 0,'vanished'
+        except (OSError,subprocess.SubprocessError,ValueError,psutil.AccessDenied) as exc:
+            try:
+                if not process.is_running(): return 0,'vanished'
+            except psutil.NoSuchProcess:
+                return 0,'vanished'
+            except psutil.AccessDenied:
+                pass
+            raise MonitoringUnavailable(f'pid {process.pid}: bounded RSS fallback unavailable ({type(exc).__name__})') from exc
+
+
 def environment():
     return dict(python=sys.version,packages={x:importlib.metadata.version(x) for x in
                 ['numpy','scipy','scikit-learn','umap-learn','numba','networkx','psutil']},
@@ -30,6 +68,8 @@ def supervise(command, dest, seconds=600, memory=2*1024**3):
     start=time.monotonic()
     peak=0
     failure=None
+    failure_status=None
+    fallback_reads=vanished_reads=0
     with (dest/'process.log').open('w') as log:
         proc=subprocess.Popen(command,stdout=log,stderr=subprocess.STDOUT,env=env,start_new_session=True)
         try:
@@ -39,17 +79,22 @@ def supervise(command, dest, seconds=600, memory=2*1024**3):
                     processes=[parent]+parent.children(recursive=True)
                     rss=0
                     for child in processes:
-                        try:
-                            rss+=child.memory_info().rss
-                        except psutil.NoSuchProcess:
-                            pass
+                        value,method=owned_process_rss(child)
+                        rss+=value
+                        fallback_reads+=int(method=='ps_fallback')
+                        vanished_reads+=int(method=='vanished')
                     peak=max(peak,rss)
                 except psutil.NoSuchProcess:
                     pass
+                except (psutil.AccessDenied,MonitoringUnavailable) as exc:
+                    failure='memory_telemetry_unavailable: '+str(exc)
+                    failure_status='failed'
                 if time.monotonic()-start>seconds:
                     failure='timeout'
+                    failure_status='resource_limited'
                 elif peak>memory:
                     failure='memory_limit'
+                    failure_status='resource_limited'
                 if failure:
                     try: os.killpg(proc.pid,signal.SIGKILL)
                     except ProcessLookupError: pass
@@ -61,10 +106,11 @@ def supervise(command, dest, seconds=600, memory=2*1024**3):
             proc.wait()
             raise
         code=proc.wait()
-    return dict(status='resource_limited' if failure else ('completed' if code==0 else 'failed'),
+    return dict(status=failure_status if failure else ('completed' if code==0 else 'failed'),
                 reason=failure,exit_code=code,elapsed_seconds=time.monotonic()-start,peak_rss_bytes=peak,
                 limits=dict(seconds=seconds,memory_bytes=memory),
-                memory_measurement='sum parent/descendant RSS sampled every 0.1s; overshoot possible')
+                memory_fallback_reads=fallback_reads,vanished_process_reads=vanished_reads,
+                memory_measurement='sum parent/descendant RSS sampled every 0.1s; one ps fallback per denied read (0.5s limit); overshoot possible')
 
 
 def verified_cached(dest,key):

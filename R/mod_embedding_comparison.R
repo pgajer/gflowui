@@ -229,6 +229,11 @@ gflowui_ec_server <- function(id,manifest) {
         neighborhood=input$neighborhood,vertex_color=input$vertex_color,vertex_size=input$vertex_size,
         edges=is.null(input$edges) || isTRUE(input$edges),
         labels=is.null(input$labels) || isTRUE(input$labels),
+        lgs_fixture=gflowui_ec_text(input$lgs_fixture,"validation_path48"),
+        lgs_metric=gflowui_ec_text(input$lgs_metric,"chord_error"),
+        lgs_population="synthetic integration validation; distinct from selected gallery graph",
+        lgs_variant="lgs-paper-union-v1",
+        lgs_aggregation="mean across available seeds; bars show observed minimum/maximum, not confidence intervals",
         camera=shiny::isolate(camera()),selected_vertices=selected_vertices(),histogram_bins=80,
         guides="gray dashed at active run",figure_source="saved metrics and display-only pair samples")
       tryCatch({

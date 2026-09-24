@@ -74,7 +74,14 @@ def run_one(root,info,setting,seed,dep,code,commit,preflight=None):
         if preflight is not None and not preflight['admitted']:
             timing=dict(status='resource_limited',reason=preflight['reason'],elapsed_seconds=0.,peak_rss_bytes=0,limits=request['limits'])
         else:
-            timing=supervise([sys.executable,str(Path(__file__).with_name('lgs_worker.py')),str(dest/'request.json')],dest)
+            started=time.monotonic()
+            try:
+                timing=supervise([sys.executable,str(Path(__file__).with_name('lgs_worker.py')),str(dest/'request.json')],dest)
+            except Exception as exc:
+                # supervise cleans up its owned worker before propagating. Keep
+                # a terminal record even for unexpected launch/monitor failures.
+                timing=dict(status='failed',reason='supervisor_error: '+type(exc).__name__+': '+str(exc),
+                    elapsed_seconds=time.monotonic()-started,peak_rss_bytes=None,limits=request['limits'])
             if timing['status']=='completed' and not (dest/'result.json').exists():
                 timing.update(status='failed',reason='missing main-project result')
             if timing['status']=='failed':
