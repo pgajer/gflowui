@@ -7,7 +7,7 @@ methods or evidence from the SuiteSparse graph collection.
 
 We used a 48-vertex path, a 7-by-7 grid, and two 24-vertex complete graphs joined
 by one edge. Each graph/locality setting used all three seeds (17, 314, 2026),
-60 epochs, 3D canonical Gaussian starts, walk depth 10, decay 0.1 and repulsion
+60 epochs, 3D canonical uniform starts on [-1,1], walk depth 10, decay 0.1 and repulsion
 0.2. Starts match across locality choices within each graph and seed. Requested
 localities 16,32,64,128,256 were clipped/deduplicated to 16,32,n-1. The last setting
 contains only raw squared-distance attraction. No seed was discarded or selected
