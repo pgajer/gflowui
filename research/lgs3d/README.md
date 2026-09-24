@@ -1,11 +1,11 @@
 # Experimental LGS source interpretation and 2D reproduction
 
-This directory currently contains phases 01–02: a pinned source snapshot,
-mathematical specification, a 2D reference translation, and tests against the
-original compiled optimizer. It has not been integrated into gflowui. There is
-no 3D optimizer, portable request adapter, performance benchmark, or accepted
-method claim yet. See [METHOD.md](METHOD.md) for material paper/code differences
-and the explicitly named proposed paper variant.
+This directory contains the phases 01–02 source interpretation and 2D reference
+reproduction, plus the phase03 paper-form numerical implementation. The explicitly
+selected variant is `lgs-paper-union-v1`; it has a genuine 3D optimizer and retains
+the separate 2D upstream baseline. It has not been integrated into gflowui. There
+is no portable request adapter or performance benchmark yet. See [METHOD.md](METHOD.md) for material paper/code differences
+and the explicitly named selected paper variant.
 
 ## Reproduce locally
 
@@ -82,8 +82,49 @@ under `git diff --check`; their bytes are kept unchanged for comparison. Build
 warnings from deprecated NumPy C APIs and the local linker are recorded in the
 build log; the extension loads and its native calls are exercised by tests.
 
-Future 3D work must preserve the selected model's pair objective and genuine
-D-dimensional updates. The eventual adapter contract, schemas, resource guards,
+The phase03 implementation preserves the selected paper-form pair objective with
+genuine D-dimensional updates. The eventual adapter contract, schemas, resource guards,
 cache, locality sweep and scientific demonstration belong to later phases.
 Package-build exclusion for this research directory is not changed here and
 must be resolved by the integration owner before any merge.
+
+## Paper-form numerical validation (phase 03)
+
+The user selected the paper-form model after the joint phases 01–02 audit. This
+variant uses decayed walk counts, union-symmetrized top-k neighborhoods, raw
+squared distance attraction and logarithmic repulsion. Stable string IDs resolve
+equal computed scores. The exact convention, schedule, pair backtracking,
+collision and displacement guards, and termination semantics are in METHOD.md.
+The unchanged upstream code remains an explicitly different comparison baseline.
+
+```sh
+OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 research/lgs3d/.venv/bin/python research/lgs3d/scripts/validate_paper.py --output research/lgs3d/outputs/phase03
+```
+
+This runs the complete test suite and 36 paper-form runs: three tiny graphs,
+locality 1 and n-1, dimensions 2 and 3, and seeds 17/314/2026. Starts are frozen
+in `fixtures/paper_3d.json`. The run budget is 200 epochs; the implementation's
+default remains 60. Tests cover finite differences at three step sizes, independent
+objective agreement, stable-ID permutation behavior (including genuinely untied
+scores), rigid transformations, analytical pair steps, raw-stress reduction,
+collisions and numerical failures. The scalar evaluator in `lgs_paper/reference.py`
+is separate from the vectorized kernel and optimizer in `lgs_paper/core.py`.
+Only Problems produced by `prepare` are supported; constructing arbitrary
+Problem records or calling low-level pair updates with malformed arguments is
+not an external-input interface.
+
+For the complete four-vertex graph at all-neighbors locality, the genuine 3D
+start reaches a rank-three tetrahedron with squared distance residual near
+machine precision. The 2D comparison cannot realize four mutually unit-distance
+points. This checks dimensional behavior, not superiority on a graph cohort.
+Paths and planar examples are not required to produce coordinate rank three.
+All reported coordinates are raw; centering is only used to diagnose rank.
+
+Pair descent need not give full-objective descent: objective-increasing epochs
+are counted in every run. Movement stopping is a numerical criterion, not proof
+of a global optimum. The optimizer reports floating-point stagnation separately.
+A disconnected attractive-pair graph makes the positive-alpha logarithmic
+objective unbounded below; such runs carry a warning instead of adding repair
+constraints. The all-vertex collision guard costs O(n) per pair, so a full epoch
+has O(n^3 D) worst-case work. No scaling or resource-enforcement claim is made.
+`results/phase03_summary.json` records the committed-code numerical demonstration.

@@ -2,8 +2,9 @@
 
 This is an experimental research component, outside the gflowui runtime. Phase
 01 records the specification; phase 02 reproduces the pinned 2D implementation.
-No dimension-general optimizer or portable production adapter is implemented
-at this stage. Nothing here establishes acceptance for app integration.
+Phase 03 adds the explicitly selected paper-form objective and safeguarded
+dimension-general optimizer. The portable adapter remains future work. Nothing
+here establishes acceptance for app integration.
 
 Sources: Miller, Huroyan and Kobourov, *Balancing between the Local and Global
 Structures (LGS) in Graph Embedding*, [arXiv v2](https://arxiv.org/html/2308.16403v2),
@@ -24,7 +25,7 @@ this scope. The eventual adapter must reject them rather than repair them.
 The upstream CLI calls walk depth `--alpha`, calls repulsion `--tau`, and does
 not pass tau into its optimizer. These ambiguous names are not adopted here.
 
-## Published model and proposed precise paper variant
+## Published model and selected precise paper variant
 
 Section 3.1 ranks each row of S = sum_{p=1}^c s^p A^p, with c=10 and s=0.1 as
 published defaults. There is no normalization of individual powers in this
@@ -35,7 +36,7 @@ mixes weighted and unweighted sums and leaves a free p in its final factor;
 the weighted identity is Q diag(sum_p s^p lambda^p) Q^T, with eigenvectors in
 columns. We do not use that display to silently remove the decay.
 
-For a future variant named `lgs-paper-union-v1` we specify the previously
+For the selected variant named `lgs-paper-union-v1` we specify the previously
 ambiguous pair convention as follows. Exclude self before sorting, sort by
 score descending then stable string ID ascending (Unicode code-point order),
 and select exactly k other vertices, including zero scores if c is too small
@@ -64,23 +65,79 @@ The paper uses shuffled unordered pairs each epoch, a learning rate with
 exponential then reciprocal decay, and a movement-based stopping threshold
 10^-7 or 60 epochs. It does not give sufficient numerical detail to uniquely
 reconstruct every optimizer setting or initialization from the paper alone.
-The named future variant will use float64, NumPy PCG64(seed) uniform(-1,1)
-initial coordinates of shape (n,dimension), or a validated supplied start,
-an unbiased permutation of all unordered pairs per epoch, and the exponential/
-reciprocal schedule below with exposed transition_epochs=30, schedule_epsilon=0.01.
-Pair updates will use the stated paper gradients and explicit backtracking on
-the pair cost if necessary; a controlled full-objective descent check is a
-separate diagnostic. It will terminate on the maximum single pair displacement
-within an epoch <= movement_tolerance or an epoch budget, recording which one.
-These are proposed optimizer choices, not a claim to reproduce the paper's runs.
+The implemented variant uses float64 and NumPy PCG64. A SeedSequence(seed)
+spawns independent initialization and pair-order streams; this means supplying
+the same saved start does not change the pair schedule. Initialization draws
+uniform(-1,1) in (n,dimension) shape in stable-ID order, then restores declared
+input order. Every epoch uses a fresh NumPy permutation of all unordered pairs
+listed in stable-ID order. This is unbiased pseudorandom permutation rather than
+the upstream self-swap-excluding shuffle. All raw coordinates remain unscaled.
 
-Safeguards proposed for this future variant: reject nonfinite inputs, powers,
-objectives and updates; reject exact or near collisions (r <= 10^-12 in raw
-coordinate units) with a reason, rather than substituting a different smooth
-objective silently. Validate initial shape and retain raw coordinates without
-rescaling. Bounds, atomic output and resource supervision belong to phase 04.
-Handling all-coincident input by a reasoned failure is intentional. No 3D
-implementation of this proposal is present in phases 01–02.
+The schedule uses eta_max=max(d)^2, eta_switch=min(d)^2,
+eta_min=schedule_epsilon*eta_switch and
+lambda=log(eta_max/eta_min)/(transition_epochs-1). Define tau as the first
+nonnegative integer for which eta_max*exp(-lambda*tau)<eta_switch, independent
+of requested epoch budget. Before tau use the exponential value; from tau use
+eta_switch/[1+lambda*(t-tau)]. Unlike the reference, short budgets are exact
+prefixes of longer schedules. Defaults: 60 epochs, transition_epochs=30,
+schedule_epsilon=0.01, repulsion_alpha=0.2, movement_tolerance=1e-7.
+These schedule and optimizer details are declared variant choices, not a claim
+to reproduce the paper's runs or the reference optimizer.
+
+For pair gradient g at i (negative at j), trial endpoints are X_i-t*g and
+X_j+t*g. Start t=min(eta, max_pair_displacement/||g||), with maximum endpoint
+displacement default 1 graph-length unit. A zero gradient causes no movement.
+Halve t until the pair objective f satisfies
+f(trial)<=f(current)-armijo*t*2*||g||^2, with armijo=1e-4 by default.
+The factor two includes both endpoints. Every trial must also keep both endpoints
+more than collision_distance=1e-12 from each other and every third vertex.
+There are at most max_backtracks=60 halvings; exhaustion raises
+pair_line_search_failed without applying the failed step. Nonzero-gradient
+updates that round to zero displacement are skipped without changing coordinates;
+the optimizer counts these as roundoff_skipped_pairs so other pairs can continue.
+These are safeguards on optimization, not changes to the scalar objective.
+Pairwise descent does not imply full-objective descent after each pair or epoch.
+
+The optimizer computes the full objective and gradient initially and after every
+epoch, recording the maximum accepted single-pair endpoint movement and total
+halvings in each epoch. It stops if that maximum is <= movement_tolerance or the
+epoch budget is exhausted. The termination strings are movement_tolerance and
+epoch_budget. If the movement condition holds in an epoch with roundoff-skipped
+pairs, termination is instead floating_point_stagnation, even if gradients are
+small. None is a claim of a global optimum or certified stationarity.
+
+Nonfinite inputs, scores, objectives and gradients fail explicitly. Coincident
+and near-coincident starts (any pair r<=1e-12) fail; there is no jitter, distance
+floor in the objective, or silent replacement by a smooth model. Accepted steps
+are displacement-limited and checked against all vertices. A numerical failure
+raises and returns no Result; the caller's initial array is never mutated.
+External request/resource/atomic-output handling remains phase04 work.
+
+Walk scores use the dense float64 recurrence B_1=s*A, B_p=B_(p-1)*(s*A),
+S=sum B_p. Multiplication occurs after sorting vertices by stable ID, fixing
+summation order across input permutations. There is no normalization, integer
+matrix-power overflow, or n=1000 algorithm switch. Scores are unpermuted for
+output. Overflow is rejected; underflow is ordinary float64 behavior, not exact
+rational arithmetic. Independent tiny tests count walks using Python integers.
+All k candidates, including zero scores, are considered; there is no minimum
+score threshold. No promise of treating merely near-equal scores as exact ties
+is made. The stable-ID policy governs equal computed scores.
+
+A connected input graph can yield a disconnected attractive-pair graph after
+neighborhood selection. For positive alpha, translating these attractive groups
+arbitrarily far apart leaves their internal stress unchanged and sends the
+repulsive logarithmic term to minus infinity. The optimizer emits an explicit
+objective_unbounded_below warning and returns only a finite-budget trajectory;
+it does not add repair edges, confine coordinates or claim a finite minimum.
+At alpha=0 their relative placement is unconstrained. Both cases record the
+number of attractive components. All-neighbors attraction is connected for the
+accepted input domain and reduces to raw stress.
+
+The implementation is exact over all pairs, subject to float64 arithmetic.
+Dense walk multiplication costs O(c*n^3), preparation stores O(n^2), and the
+all-vertex collision guard makes each full epoch O(n^3*D) in the worst case.
+No scaling claim is made: this correctness-first implementation is tested on
+tiny fixtures, before resource-limited adapter work.
 
 ## Observed reference neighborhood construction
 
@@ -181,9 +238,10 @@ all D coordinates and CSV/shape validation must preserve that dimension. A
 planar initialization remains planar for distance-only gradient updates, so a
 nonplanar initial configuration is necessary for a genuine 3D diagnostic.
 Replacing only a flag or zero-padding does not alter the upstream hardcoded
-`2*i`, dx/dy storage and `(n,2)` reshape. Invariances and 3D gradient/rank tests
-are deferred to phase 03. Neither the paper variant nor reference optimizer is
-extended to 3D in this initial submission.
+`2*i`, dx/dy storage and `(n,2)` reshape. The new lgs_paper evaluator performs these vector operations in arbitrary
+positive dimension; the embedding entry point accepts dimensions 2 and 3.
+Invariance, 3D gradients and tetrahedron rank are tested in phase03. The pinned
+reference optimizer remains unchanged and 2D-only.
 
 ## Evaluation definitions and discrepancies
 
@@ -214,10 +272,15 @@ and partitions remain authoritative for any future comparison.
 
 ## Identity and limits of this stage
 
-`upstream-9af0e3b-reference-2d` names the reproduced code behavior; it is not
-presented as an implementation of equation (1). `lgs-paper-union-v1` names a
-proposed paper-form interpretation and is not labeled simply “LGS”. The
-objective, locality, tie and optimizer differences are scientifically material.
-Choosing which model should be carried into 3D and whether it may bear the
-unqualified LGS name requires an explicit scientific decision. This submission
-provides 2D evidence for that choice; it does not silently correct the reference.
+The selected model is `lgs-paper-union-v1`: paper-form raw attraction and
+logarithmic repulsion, decayed walk scores, union constraints, declared stable-ID
+ties, and the explicit safeguarded optimizer above. It is not called simply
+“LGS” and does not claim reference-code equivalence. The model selection was
+made explicitly before phase03. The accepted phase01–02 reproduction remains
+available as `upstream-9af0e3b-reference-2d`, including its documented anomalies.
+
+Phase03 tests the numerical method in 2D and 3D on small graphs. Portable request
+schemas, external file validation, resumable cache, enforced job limits, locality
+quality comparisons and scaling remain phase04 work. Neither independent numerical
+review nor model selection authorizes app integration or merging this research
+folder into the package.
