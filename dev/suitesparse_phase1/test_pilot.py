@@ -205,6 +205,18 @@ def test_allocation_preflight():
     assert not allocation_preflight(dict(component_sizes=[20000]),64,2*1024**3)['admitted']
 
 
+def test_reporting_ranges_and_tie_priority():
+    from report import replicate_summary,format_replicates
+    from tie_diagnostics import reversed_priorities
+    assert replicate_summary([3,None,1,2])==dict(count=3,mean=2.,minimum=1.,maximum=3.)
+    assert format_replicates([3,1,2])=='2 [1, 3]'
+    assert format_replicates([2])=='2 (single run)'
+    assert format_replicates([None])=='unavailable'
+    ids=['v:2','v:10','v:1']
+    assert reversed_priorities(ids)==['v:1','v:10','v:2']
+    assert reversed_priorities(reversed_priorities(ids))==ids
+
+
 def test_six_real_adapters(tmp_path):
     from worker import embed
     # Octahedral graph: genuinely three-dimensional distance configuration.

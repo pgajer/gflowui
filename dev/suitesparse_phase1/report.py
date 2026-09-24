@@ -7,6 +7,19 @@ from statistics import mean
 from common import read_json,sha256,atomic_json
 
 
+def replicate_summary(values):
+    values=[float(v) for v in values if v is not None]
+    return dict(count=len(values),mean=mean(values) if values else None,
+                minimum=min(values) if values else None,maximum=max(values) if values else None)
+
+
+def format_replicates(values):
+    s=replicate_summary(values)
+    if not s['count']: return 'unavailable'
+    text=f"{s['mean']:.6g}"
+    return text+(f" [{s['minimum']:.6g}, {s['maximum']:.6g}]" if s['count']>1 else ' (single run)')
+
+
 def report(root):
     root=Path(root)
     runs=read_json(root/'pilot_results.json')
@@ -64,18 +77,46 @@ def report(root):
        'Completed means that finite coordinates and scores were saved, not that an optimum was established. '
        'Full optimizer termination records are in termination_diagnostics.json.',
        '', *[f"- {x['graph_id']}, {x['method']}, seed {x['seed']}: {x['reason']}; sampled peak RSS {x['peak_rss_bytes']/1024**3:.3f} GiB." for x in failures],
-       '', '## Scores (means over completed replicates only; lower is better)','',
+       '', '## Scores (mean [minimum, maximum]; lower is better)','',
+       'Ranges describe the observed completed seeds, not confidence intervals. A single deterministic run '
+       'does not estimate variability. Stopped and unavailable cells are counted but have no score.', '',
        '| Graph | Method | Completed | Euclidean error | Relative stress | Fixed-path error | Edge error |',
        '|---|---|---:|---:|---:|---:|---:|']
     groups=defaultdict(list)
+    summaries=[]
     for run in runs['runs']: groups[run['graph_id'],run['method']].append(run)
     for (graph,method),rr in groups.items():
         done=[x for x in rr if x['status']=='completed']
         vals=[]
         for metric in ['chord_error','relative_stress','path_error','edge_error']:
             v=[x['scores'][metric] for x in done if x['scores'].get(metric) is not None]
-            vals.append(f'{mean(v):.5g}' if v else 'unavailable')
+            vals.append(format_replicates(v))
+            summaries.append(dict(graph_id=graph,method=method,metric=metric,planned=len(rr),
+                                  **replicate_summary(v)))
         lines.append(f'| {graph} | {method} | {len(done)}/{len(rr)} | '+ ' | '.join(vals)+' |')
+    atomic_json(root/'replicate_summary.json',dict(runs=summaries))
+    tie_path=root/'tie_sensitivity.json'
+    lines+=['','## Neighborhood tie sensitivity','',
+        'Equal graph distances require a tie convention for fixed-size neighborhoods. The canonical scores '
+        'use lexical vertex-ID priority. This diagnostic reverses only that priority while holding each '
+        'layout and graph distance fixed. Close method differences may therefore depend on the convention. '
+        'Trustworthiness and continuity range from 0 to 1; higher is better. This is not an optimizer rerun.', '']
+    if tie_path.exists():
+        ties=read_json(tie_path)
+        if ties['source_index_sha256']!=sha256(root/'pilot_results.json'):
+            raise ValueError('tie diagnostic is stale for this result index')
+        lines+=['Coverage: completed main-cohort runs with seed 17 only. Full k=5,10,20,50 values '
+                'are in tie_sensitivity.json. The last column is the largest absolute change across '
+                'those valid trustworthiness/continuity scores.', '',
+                '| Graph | Method | Continuity k=20: canonical | Reversed ties | Largest absolute change |',
+                '|---|---|---:|---:|---:|']
+        def fmt(x): return f'{x:.6f}' if x is not None else 'unavailable'
+        for row in ties['runs']:
+            lines.append(f"| {row['graph_id']} | {row['method']} | "+
+                         ' | '.join([fmt(row['original'].get('continuity_20')),
+                         fmt(row['reversed_id_priority'].get('continuity_20')),fmt(row['max_absolute_change'])])+' |')
+    else:
+        lines+=['Diagnostic not yet generated; no claim of tie-insensitive rankings is made.']
     sensitivity=[]
     for count,filename in [(16,'lle_landmarks16.json'),(32,'lle_landmarks32.json'),(64,'pilot_results.json')]:
         if not (root/filename).exists(): continue
@@ -115,7 +156,8 @@ def report(root):
     (root/'FINDINGS.md').write_text('\n'.join(lines)+'\n')
     atomic_json(root/'deliverables.json',dict(schema_version=1,source_commit=runs['commit'],
         artifacts={p:sha256(root/p) for p in ['catalog/gallery.json','cohort.json','pilot_results.json','scores.csv','FINDINGS.md',
-            'termination_diagnostics.json','landmark_sensitivity.json','lle_landmarks16.json','lle_landmarks32.json'] if (root/p).exists()}))
+            'termination_diagnostics.json','landmark_sensitivity.json','lle_landmarks16.json','lle_landmarks32.json',
+            'tie_sensitivity.json','replicate_summary.json'] if (root/p).exists()}))
 
 
 if __name__=='__main__':

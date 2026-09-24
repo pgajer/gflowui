@@ -25,6 +25,7 @@ python dev/suitesparse_phase1/ingest.py /path/to/project-data
 python dev/suitesparse_phase1/run_pilot.py /path/to/project-data
 python dev/suitesparse_phase1/run_pilot.py /path/to/project-data --methods lle --landmarks 16 --result-name lle_landmarks16.json
 python dev/suitesparse_phase1/run_pilot.py /path/to/project-data --methods lle --landmarks 32 --result-name lle_landmarks32.json
+python dev/suitesparse_phase1/tie_diagnostics.py /path/to/project-data
 python dev/suitesparse_phase1/report.py /path/to/project-data
 ```
 
@@ -125,6 +126,11 @@ backend metadata, warnings, process log, and a checksummed manifest. `FINDINGS.m
 summarizes the saved results without claiming universal superiority.
 `termination_diagnostics.json` distinguishes execution from convergence, and
 `landmark_sensitivity.json` records the 16/32/64-landmark LLE comparison.
+`tie_sensitivity.json` reverses only lexical tie priority for completed seed-17
+layouts, while checking canonical scores against saved results. It does not
+rerun optimizers or replace canonical scores. `replicate_summary.json` records
+counts, means and observed min/max by graph/method/metric. Three-seed ranges are
+descriptive, not confidence intervals; deterministic runs have no variability estimate.
 
 Tests include analytic/folded paths, independently accumulated fixed paths and
 chord sums, rigid/scale transformations, independent scikit-learn rank checks,
