@@ -23,7 +23,9 @@
         handle.setAttribute("aria-valuenow",String(Math.round(w)));
         return w;
       }
-      try { var saved = Number(localStorage.getItem(storage)); if (saved > 0) setWidth(saved); } catch(e) {}
+      var initialWidth = inspector.getBoundingClientRect().width;
+      try { var saved = Number(localStorage.getItem(storage)); if (saved > 0) initialWidth = saved; } catch(e) {}
+      setWidth(initialWidth);
       var pending = false;
       function redraw() {
         if (pending) return;
@@ -76,9 +78,17 @@
   document.addEventListener("keydown",function(e) {
     if((e.key==="Enter" || e.key===" ") && e.target.matches(".ec-sortable th")){e.preventDefault();e.target.click();}
   });
-  document.addEventListener("DOMContentLoaded",bind);
-  if(window.jQuery) window.jQuery(document).on("shiny:value",function(e) {
-    if(e.name==="workspace_view")requestAnimationFrame(bind);
-  });
-  bind();
+  var watchedOutput = null;
+  function watchWorkspace() {
+    var output = document.getElementById("workspace_view");
+    if (output && output !== watchedOutput) {
+      watchedOutput = output;
+      // Shiny inserts renderUI content asynchronously, after shiny:value.
+      // Observe only this stable output's direct children, not Plotly internals.
+      new MutationObserver(bind).observe(output,{childList:true});
+    }
+    bind();
+  }
+  document.addEventListener("DOMContentLoaded",watchWorkspace);
+  if (document.readyState !== "loading") watchWorkspace();
 })();

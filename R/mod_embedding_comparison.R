@@ -217,6 +217,8 @@ gflowui_ec_server <- function(id,manifest) {
     shiny::observeEvent(input$save_bundle,{
       settings <- list(graph_id=graph_id(),run_id=run_id(),metric=metric_key(),trade_x=input$trade_x,trade_y=input$trade_y,
         neighborhood=input$neighborhood,vertex_color=input$vertex_color,vertex_size=input$vertex_size,
+        edges=is.null(input$edges) || isTRUE(input$edges),
+        labels=is.null(input$labels) || isTRUE(input$labels),
         camera=shiny::isolate(camera()),selected_vertices=selected_vertices(),histogram_bins=80,
         guides="gray dashed at active run",figure_source="saved metrics and display-only pair samples")
       tryCatch({

@@ -137,3 +137,24 @@ test_that("undefined scores and failed-only graphs never receive a guide or layo
     expect_match(output$quality_table$html,"disabled")
   })
 })
+
+test_that("bundle figure settings record disabled edges and selected-vertex labels",{
+  skip_if_not_installed("plotly")
+  root <- ec_fixture();on.exit(unlink(root,recursive=TRUE))
+  saved <- NULL
+  testthat::local_mocked_bindings(gflowui_ec_export=function(index,settings,output_dir){
+    saved <<- settings
+    file.path(output_dir,"test-bundle.zip")
+  },.package="gflowui")
+  manifest <- shiny::reactiveVal(list(metadata=list(embedding_comparison=list(schema_version=1L,data_root=root))))
+  shiny::testServer(gflowui_ec_server,args=list(manifest=manifest),{
+    session$flushReact()
+    session$setInputs(edges=FALSE,labels=FALSE,export_dir=root)
+    session$setInputs(save_bundle=1L)
+    expect_false(saved$edges);expect_false(saved$labels)
+    expect_identical(saved$graph_id,"A");expect_identical(saved$run_id,"A1")
+    session$setInputs(edges=TRUE,labels=TRUE)
+    session$setInputs(save_bundle=2L)
+    expect_true(saved$edges);expect_true(saved$labels)
+  })
+})
