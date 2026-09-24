@@ -20,6 +20,12 @@ def admission(info,method,references,root):
     for r in references:
         if r['method']!=method or r['status']!='completed' or not r.get('peak_rss_bytes'):continue
         g=read_json(root/'graphs'/r['graph_id'].replace('/','__')/'graph.json')
+        dest=Path(r['run_dir']);manifest=read_json(dest/'manifest.json')
+        if (manifest['status']!='completed' or manifest['peak_rss_bytes']!=r['peak_rss_bytes']
+            or manifest['elapsed_seconds']!=r['elapsed_seconds']
+            or manifest['request']['graph_sha256']!=g['graph_sha256']
+            or not verified_cached(dest,manifest['run_key'])):
+            raise ValueError('invalid same-method calibration evidence')
         candidates.append((max(g['component_sizes']),r,g))
     if not candidates:return dict(admitted=False,reason='no completed same-method calibration')
     largest=max(n for n,_,_ in candidates);chosen=[(r,g) for n,r,g in candidates if n==largest]
@@ -33,6 +39,8 @@ def admission(info,method,references,root):
 
 def run(root,graph,contracts,native_manifests):
     root=Path(root);source=Path(__file__).resolve().parent
+    if graph not in [r['graph_id'] for r in read_json(root/'phase05_cohort.json')['records']]:
+        raise ValueError('graph is not in the explicitly admitted expansion cohort')
     if subprocess.check_output(['git','status','--porcelain'],text=True).strip():raise RuntimeError('commit before experiment')
     commit=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
     references=sum([read_json(root/name)['runs'] for name in INDEXES],[])
@@ -71,7 +79,9 @@ def run(root,graph,contracts,native_manifests):
             admitted=policy['admitted'];reason=policy['reason']
             if method=='metric_mds_edge_kk':
                 if seed not in initial:admitted=False;reason='matching MDS run unavailable; no edge-KK optimizer attempted'
-                else:request['initial_run']=str(initial[seed])
+                else:
+                    request['initial_run']=str(initial[seed])
+                    request['initial_manifest_sha256']=sha256(initial[seed]/'manifest.json')
             alloc=allocation_preflight(info,64,LIMITS['memory_bytes']);request['allocation_preflight']=alloc
             if not alloc['admitted']:admitted=False;reason='prepared allocation exceeds memory budget'
             key=identity(request);dest=root/'runs'/graph.replace('/','__')/f'{method}_seed{seed}_{key[:12]}'
