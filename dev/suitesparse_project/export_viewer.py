@@ -9,7 +9,7 @@ from scipy.sparse.csgraph import shortest_path
 from common import atomic_json,read_json,sha256,identity
 from run_pilot import verified_cached
 
-PLANNED=['pacmap','localmap','trimap','phate','largevis','ncvis','lgs']
+PLANNED=['pacmap','localmap','trimap','phate','largevis','ncvis','lgs_paper']
 
 
 def pair_sample(n,limit=2000,seed=2718):
@@ -51,6 +51,7 @@ def build(root,index_names):
             row={k:original.get(k) for k in ['graph_id','method','seed','status','reason','elapsed_seconds','peak_rss_bytes']}
             if row['graph_id'] not in by_graph: raise ValueError('unknown graph')
             row['source_index']=filename
+            if original.get('locality') is not None: row['locality']=original['locality']
             if original.get('run_dir'):
                 dest=Path(original['run_dir'])
                 manifest=read_json(dest/'manifest.json')
@@ -99,8 +100,15 @@ def build(root,index_names):
                  'catalog/gallery.json','cohort.json','deliverables.json',
                  'PHASE03_FINDINGS.md','phase03_scores.csv','phase03_replicate_summary.json',
                  'phase03_capabilities.json','phase03_tie_sensitivity.json','phase03_trimap_graph_ties.json',
-                 'phase03_trimap_scale_diagnosis.json']:
+                 'phase03_trimap_scale_diagnosis.json','PHASE04_FINDINGS.md','phase04_lgs_summary.json',
+                 'lgs_validation/phase04_validation_results.json']:
         if (root/name).exists(): extras[name]=asset(root/name)
+    for path in sorted((root/'lgs_dependency_documents').glob('*')):
+        if path.is_file(): extras[str(path.relative_to(root))]=asset(path)
+    if (root/'phase04_lgs_summary.json').exists():
+        for row in read_json(root/'phase04_lgs_summary.json')['validation_rows']:
+            for key in ['result_path','coordinates_path']:
+                if row.get(key): extras[row[key]]=asset(root/row[key])
     atomic_json(root/'viewer_manifest.json',dict(schema_version=1,kind='gflowui_embedding_comparison',
         title='SuiteSparse 3D Embedding Comparison',graphs=graphs,runs=runs,artifacts=extras,
         indexes=[asset(root/name) for name in index_names],

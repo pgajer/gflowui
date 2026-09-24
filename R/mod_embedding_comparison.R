@@ -40,6 +40,13 @@ gflowui_ec_workspace_ui <- function(id) {
         plotly::plotlyOutput(ns("neighborhood_plot"),height="380px"),
         shiny::p(class="gf-hint","Gray dashed guides identify the displayed layout. Click a metric/trade-off point to load that exact run. Scores use original graph targets.")),
       shiny::tags$details(shiny::tags$summary("Seed variation and neighborhood ties"),shiny::uiOutput(ns("sensitivity"))),
+      shiny::tags$details(shiny::tags$summary("Experimental LGS: locality and resource limits"),
+        shiny::uiOutput(ns("lgs_note")),
+        shiny::selectInput(ns("lgs_fixture"),"Synthetic validation graph",choices=c(
+          "Path (48 vertices)"="validation_path48","Grid (49 vertices)"="validation_grid49",
+          "Joined cliques (48 vertices)"="validation_cliques48")),
+        shiny::selectInput(ns("lgs_metric"),"Locality comparison measure",choices=choices[names(choices)!="Distance-rank correlation (higher is better)"],selected="chord_error"),
+        plotly::plotlyOutput(ns("lgs_plot"),height="400px")),
       shiny::tags$details(shiny::tags$summary("Distance diagnostics"),
         plotly::plotlyOutput(ns("shepard_plot"),height="390px"),
         plotly::plotlyOutput(ns("edge_plot"),height="350px"),shiny::textOutput(ns("diagnostic_note"))),

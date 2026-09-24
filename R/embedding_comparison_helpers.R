@@ -32,7 +32,8 @@ gflowui_ec_methods <- function() c(
   weighted_grip = "Weighted GRIP", isomap_graph = "Isomap (original graph)",
   umap = "UMAP", lle = "LLE", pacmap = "PaCMAP", localmap = "LocalMAP",
   trimap = "TriMAP (landmark features)", trimap_graph = "TriMAP (graph distances)",
-  phate = "PHATE", largevis = "LargeVis", ncvis = "NCVis", lgs = "LGS"
+  phate = "PHATE", largevis = "LargeVis", ncvis = "NCVis", lgs = "LGS",
+  lgs_paper = "LGS (experimental paper-form)"
 )
 
 gflowui_ec_metrics <- function() c(
@@ -105,6 +106,13 @@ gflowui_ec_load_index <- function(root) {
       settings <- sprintf("%s landmarks; fixed backend settings", gflowui_ec_text(run$parameters,"unknown"))
     }
     if (identical(run$method,"trimap_graph")) settings <- "graph distances; 400 iterations"
+    if (identical(run$method,"lgs_paper")) {
+      k <- unlist(run$locality$component_k,use.names=FALSE)
+      fractions <- vapply(run$locality$component_fraction,gflowui_ec_number,0.)
+      eligible <- which(k>0)
+      values <- unique(sprintf("%s (%.3g%%)",k[eligible],100*fractions[eligible]))
+      settings <- if (length(values)) paste0("k=",paste(values,collapse="; "),"; 60 epochs") else "locality unavailable"
+    }
     term <- if (is.null(result)) gflowui_ec_text(run$reason, run$status) else {
       details <- vapply(result$components, function(c) {
         if (isTRUE(c$small_component_placement)) return("")

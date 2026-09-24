@@ -77,6 +77,42 @@ gflowui_ec_quality_outputs <- function(input,output,session,index,cohort,current
     }
     shiny::tagList(items)
   })
+  lgs_summary <- shiny::reactive({
+    idx <- index();spec <- idx$artifacts[["phase04_lgs_summary.json"]]
+    shiny::validate(shiny::need(!is.null(spec),"LGS integration results are not available in this saved project."))
+    gflowui_ec_json(gflowui_ec_asset(idx$root,spec))
+  })
+  output$lgs_note <- shiny::renderUI({
+    data <- lgs_summary();rows <- Filter(function(r)identical(r$graph_id,graph_id()),data$gallery_rows)
+    status <- if(length(rows)) unique(vapply(rows,function(r)gflowui_ec_text(r$reason,r$status),"")) else "No gallery admission record."
+    shiny::tagList(shiny::p("The experimental paper-form LGS kernel differs from the original 2D algorithm. Pairwise descent does not guarantee full-objective descent; some attractive-constraint graphs give an unbounded-below objective."),
+      shiny::p(shiny::strong("Selected gallery graph: "),paste(status,collapse="; ")),
+      shiny::p("The plot below uses separate synthetic validation graphs, not the selected SuiteSparse graph. Points are means across available seeds; bars show observed minima/maxima, not confidence intervals. Locality changes the objective. All scores use original graph targets."))
+  })
+  output$lgs_plot <- plotly::renderPlotly({
+    data <- lgs_summary();fixture <- gflowui_ec_text(input$lgs_fixture,"validation_path48")
+    metric <- gflowui_ec_text(input$lgs_metric,"chord_error")
+    shiny::req(metric %in% names(gflowui_ec_metrics()))
+    rows <- Filter(function(r)identical(r$graph_id,fixture) && identical(r$status,"completed"),data$validation_rows)
+    shiny::validate(shiny::need(length(rows)>0,"No completed synthetic locality runs."))
+    values <- data.frame(k=vapply(rows,function(r)gflowui_ec_number(r$locality$component_k[[1L]]),0.),
+      fraction=vapply(rows,function(r)gflowui_ec_number(r$locality$component_fraction[[1L]]),0.),
+      score=vapply(rows,function(r)gflowui_ec_number(r$scores[[metric]]),0.))
+    values <- values[is.finite(values$score),,drop=FALSE]
+    shiny::validate(shiny::need(nrow(values)>0,"This synthetic metric is unavailable."))
+    groups <- split(values,values$k)
+    tbl <- do.call(rbind,lapply(groups,function(r)data.frame(k=r$k[1],fraction=r$fraction[1],
+      mean=mean(r$score),minimum=min(r$score),maximum=max(r$score),n=nrow(r))))
+    tbl <- tbl[order(tbl$fraction),,drop=FALSE]
+    p <- plotly::plot_ly(tbl,x=~fraction,y=~mean,type="scatter",mode="lines+markers",showlegend=FALSE,
+      text=paste0("k=",tbl$k,"; ",tbl$n," seeds"),
+      hovertemplate="%{text}<br>fraction=%{x:.3g}<br>mean=%{y:.6g}<extra></extra>",
+      error_y=list(type="data",symmetric=FALSE,array=tbl$maximum-tbl$mean,arrayminus=tbl$mean-tbl$minimum),
+      marker=list(color="#3575B2",size=9),line=list(color="#3575B2"))
+    plotly::layout(p,title=list(text="Synthetic LGS locality experiment",font=list(size=15)),
+      xaxis=list(title="k / (component size − 1)",range=c(0,1.05)),
+      yaxis=list(title=gflowui_ec_metrics()[metric]),margin=list(l=80,b=65,t=50,r=15))
+  })
   output$shepard_plot <- plotly::renderPlotly({
     rows <- current()$diagnostics$shepard;shiny::validate(shiny::need(length(rows)>0,"No eligible diagnostic pairs."))
     d <- vapply(rows,function(x)x$original_distance,0.);r <- vapply(rows,function(x)x$fitted_chord,0.)

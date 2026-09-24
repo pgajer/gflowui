@@ -172,3 +172,36 @@ test_that("seed ranges separate settings and retain failures without invented sc
   expect_equal(result$Maximum,c(.4,.8,NA))
   expect_equal(nrow(gflowui_ec_seed_ranges(rows,"absent")),0L)
 })
+
+test_that("LGS synthetic locality plots stay distinct and do not rerender graph", {
+  skip_if_not_installed("plotly")
+  root <- ec_fixture();on.exit(unlink(root,recursive=TRUE))
+  rows <- lapply(c(.2,.3,.4),function(value)list(graph_id="validation_path48",status="completed",
+    locality=list(component_k=list(16),component_fraction=list(16/47)),
+    scores=list(chord_error=value,edge_error=2*value)))
+  data <- list(validation_rows=rows,gallery_rows=list(list(graph_id="A",status="resource_limited",reason="time projection exceeds budget")))
+  jsonlite::write_json(data,file.path(root,"phase04_lgs_summary.json"),auto_unbox=TRUE)
+  path <- file.path(root,"viewer_manifest.json");doc <- gflowui_ec_json(path)
+  doc$artifacts[["phase04_lgs_summary.json"]] <- list(path="phase04_lgs_summary.json",
+    sha256=digest::digest(file=file.path(root,"phase04_lgs_summary.json"),algo="sha256"))
+  doc$runs[[3]]$method <- "lgs_paper"
+  doc$runs[[3]]$locality <- list(component_k=list(16,0),component_fraction=list(1/3,NULL))
+  jsonlite::write_json(doc,path,auto_unbox=TRUE,null="null")
+  idx <- gflowui_ec_load_index(root)
+  expect_match(idx$table$settings[3],"k=16 \\(33.3%\\); 60 epochs")
+  manifest <- shiny::reactiveVal(list(metadata=list(embedding_comparison=list(schema_version=1L,data_root=root))))
+  shiny::testServer(gflowui_ec_server,args=list(manifest=manifest),{
+    session$flushReact()
+    expect_match(output$lgs_note$html,"not the selected SuiteSparse graph")
+    expect_match(output$lgs_note$html,"time projection exceeds budget")
+    plot <- jsonlite::fromJSON(output$lgs_plot,simplifyVector=FALSE)
+    expect_equal(unlist(plot$x$data[[1]]$y),.3)
+    expect_equal(unlist(plot$x$data[[1]]$error_y$array),.1)
+    graph <- output$graph_plot;before <- as.list(counts)
+    session$setInputs(lgs_metric="edge_error")
+    plot <- jsonlite::fromJSON(output$lgs_plot,simplifyVector=FALSE)
+    expect_equal(unlist(plot$x$data[[1]]$y),.6)
+    expect_identical(output$graph_plot,graph)
+    expect_identical(as.list(counts),before)
+  })
+})
