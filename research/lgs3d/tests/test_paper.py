@@ -40,6 +40,20 @@ class PaperTests(unittest.TestCase):
                 assert_array_equal(p.directed.sum(axis=1),1)
                 assert_array_equal(np.diag(p.directed),False)
 
+    def test_larger_walk_products_and_real_overflow(self):
+        # Exercise the BLAS-sized path missed by the original tiny fixtures.
+        # Integer matrix powers use a different kernel; counts stay < 23^10.
+        for a in (path(48),np.ones((24,24),dtype=np.int64)-np.eye(24,dtype=np.int64)):
+            power=np.eye(len(a),dtype=np.int64);expected=np.zeros_like(a,dtype=float)
+            for depth in range(1,11):
+                power=power@a
+                expected+=.1**depth*power
+            p=prepare(ids(len(a)),a,16,10,.1)
+            assert_allclose(p.scores,expected,rtol=3e-14,atol=3e-14)
+        dense=np.ones((24,24))-np.eye(24)
+        with self.assertRaisesRegex(NumericalFailure,'nonfinite_walk_scores'):
+            prepare(ids(24),dense,16,1000,.9)
+
     def test_k_union_multiplicity_and_zero_scores(self):
         a = path(6)
         for k in range(1,6):

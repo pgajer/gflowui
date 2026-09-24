@@ -141,7 +141,13 @@ def prepare(vertex_ids, adjacency, locality_k, walk_depth=10, walk_decay=0.1):
     try:
         with np.errstate(over='raise',invalid='raise'):
             for _ in range(1,depth):
-                power = power @ weighted
+                # Some BLAS builds set overflow/invalid status flags even for
+                # finite small GEMM outputs. Validate the actual nonnegative
+                # product on every iteration instead of trusting BLAS flags.
+                with np.errstate(all='ignore'):
+                    power = power @ weighted
+                if not np.isfinite(power).all():
+                    raise NumericalFailure('nonfinite_walk_scores')
                 scores += power
     except FloatingPointError as exc:
         raise NumericalFailure('nonfinite_walk_scores') from exc

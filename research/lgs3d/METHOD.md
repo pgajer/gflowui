@@ -291,3 +291,15 @@ schemas, external file validation, resumable cache, enforced job limits, localit
 quality comparisons and scaling remain phase04 work. Neither independent numerical
 review nor model selection authorizes app integration or merging this research
 folder into the package.
+
+### BLAS status flags in walk preparation (phase 04)
+
+On the recorded NumPy 2.1.0 / Apple Accelerate environment, 48-by-48 path walk
+products raised floating-point overflow/invalid flags while producing finite,
+small matrices. The first adapter sweep therefore returned `nonfinite_walk_scores`
+for all 27 cases. Preparation now ignores BLAS status flags only around matrix
+multiplication and checks every computed product for finite entries before adding
+it to the score sum. True nonfinite products and sums still cause a reasoned
+failure. No matrix values, equation, pair selection or threshold are changed.
+A larger path and clique regression compares these products with integer walk
+counts, and an actually overflowing long-depth case verifies rejection.
