@@ -11,6 +11,7 @@ import re
 import subprocess
 import sys
 import time
+import uuid
 import numpy as np
 from jsonschema import Draft202012Validator
 ROOT=Path(__file__).resolve().parents[1]
@@ -105,12 +106,14 @@ def main():
         # Fresh output directory forces numerical recomputation with the same
         # request identity; it is distinct from the cache-repeat check above.
         first=summary['runs'][3]
+        repeat_output=out/('independent-repeat-'+uuid.uuid4().hex)
         repeat=json.loads(command([sys.executable,str(ROOT/'run.py'),first['request_path'],
-                                   '--output-dir',str(out/'independent-repeat')],out/'independent-repeat',env).stdout)
+                                   '--output-dir',str(repeat_output)],out/'independent-repeat',env).stdout)
         response_schema.validate(repeat)
-        if repeat['coordinate_sha256']!=first['coordinate_sha256']:
+        if repeat['cache_hit'] or repeat['cache_key']!=first['cache_key'] or repeat['coordinate_sha256']!=first['coordinate_sha256']:
             raise RuntimeError('independent run changed coordinates')
         summary['independent_repeat']={'coordinate_sha256':repeat['coordinate_sha256'],
+                                      'coordinate_path':repeat['coordinate_path'],
                                       'cache_hit':repeat['cache_hit'],'identical':True}
         summary.update(status='completed',elapsed_seconds=time.perf_counter()-started)
     except Exception as exc:

@@ -178,3 +178,13 @@ The runner writes requests, raw coordinates/manifests, build/test logs and a
 compact `summary.json`. The recorded public `results/phase05_summary.json`
 identifies its source commit. App integration and package-build exclusion remain
 separate work for the main project owner.
+
+The recorded demonstration passed all 56 tests and all six CLI runs. The three
+3D runs have centered rank 3, raw six-pair squared residuals from 6.10e-15 to
+7.15e-15, and tetrahedron volume approximately 0.117851 (unit regular tetrahedron:
+sqrt(2)/12). They stop on movement tolerance. The 2D residuals are approximately
+0.17158–0.17160 after the full 200 epochs. All cache checks and a separate
+uncached 3D recomputation preserve coordinate checksums. Timing and provenance
+remain distinct from numerical equality. The fresh recomputation always uses a
+new output directory, even when rerunning this demonstration into an existing
+output root.
