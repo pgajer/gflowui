@@ -86,7 +86,12 @@ to reproduce the paper's runs or the reference optimizer.
 
 For pair gradient g at i (negative at j), trial endpoints are X_i-t*g and
 X_j+t*g. Start t=min(eta, max_pair_displacement/||g||), with maximum endpoint
-displacement default 1 graph-length unit. A zero gradient causes no movement.
+displacement default 1 graph-length unit. Before acceptance, the actual rounded
+endpoint displacements must also obey this cap, allowing only 8*float64_epsilon
+relative to the cap for norm rounding (about 1.78e-15). This tolerance does not
+scale with the absolute coordinates or their ULP spacing. A trial that exceeds
+the cap is backtracked before any mutation. When no nonzero representable step
+fits, the existing stagnation policy applies. A zero gradient causes no movement.
 Halve t until the pair objective f satisfies
 f(trial)<=f(current)-armijo*t*2*||g||^2, with armijo=1e-4 by default.
 The factor two includes both endpoints. Every trial must also keep both endpoints

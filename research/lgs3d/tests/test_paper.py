@@ -297,6 +297,28 @@ class PaperTests(unittest.TestCase):
         result = optimize(p,3,24,x,Controls(epochs=2))
         self.assertTrue(any('unbounded_below' in w for w in result.warnings))
 
+    def test_actual_displacement_cap_with_large_offset_starts(self):
+        p = prepare(ids(2),path(2),1)
+        # Auditor witness, implementer witness, and a negative-offset version.
+        for values in ((1e16+2,1e16+18),(1e16,1e16+10),(-1e16-2,-1e16-18)):
+            x = np.array([[values[0],0.,0.],[values[1],0.,0.]])
+            saved = x.copy()
+            result = optimize(p,3,0,x,Controls(epochs=1))
+            actual = np.linalg.norm(result.coordinates-x,axis=1).max()
+            self.assertLessEqual(actual,1.)
+            self.assertLessEqual(result.history[-1]['max_pair_movement'],1.)
+            self.assertEqual(result.termination,'floating_point_stagnation')
+            assert_array_equal(x,saved)
+            assert_array_equal(result.coordinates,x)
+            centered = x-x[0]
+            control = optimize(p,3,0,centered,Controls(epochs=1))
+            assert_allclose(np.linalg.norm(control.coordinates-centered,axis=1),1.,atol=1e-14,rtol=0)
+            self.assertEqual(control.termination,'epoch_budget')
+        # A sub-unit cap must not gain an allowance based on coordinate ULP.
+        x = np.array([[1e15+.125,0.,0.],[1e15+2.125,0.,0.]])
+        result = optimize(p,3,0,x,Controls(epochs=1,max_pair_displacement=.0625))
+        self.assertLessEqual(np.linalg.norm(result.coordinates-x,axis=1).max(),.0625)
+
     def test_roundoff_does_not_masquerade_as_convergence(self):
         p = prepare(ids(2),path(2),1)
         x = np.array([[1e17,0.,0.],[1e17+16,0.,0.]])

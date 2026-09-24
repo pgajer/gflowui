@@ -10,6 +10,8 @@ import numbers
 import numpy as np
 
 VARIANT = 'lgs-paper-union-v1'
+# Relative to the displacement cap, never to absolute coordinate magnitudes.
+MOVEMENT_RTOL = 8*np.finfo(np.float64).eps
 
 
 class NumericalFailure(ValueError):
@@ -253,6 +255,13 @@ def safeguarded_pair(points, i, j, target, attractive, eta, controls):
         separation = float(np.linalg.norm(left-right))
         valid = np.isfinite(left).all() and np.isfinite(right).all() and math.isfinite(separation)
         valid = valid and separation > controls.collision_distance
+        movement = max(float(np.linalg.norm(left-points[i])),float(np.linalg.norm(right-points[j])))
+        # The intended delta cap does not bound rounded coordinate changes.
+        # Inspect actual stored endpoint motion before accepting or mutating.
+        if (not math.isfinite(movement) or
+            (movement > controls.max_pair_displacement and
+             movement-controls.max_pair_displacement > MOVEMENT_RTOL*controls.max_pair_displacement)):
+            valid = False
         # Check third vertices too: reducing a pair's cost can otherwise create
         # a singularity in another constraint. This exact guard costs O(n D).
         if valid:
@@ -267,7 +276,6 @@ def safeguarded_pair(points, i, j, target, attractive, eta, controls):
             cost = _pair_value(separation,target,attractive,controls.repulsion_alpha)
             required = old-controls.armijo*step*(2*norm*norm)
             if math.isfinite(cost) and cost <= required:
-                movement = max(float(np.linalg.norm(left-points[i])),float(np.linalg.norm(right-points[j])))
                 if movement == 0:
                     raise NumericalFailure('floating_point_stagnation')
                 points[i],points[j] = left,right
