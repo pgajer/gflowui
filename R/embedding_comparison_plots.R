@@ -94,6 +94,10 @@ gflowui_ec_quality_outputs <- function(input,output,session,index,cohort,current
   output$lgs_note <- shiny::renderUI({
     data <- lgs_summary();rows <- Filter(function(r)identical(r$graph_id,graph_id()),data$gallery_rows)
     status <- if(length(rows)) unique(vapply(rows,function(r)gflowui_ec_text(r$reason,r$status),"")) else "No gallery admission record."
+    if(!length(rows)) {
+      tbl<-index()$table;rr<-tbl[tbl$graph_id==graph_id() & tbl$method_id=="lgs_paper",,drop=FALSE]
+      if(nrow(rr))status<-unique(rr$termination)
+    }
     shiny::tagList(shiny::p("The experimental paper-form LGS kernel differs from the original 2D algorithm. Pairwise descent does not guarantee full-objective descent; some attractive-constraint graphs give an unbounded-below objective."),
       shiny::p(shiny::strong("Selected gallery graph: "),paste(status,collapse="; ")),
       shiny::p("The plot below uses separate synthetic validation graphs, not the selected SuiteSparse graph. Points are means across available seeds; bars show observed minima/maxima, not confidence intervals. Locality changes the objective. All scores use original graph targets."))
