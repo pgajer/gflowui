@@ -1,0 +1,6433 @@
+{
+  "schema_version": 1,
+  "covered_phases": [
+    1,
+    2
+  ],
+  "implementation_commit": "93e875048ff6a643f7370c3f18d8d11d63d9ddeb",
+  "worktree_changes_at_run": "",
+  "upstream_commit": "9af0e3be0d30c40bf46cc3b6f952187268c3e22d",
+  "variant": "upstream-9af0e3b-reference-2d",
+  "dimension": 2,
+  "test_count": 17,
+  "tests_passed": true,
+  "fixture_sha256": "5d6bada1d44a65234585528f8e244981c20eaaf2684ddf373851feefec33731b",
+  "environment_sha256": "832a07ca9c98a4f52fb1c24aa5fb20164f6903faef0f20f5b393adc1581aaa32",
+  "elapsed_seconds": 0.26281979074701667,
+  "process_peak_memory_bytes": 43778048,
+  "resource_limit_enforcement": "not implemented in phase 02; tiny fixed fixtures only",
+  "absolute_fd_tolerance": 3e-07,
+  "relative_fd_tolerance": 3e-05,
+  "max_coordinate_difference": 2.3869795029440866e-15,
+  "checks": [
+    {
+      "graph": "two_vertices",
+      "locality_k": 1,
+      "gradient_checks": [
+        {
+          "model": "paper",
+          "step": 0.0001,
+          "max_absolute_error": 9.097487208009625e-10,
+          "relative_l2_error": 6.00999479845998e-10
+        },
+        {
+          "model": "paper",
+          "step": 1e-05,
+          "max_absolute_error": 1.2688516903835989e-11,
+          "relative_l2_error": 9.46555654582192e-12
+        },
+        {
+          "model": "paper",
+          "step": 1e-06,
+          "max_absolute_error": 2.0737278561000494e-10,
+          "relative_l2_error": 9.44552041741645e-11
+        },
+        {
+          "model": "code",
+          "step": 0.0001,
+          "max_absolute_error": 2.2743718020024062e-10,
+          "relative_l2_error": 6.00999479845998e-10
+        },
+        {
+          "model": "code",
+          "step": 1e-05,
+          "max_absolute_error": 3.1721292259589973e-12,
+          "relative_l2_error": 9.46555654582192e-12
+        },
+        {
+          "model": "code",
+          "step": 1e-06,
+          "max_absolute_error": 5.1843196402501235e-11,
+          "relative_l2_error": 9.44552041741645e-11
+        },
+        {
+          "model": "upstream_diagnostic",
+          "step": 0.0001,
+          "max_absolute_error": 3.758186817304221e-10,
+          "relative_l2_error": 9.507766904963322e-10
+        },
+        {
+          "model": "upstream_diagnostic",
+          "step": 1e-05,
+          "max_absolute_error": 2.1950052886410276e-11,
+          "relative_l2_error": 6.24983694365984e-11
+        },
+        {
+          "model": "upstream_diagnostic",
+          "step": 1e-06,
+          "max_absolute_error": 2.889123384974823e-10,
+          "relative_l2_error": 9.002554865591329e-10
+        }
+      ],
+      "diagnostic_value_abs_error": 0.0
+    },
+    {
+      "graph": "path_four",
+      "locality_k": 1,
+      "gradient_checks": [
+        {
+          "model": "paper",
+          "step": 0.0001,
+          "max_absolute_error": 3.9414640440327275e-09,
+          "relative_l2_error": 6.494120597355791e-10
+        },
+        {
+          "model": "paper",
+          "step": 1e-05,
+          "max_absolute_error": 1.0317080523236655e-10,
+          "relative_l2_error": 1.90492429309187e-11
+        },
+        {
+          "model": "paper",
+          "step": 1e-06,
+          "max_absolute_error": 1.1245759878875106e-09,
+          "relative_l2_error": 1.7068852966889227e-10
+        },
+        {
+          "model": "code",
+          "step": 0.0001,
+          "max_absolute_error": 3.748208410314646e-10,
+          "relative_l2_error": 3.234031915626247e-10
+        },
+        {
+          "model": "code",
+          "step": 1e-05,
+          "max_absolute_error": 1.676909999748233e-11,
+          "relative_l2_error": 1.1414316921419858e-11
+        },
+        {
+          "model": "code",
+          "step": 1e-06,
+          "max_absolute_error": 9.427547631446487e-11,
+          "relative_l2_error": 8.694537089814909e-11
+        },
+        {
+          "model": "upstream_diagnostic",
+          "step": 0.0001,
+          "max_absolute_error": 3.401897652466346e-10,
+          "relative_l2_error": 8.239272423541908e-10
+        },
+        {
+          "model": "upstream_diagnostic",
+          "step": 1e-05,
+          "max_absolute_error": 1.5662360297596933e-11,
+          "relative_l2_error": 4.020542876346395e-11
+        },
+        {
+          "model": "upstream_diagnostic",
+          "step": 1e-06,
+          "max_absolute_error": 1.758767576021114e-10,
+          "relative_l2_error": 4.1254831129542487e-10
+        }
+      ],
+      "diagnostic_value_abs_error": 2.220446049250313e-16
+    },
+    {
+      "graph": "path_four",
+      "locality_k": 3,
+      "gradient_checks": [
+        {
+          "model": "paper",
+          "step": 0.0001,
+          "max_absolute_error": 3.9414640440327275e-09,
+          "relative_l2_error": 6.745907362259586e-10
+        },
+        {
+          "model": "paper",
+          "step": 1e-05,
+          "max_absolute_error": 1.0317080523236655e-10,
+          "relative_l2_error": 1.7493351534010095e-11
+        },
+        {
+          "model": "paper",
+          "step": 1e-06,
+          "max_absolute_error": 6.804867780374479e-10,
+          "relative_l2_error": 1.0758162909505635e-10
+        },
+        {
+          "model": "code",
+          "step": 0.0001,
+          "max_absolute_error": 3.748208410314646e-10,
+          "relative_l2_error": 3.1748725218372984e-10
+        },
+        {
+          "model": "code",
+          "step": 1e-05,
+          "max_absolute_error": 1.0597689392710663e-11,
+          "relative_l2_error": 8.219248401368322e-12
+        },
+        {
+          "model": "code",
+          "step": 1e-06,
+          "max_absolute_error": 9.427547631446487e-11,
+          "relative_l2_error": 8.122771140005779e-11
+        },
+        {
+          "model": "upstream_diagnostic",
+          "step": 0.0001,
+          "max_absolute_error": 3.401897652466346e-10,
+          "relative_l2_error": 7.750761424793909e-10
+        },
+        {
+          "model": "upstream_diagnostic",
+          "step": 1e-05,
+          "max_absolute_error": 1.432720608818272e-11,
+          "relative_l2_error": 3.248384726606862e-11
+        },
+        {
+          "model": "upstream_diagnostic",
+          "step": 1e-06,
+          "max_absolute_error": 1.6330847785184233e-10,
+          "relative_l2_error": 3.9588146752537113e-10
+        }
+      ],
+      "diagnostic_value_abs_error": 2.220446049250313e-16
+    },
+    {
+      "graph": "cycle_five",
+      "locality_k": 1,
+      "gradient_checks": [
+        {
+          "model": "paper",
+          "step": 0.0001,
+          "max_absolute_error": 2.2462069981799004e-09,
+          "relative_l2_error": 3.358807898067581e-10
+        },
+        {
+          "model": "paper",
+          "step": 1e-05,
+          "max_absolute_error": 1.7538326346766553e-10,
+          "relative_l2_error": 2.6099635173340203e-11
+        },
+        {
+          "model": "paper",
+          "step": 1e-06,
+          "max_absolute_error": 2.8651498951148824e-09,
+          "relative_l2_error": 3.0193390978962766e-10
+        },
+        {
+          "model": "code",
+          "step": 0.0001,
+          "max_absolute_error": 1.0395859728618007e-09,
+          "relative_l2_error": 5.388988306100425e-10
+        },
+        {
+          "model": "code",
+          "step": 1e-05,
+          "max_absolute_error": 4.124856012310829e-11,
+          "relative_l2_error": 2.9025955222397e-11
+        },
+        {
+          "model": "code",
+          "step": 1e-06,
+          "max_absolute_error": 5.360674126819731e-10,
+          "relative_l2_error": 3.133850851382618e-10
+        },
+        {
+          "model": "upstream_diagnostic",
+          "step": 0.0001,
+          "max_absolute_error": 1.4593713737465208e-10,
+          "relative_l2_error": 4.495926012867507e-10
+        },
+        {
+          "model": "upstream_diagnostic",
+          "step": 1e-05,
+          "max_absolute_error": 1.805899874085526e-11,
+          "relative_l2_error": 5.508568539368317e-11
+        },
+        {
+          "model": "upstream_diagnostic",
+          "step": 1e-06,
+          "max_absolute_error": 1.8939935730877266e-10,
+          "relative_l2_error": 5.488877231672285e-10
+        }
+      ],
+      "diagnostic_value_abs_error": 2.220446049250313e-16
+    },
+    {
+      "graph": "cycle_five",
+      "locality_k": 4,
+      "gradient_checks": [
+        {
+          "model": "paper",
+          "step": 0.0001,
+          "max_absolute_error": 3.106356949444944e-09,
+          "relative_l2_error": 3.9535394759513734e-10
+        },
+        {
+          "model": "paper",
+          "step": 1e-05,
+          "max_absolute_error": 1.3092371631273636e-10,
+          "relative_l2_error": 1.6631140649528933e-11
+        },
+        {
+          "model": "paper",
+          "step": 1e-06,
+          "max_absolute_error": 2.0204291573122646e-09,
+          "relative_l2_error": 2.5989153538842994e-10
+        },
+        {
+          "model": "code",
+          "step": 0.0001,
+          "max_absolute_error": 4.0930947520223526e-10,
+          "relative_l2_error": 3.0237127540076363e-10
+        },
+        {
+          "model": "code",
+          "step": 1e-05,
+          "max_absolute_error": 2.359519524208764e-11,
+          "relative_l2_error": 1.2008019191068997e-11
+        },
+        {
+          "model": "code",
+          "step": 1e-06,
+          "max_absolute_error": 3.965539008277119e-10,
+          "relative_l2_error": 2.1504509423201015e-10
+        },
+        {
+          "model": "upstream_diagnostic",
+          "step": 0.0001,
+          "max_absolute_error": 1.7046772327056203e-10,
+          "relative_l2_error": 4.840142722483868e-10
+        },
+        {
+          "model": "upstream_diagnostic",
+          "step": 1e-05,
+          "max_absolute_error": 2.0627777264081715e-11,
+          "relative_l2_error": 4.830073264511471e-11
+        },
+        {
+          "model": "upstream_diagnostic",
+          "step": 1e-06,
+          "max_absolute_error": 2.0964086022701167e-10,
+          "relative_l2_error": 4.732648245707522e-10
+        }
+      ],
+      "diagnostic_value_abs_error": 4.440892098500626e-16
+    },
+    {
+      "graph": "star_five",
+      "locality_k": 1,
+      "gradient_checks": [
+        {
+          "model": "paper",
+          "step": 0.0001,
+          "max_absolute_error": 2.381575825438631e-09,
+          "relative_l2_error": 4.356349208824006e-10
+        },
+        {
+          "model": "paper",
+          "step": 1e-05,
+          "max_absolute_error": 8.341327628613726e-11,
+          "relative_l2_error": 1.6231916182502215e-11
+        },
+        {
+          "model": "paper",
+          "step": 1e-06,
+          "max_absolute_error": 1.5153069909956685e-09,
+          "relative_l2_error": 2.476722347816298e-10
+        },
+        {
+          "model": "code",
+          "step": 0.0001,
+          "max_absolute_error": 8.954116337278606e-10,
+          "relative_l2_error": 1.4742111328475592e-09
+        },
+        {
+          "model": "code",
+          "step": 1e-05,
+          "max_absolute_error": 2.8132496332489154e-11,
+          "relative_l2_error": 3.549558895361588e-11
+        },
+        {
+          "model": "code",
+          "step": 1e-06,
+          "max_absolute_error": 3.332118470034118e-10,
+          "relative_l2_error": 5.693086469255743e-10
+        },
+        {
+          "model": "upstream_diagnostic",
+          "step": 0.0001,
+          "max_absolute_error": 1.2847792274506276e-10,
+          "relative_l2_error": 5.567828472253125e-10
+        },
+        {
+          "model": "upstream_diagnostic",
+          "step": 1e-05,
+          "max_absolute_error": 3.0283997531910245e-11,
+          "relative_l2_error": 1.5342400406182447e-10
+        },
+        {
+          "model": "upstream_diagnostic",
+          "step": 1e-06,
+          "max_absolute_error": 1.4735171416369042e-10,
+          "relative_l2_error": 6.883337215113615e-10
+        }
+      ],
+      "diagnostic_value_abs_error": 0.0
+    },
+    {
+      "graph": "star_five",
+      "locality_k": 4,
+      "gradient_checks": [
+        {
+          "model": "paper",
+          "step": 0.0001,
+          "max_absolute_error": 3.1900206920454366e-09,
+          "relative_l2_error": 4.988985264020181e-10
+        },
+        {
+          "model": "paper",
+          "step": 1e-05,
+          "max_absolute_error": 1.4356782429558734e-10,
+          "relative_l2_error": 2.0660446752302758e-11
+        },
+        {
+          "model": "paper",
+          "step": 1e-06,
+          "max_absolute_error": 1.959396200845731e-09,
+          "relative_l2_error": 2.5567034623460645e-10
+        },
+        {
+          "model": "code",
+          "step": 0.0001,
+          "max_absolute_error": 4.4121728492996226e-10,
+          "relative_l2_error": 6.740563396895784e-10
+        },
+        {
+          "model": "code",
+          "step": 1e-05,
+          "max_absolute_error": 1.779776326316096e-11,
+          "relative_l2_error": 2.319298840480816e-11
+        },
+        {
+          "model": "code",
+          "step": 1e-06,
+          "max_absolute_error": 1.7351664549636325e-10,
+          "relative_l2_error": 1.9348744306275726e-10
+        },
+        {
+          "model": "upstream_diagnostic",
+          "step": 0.0001,
+          "max_absolute_error": 1.7214479841598518e-10,
+          "relative_l2_error": 6.556240924156511e-10
+        },
+        {
+          "model": "upstream_diagnostic",
+          "step": 1e-05,
+          "max_absolute_error": 2.6069313374676994e-11,
+          "relative_l2_error": 8.296335954708801e-11
+        },
+        {
+          "model": "upstream_diagnostic",
+          "step": 1e-06,
+          "max_absolute_error": 2.201679880076135e-10,
+          "relative_l2_error": 7.331741780390831e-10
+        }
+      ],
+      "diagnostic_value_abs_error": 0.0
+    },
+    {
+      "graph": "irregular_six",
+      "locality_k": 1,
+      "gradient_checks": [
+        {
+          "model": "paper",
+          "step": 0.0001,
+          "max_absolute_error": 2.5678357218339443e-09,
+          "relative_l2_error": 2.919584921735386e-10
+        },
+        {
+          "model": "paper",
+          "step": 1e-05,
+          "max_absolute_error": 2.866187287509092e-10,
+          "relative_l2_error": 3.095057715059907e-11
+        },
+        {
+          "model": "paper",
+          "step": 1e-06,
+          "max_absolute_error": 2.77351830391126e-09,
+          "relative_l2_error": 2.56718009385096e-10
+        },
+        {
+          "model": "code",
+          "step": 0.0001,
+          "max_absolute_error": 9.630566344398517e-10,
+          "relative_l2_error": 3.957205831434608e-10
+        },
+        {
+          "model": "code",
+          "step": 1e-05,
+          "max_absolute_error": 6.416822628807495e-11,
+          "relative_l2_error": 3.082240124860328e-11
+        },
+        {
+          "model": "code",
+          "step": 1e-06,
+          "max_absolute_error": 9.202649753348169e-10,
+          "relative_l2_error": 4.0415768919881336e-10
+        },
+        {
+          "model": "upstream_diagnostic",
+          "step": 0.0001,
+          "max_absolute_error": 1.1205662786561987e-10,
+          "relative_l2_error": 3.8507534943495473e-10
+        },
+        {
+          "model": "upstream_diagnostic",
+          "step": 1e-05,
+          "max_absolute_error": 1.663714999100563e-11,
+          "relative_l2_error": 5.7506544379302434e-11
+        },
+        {
+          "model": "upstream_diagnostic",
+          "step": 1e-06,
+          "max_absolute_error": 1.6835888239086216e-10,
+          "relative_l2_error": 5.352822959410323e-10
+        }
+      ],
+      "diagnostic_value_abs_error": 0.0
+    },
+    {
+      "graph": "irregular_six",
+      "locality_k": 5,
+      "gradient_checks": [
+        {
+          "model": "paper",
+          "step": 0.0001,
+          "max_absolute_error": 4.514554063916876e-09,
+          "relative_l2_error": 3.27936064176595e-10
+        },
+        {
+          "model": "paper",
+          "step": 1e-05,
+          "max_absolute_error": 4.111697649022972e-10,
+          "relative_l2_error": 2.9052608332851212e-11
+        },
+        {
+          "model": "paper",
+          "step": 1e-06,
+          "max_absolute_error": 2.8177571387288936e-09,
+          "relative_l2_error": 2.729359062766736e-10
+        },
+        {
+          "model": "code",
+          "step": 0.0001,
+          "max_absolute_error": 6.883038583538337e-10,
+          "relative_l2_error": 2.641665156082168e-10
+        },
+        {
+          "model": "code",
+          "step": 1e-05,
+          "max_absolute_error": 6.626599269310418e-11,
+          "relative_l2_error": 2.2832444084898024e-11
+        },
+        {
+          "model": "code",
+          "step": 1e-06,
+          "max_absolute_error": 6.794220741568324e-10,
+          "relative_l2_error": 2.333662326026613e-10
+        },
+        {
+          "model": "upstream_diagnostic",
+          "step": 0.0001,
+          "max_absolute_error": 1.6396101143456576e-10,
+          "relative_l2_error": 3.945741077312404e-10
+        },
+        {
+          "model": "upstream_diagnostic",
+          "step": 1e-05,
+          "max_absolute_error": 2.092452600077621e-11,
+          "relative_l2_error": 5.6788650213612105e-11
+        },
+        {
+          "model": "upstream_diagnostic",
+          "step": 1e-06,
+          "max_absolute_error": 1.3045153846036328e-10,
+          "relative_l2_error": 3.1955799994665684e-10
+        }
+      ],
+      "diagnostic_value_abs_error": 2.220446049250313e-16
+    },
+    {
+      "graph": "complete_four",
+      "locality_k": 1,
+      "gradient_checks": [
+        {
+          "model": "paper",
+          "step": 0.0001,
+          "max_absolute_error": 2.3037811658355167e-09,
+          "relative_l2_error": 3.0054079503459983e-10
+        },
+        {
+          "model": "paper",
+          "step": 1e-05,
+          "max_absolute_error": 8.333511658520365e-11,
+          "relative_l2_error": 1.2365655667978979e-11
+        },
+        {
+          "model": "paper",
+          "step": 1e-06,
+          "max_absolute_error": 1.7372743243981859e-09,
+          "relative_l2_error": 1.985799884383167e-10
+        },
+        {
+          "model": "code",
+          "step": 0.0001,
+          "max_absolute_error": 6.003064156878679e-10,
+          "relative_l2_error": 3.73217055919593e-10
+        },
+        {
+          "model": "code",
+          "step": 1e-05,
+          "max_absolute_error": 2.5210875054249016e-11,
+          "relative_l2_error": 1.5787608140764372e-11
+        },
+        {
+          "model": "code",
+          "step": 1e-06,
+          "max_absolute_error": 2.8683100339321754e-10,
+          "relative_l2_error": 1.33550912438037e-10
+        },
+        {
+          "model": "upstream_diagnostic",
+          "step": 0.0001,
+          "max_absolute_error": 2.1431295627039049e-10,
+          "relative_l2_error": 3.8626098800654946e-10
+        },
+        {
+          "model": "upstream_diagnostic",
+          "step": 1e-05,
+          "max_absolute_error": 1.8715543004255153e-11,
+          "relative_l2_error": 3.4737352296700326e-11
+        },
+        {
+          "model": "upstream_diagnostic",
+          "step": 1e-06,
+          "max_absolute_error": 2.560115452965306e-10,
+          "relative_l2_error": 4.5739075484119886e-10
+        }
+      ],
+      "diagnostic_value_abs_error": 2.220446049250313e-16
+    },
+    {
+      "graph": "complete_four",
+      "locality_k": 3,
+      "gradient_checks": [
+        {
+          "model": "paper",
+          "step": 0.0001,
+          "max_absolute_error": 2.312662950032518e-09,
+          "relative_l2_error": 2.807073141922749e-10
+        },
+        {
+          "model": "paper",
+          "step": 1e-05,
+          "max_absolute_error": 1.6826096072009022e-10,
+          "relative_l2_error": 2.168859076982174e-11
+        },
+        {
+          "model": "paper",
+          "step": 1e-06,
+          "max_absolute_error": 2.388707898148823e-09,
+          "relative_l2_error": 2.2624065170196088e-10
+        },
+        {
+          "model": "code",
+          "step": 0.0001,
+          "max_absolute_error": 5.781657375081295e-10,
+          "relative_l2_error": 2.807073141922749e-10
+        },
+        {
+          "model": "code",
+          "step": 1e-05,
+          "max_absolute_error": 4.2065240180022556e-11,
+          "relative_l2_error": 2.168859076982174e-11
+        },
+        {
+          "model": "code",
+          "step": 1e-06,
+          "max_absolute_error": 5.971769745372058e-10,
+          "relative_l2_error": 2.2624065170196088e-10
+        },
+        {
+          "model": "upstream_diagnostic",
+          "step": 0.0001,
+          "max_absolute_error": 2.1209251022114017e-10,
+          "relative_l2_error": 3.634294084002993e-10
+        },
+        {
+          "model": "upstream_diagnostic",
+          "step": 1e-05,
+          "max_absolute_error": 1.8715543004255153e-11,
+          "relative_l2_error": 3.0025537152132145e-11
+        },
+        {
+          "model": "upstream_diagnostic",
+          "step": 1e-06,
+          "max_absolute_error": 1.0098841207728526e-10,
+          "relative_l2_error": 1.549603767980554e-10
+        }
+      ],
+      "diagnostic_value_abs_error": 0.0
+    }
+  ],
+  "runs": [
+    {
+      "graph": "two_vertices",
+      "vertices": 2,
+      "locality_k": 1,
+      "locality_fraction": 1.0,
+      "seed": 17,
+      "walk_depth": 5,
+      "epochs": 60,
+      "repulsion_requested": 0.6,
+      "repulsion_effective_float32": 0.6000000238418579,
+      "termination": "fixed_epoch_budget",
+      "attractive_unordered_pairs": 1,
+      "flags": [
+        [
+          0,
+          1
+        ],
+        [
+          1,
+          0
+        ]
+      ],
+      "coordinates": [
+        [
+          0.4785048332085552,
+          0.06641005886756873
+        ],
+        [
+          1.4214951667914448,
+          -0.26641005886756874
+        ]
+      ],
+      "coordinate_max_abs_difference": 0.0,
+      "objective_code_initial": 0.16111218113400264,
+      "objective_code_final": 1.232595164407831e-32,
+      "objective_paper_initial": 0.6444487245360105,
+      "objective_paper_final": 4.930380657631324e-32,
+      "diagnostic_upstream_initial": 2.8971668479609574,
+      "diagnostic_upstream_final": 2.8062755331956852,
+      "mean_relative_stress_fitted": 0.0,
+      "schedule": [
+        1.0,
+        1.0,
+        0.8629624501081011,
+        0.7589568613544428,
+        0.6773246335750072,
+        0.6115475262066628,
+        0.5574151980532188,
+        0.512086828535804,
+        0.4735761546145069,
+        0.4404526173919929,
+        0.411659727042989,
+        0.38640029847880136,
+        0.36406149595355514,
+        0.3441644568761225,
+        0.3263295788287445,
+        0.3102520679601326,
+        0.2956843760380781,
+        0.2824233635373301,
+        0.27030076875744025,
+        0.2591760305092577,
+        0.24893081311479862,
+        0.23946478058624318,
+        0.23069229964968632,
+        0.2225398418418907,
+        0.21494391765045234,
+        0.20784941977198196,
+        0.20120828398428062,
+        0.19497839879393639,
+        0.189122711559921,
+        0.18360849099285217,
+        0.1784067150181842,
+        0.1734915598266465,
+        0.16883997112097607,
+        0.1644313025350519,
+        0.16024700926004962,
+        0.15627038728765866,
+        0.1524863505381449,
+        0.14888123960349453,
+        0.14544265699433367,
+        0.14215932470241013,
+        0.13902096063010877,
+        0.13601817103436473,
+        0.13314235661484256,
+        0.1303856302688393,
+        0.12774074485628717,
+        0.12520102958172483,
+        0.1227603338173694,
+        0.1204129773712971,
+        0.11815370635423902,
+        0.11597765392321942,
+        0.11388030528468386,
+        0.11185746642749288,
+        0.10990523613010338,
+        0.10801998084879284,
+        0.10619831214682078,
+        0.10443706636954654,
+        0.10273328630902054,
+        0.10108420463450297,
+        0.099487228893617,
+        0.09793992791314289
+      ],
+      "pair_orders_sha256": "d29ed68909b6b15c2404cc934038ceb85e42bb9e6bb881d880f69de5f0ad8108",
+      "first_epoch_pair_order": [
+        [
+          1,
+          0
+        ]
+      ]
+    },
+    {
+      "graph": "two_vertices",
+      "vertices": 2,
+      "locality_k": 1,
+      "locality_fraction": 1.0,
+      "seed": 314,
+      "walk_depth": 5,
+      "epochs": 60,
+      "repulsion_requested": 0.6,
+      "repulsion_effective_float32": 0.6000000238418579,
+      "termination": "fixed_epoch_budget",
+      "attractive_unordered_pairs": 1,
+      "flags": [
+        [
+          0,
+          1
+        ],
+        [
+          1,
+          0
+        ]
+      ],
+      "coordinates": [
+        [
+          0.4785048332085552,
+          0.06641005886756873
+        ],
+        [
+          1.4214951667914448,
+          -0.26641005886756874
+        ]
+      ],
+      "coordinate_max_abs_difference": 0.0,
+      "objective_code_initial": 0.16111218113400264,
+      "objective_code_final": 1.232595164407831e-32,
+      "objective_paper_initial": 0.6444487245360105,
+      "objective_paper_final": 4.930380657631324e-32,
+      "diagnostic_upstream_initial": 2.8971668479609574,
+      "diagnostic_upstream_final": 2.8062755331956852,
+      "mean_relative_stress_fitted": 0.0,
+      "schedule": [
+        1.0,
+        1.0,
+        0.8629624501081011,
+        0.7589568613544428,
+        0.6773246335750072,
+        0.6115475262066628,
+        0.5574151980532188,
+        0.512086828535804,
+        0.4735761546145069,
+        0.4404526173919929,
+        0.411659727042989,
+        0.38640029847880136,
+        0.36406149595355514,
+        0.3441644568761225,
+        0.3263295788287445,
+        0.3102520679601326,
+        0.2956843760380781,
+        0.2824233635373301,
+        0.27030076875744025,
+        0.2591760305092577,
+        0.24893081311479862,
+        0.23946478058624318,
+        0.23069229964968632,
+        0.2225398418418907,
+        0.21494391765045234,
+        0.20784941977198196,
+        0.20120828398428062,
+        0.19497839879393639,
+        0.189122711559921,
+        0.18360849099285217,
+        0.1784067150181842,
+        0.1734915598266465,
+        0.16883997112097607,
+        0.1644313025350519,
+        0.16024700926004962,
+        0.15627038728765866,
+        0.1524863505381449,
+        0.14888123960349453,
+        0.14544265699433367,
+        0.14215932470241013,
+        0.13902096063010877,
+        0.13601817103436473,
+        0.13314235661484256,
+        0.1303856302688393,
+        0.12774074485628717,
+        0.12520102958172483,
+        0.1227603338173694,
+        0.1204129773712971,
+        0.11815370635423902,
+        0.11597765392321942,
+        0.11388030528468386,
+        0.11185746642749288,
+        0.10990523613010338,
+        0.10801998084879284,
+        0.10619831214682078,
+        0.10443706636954654,
+        0.10273328630902054,
+        0.10108420463450297,
+        0.099487228893617,
+        0.09793992791314289
+      ],
+      "pair_orders_sha256": "d29ed68909b6b15c2404cc934038ceb85e42bb9e6bb881d880f69de5f0ad8108",
+      "first_epoch_pair_order": [
+        [
+          1,
+          0
+        ]
+      ]
+    },
+    {
+      "graph": "two_vertices",
+      "vertices": 2,
+      "locality_k": 1,
+      "locality_fraction": 1.0,
+      "seed": 2026,
+      "walk_depth": 5,
+      "epochs": 60,
+      "repulsion_requested": 0.6,
+      "repulsion_effective_float32": 0.6000000238418579,
+      "termination": "fixed_epoch_budget",
+      "attractive_unordered_pairs": 1,
+      "flags": [
+        [
+          0,
+          1
+        ],
+        [
+          1,
+          0
+        ]
+      ],
+      "coordinates": [
+        [
+          0.4785048332085552,
+          0.06641005886756873
+        ],
+        [
+          1.4214951667914448,
+          -0.26641005886756874
+        ]
+      ],
+      "coordinate_max_abs_difference": 0.0,
+      "objective_code_initial": 0.16111218113400264,
+      "objective_code_final": 1.232595164407831e-32,
+      "objective_paper_initial": 0.6444487245360105,
+      "objective_paper_final": 4.930380657631324e-32,
+      "diagnostic_upstream_initial": 2.8971668479609574,
+      "diagnostic_upstream_final": 2.8062755331956852,
+      "mean_relative_stress_fitted": 0.0,
+      "schedule": [
+        1.0,
+        1.0,
+        0.8629624501081011,
+        0.7589568613544428,
+        0.6773246335750072,
+        0.6115475262066628,
+        0.5574151980532188,
+        0.512086828535804,
+        0.4735761546145069,
+        0.4404526173919929,
+        0.411659727042989,
+        0.38640029847880136,
+        0.36406149595355514,
+        0.3441644568761225,
+        0.3263295788287445,
+        0.3102520679601326,
+        0.2956843760380781,
+        0.2824233635373301,
+        0.27030076875744025,
+        0.2591760305092577,
+        0.24893081311479862,
+        0.23946478058624318,
+        0.23069229964968632,
+        0.2225398418418907,
+        0.21494391765045234,
+        0.20784941977198196,
+        0.20120828398428062,
+        0.19497839879393639,
+        0.189122711559921,
+        0.18360849099285217,
+        0.1784067150181842,
+        0.1734915598266465,
+        0.16883997112097607,
+        0.1644313025350519,
+        0.16024700926004962,
+        0.15627038728765866,
+        0.1524863505381449,
+        0.14888123960349453,
+        0.14544265699433367,
+        0.14215932470241013,
+        0.13902096063010877,
+        0.13601817103436473,
+        0.13314235661484256,
+        0.1303856302688393,
+        0.12774074485628717,
+        0.12520102958172483,
+        0.1227603338173694,
+        0.1204129773712971,
+        0.11815370635423902,
+        0.11597765392321942,
+        0.11388030528468386,
+        0.11185746642749288,
+        0.10990523613010338,
+        0.10801998084879284,
+        0.10619831214682078,
+        0.10443706636954654,
+        0.10273328630902054,
+        0.10108420463450297,
+        0.099487228893617,
+        0.09793992791314289
+      ],
+      "pair_orders_sha256": "d29ed68909b6b15c2404cc934038ceb85e42bb9e6bb881d880f69de5f0ad8108",
+      "first_epoch_pair_order": [
+        [
+          1,
+          0
+        ]
+      ]
+    },
+    {
+      "graph": "path_four",
+      "vertices": 4,
+      "locality_k": 1,
+      "locality_fraction": 0.3333333333333333,
+      "seed": 17,
+      "walk_depth": 5,
+      "epochs": 60,
+      "repulsion_requested": 0.6,
+      "repulsion_effective_float32": 0.6000000238418579,
+      "termination": "fixed_epoch_budget",
+      "attractive_unordered_pairs": 5,
+      "flags": [
+        [
+          0,
+          1,
+          1,
+          0
+        ],
+        [
+          1,
+          0,
+          1,
+          1
+        ],
+        [
+          1,
+          1,
+          0,
+          1
+        ],
+        [
+          0,
+          1,
+          1,
+          0
+        ]
+      ],
+      "coordinates": [
+        [
+          0.08643276695107135,
+          -0.6911520041460241
+        ],
+        [
+          0.42493915264309085,
+          0.3348013653032707
+        ],
+        [
+          0.6475290513185507,
+          1.3584251589887328
+        ],
+        [
+          0.9410990290872878,
+          2.397925479854023
+        ]
+      ],
+      "coordinate_max_abs_difference": 4.440892098500626e-16,
+      "objective_code_initial": 1.7637227705589258,
+      "objective_code_final": 0.19296564358405802,
+      "objective_paper_initial": 5.948644913577812,
+      "objective_paper_final": -0.6520293647666303,
+      "diagnostic_upstream_initial": 1.6958669337978538,
+      "diagnostic_upstream_final": 1.2720795162028005,
+      "mean_relative_stress_fitted": 0.00011203191838949076,
+      "schedule": [
+        9.0,
+        7.118231008344204,
+        5.629912520905882,
+        4.452779764508616,
+        3.5217683325614257,
+        2.7854178387826,
+        2.203027514579712,
+        1.742406529612974,
+        1.378094687581387,
+        1.089955148619583,
+        1.0,
+        0.8100016826166994,
+        0.6806746453203567,
+        0.5869591723705145,
+        0.5159262974110258,
+        0.4602299887382716,
+        0.4153872704125585,
+        0.37850724481886233,
+        0.34764196448666246,
+        0.3214309561021647,
+        0.29889528005623833,
+        0.27931254564697794,
+        0.26213803704625405,
+        0.2469532527282633,
+        0.23343135120981723,
+        0.22131335956679343,
+        0.21039142668535554,
+        0.20049680207053888,
+        0.19149105440176836,
+        0.183259554981284,
+        0.1757065726477555,
+        0.16875153364576476,
+        0.16232613595244663,
+        0.15637209867401536,
+        0.1508393892232458,
+        0.14568481398876265,
+        0.14087088841903173,
+        0.136364923958595,
+        0.13213828478710998,
+        0.12816577862742454,
+        0.12442515423227761,
+        0.12089668437314931,
+        0.11756281782651308,
+        0.11440788739612989,
+        0.1114178637199611,
+        0.10858014669903666,
+        0.10588338800747572,
+        0.10331733941096967,
+        0.10087272261910592,
+        0.09854111718734976,
+        0.09631486361422334,
+        0.09418697928372882,
+        0.09215108530942605,
+        0.09020134266555564,
+        0.08833239625823297,
+        0.08653932580847745,
+        0.08481760259841399,
+        0.08316305128002946,
+        0.0815718160684185,
+        0.08004033074329664
+      ],
+      "pair_orders_sha256": "c0e5caa79dbb9475b161bc07a3bbff78da47481b009b01dd046a905d93d233f2",
+      "first_epoch_pair_order": [
+        [
+          2,
+          1
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          3,
+          2
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          3,
+          0
+        ],
+        [
+          3,
+          1
+        ]
+      ]
+    },
+    {
+      "graph": "path_four",
+      "vertices": 4,
+      "locality_k": 1,
+      "locality_fraction": 0.3333333333333333,
+      "seed": 314,
+      "walk_depth": 5,
+      "epochs": 60,
+      "repulsion_requested": 0.6,
+      "repulsion_effective_float32": 0.6000000238418579,
+      "termination": "fixed_epoch_budget",
+      "attractive_unordered_pairs": 5,
+      "flags": [
+        [
+          0,
+          1,
+          1,
+          0
+        ],
+        [
+          1,
+          0,
+          1,
+          1
+        ],
+        [
+          1,
+          1,
+          0,
+          1
+        ],
+        [
+          0,
+          1,
+          1,
+          0
+        ]
+      ],
+      "coordinates": [
+        [
+          0.04698209445630552,
+          -0.6795374518759049
+        ],
+        [
+          0.3991367438364715,
+          0.34033932768609565
+        ],
+        [
+          0.6469270319007016,
+          1.360768675900332
+        ],
+        [
+          1.006954129806522,
+          2.3784294482894737
+        ]
+      ],
+      "coordinate_max_abs_difference": 2.220446049250313e-16,
+      "objective_code_initial": 1.7637227705589258,
+      "objective_code_final": 0.1929738336223836,
+      "objective_paper_initial": 5.948644913577812,
+      "objective_paper_final": -0.6516628726476815,
+      "diagnostic_upstream_initial": 1.6958669337978538,
+      "diagnostic_upstream_final": 1.2720460169607133,
+      "mean_relative_stress_fitted": 8.961854009470661e-05,
+      "schedule": [
+        9.0,
+        7.118231008344204,
+        5.629912520905882,
+        4.452779764508616,
+        3.5217683325614257,
+        2.7854178387826,
+        2.203027514579712,
+        1.742406529612974,
+        1.378094687581387,
+        1.089955148619583,
+        1.0,
+        0.8100016826166994,
+        0.6806746453203567,
+        0.5869591723705145,
+        0.5159262974110258,
+        0.4602299887382716,
+        0.4153872704125585,
+        0.37850724481886233,
+        0.34764196448666246,
+        0.3214309561021647,
+        0.29889528005623833,
+        0.27931254564697794,
+        0.26213803704625405,
+        0.2469532527282633,
+        0.23343135120981723,
+        0.22131335956679343,
+        0.21039142668535554,
+        0.20049680207053888,
+        0.19149105440176836,
+        0.183259554981284,
+        0.1757065726477555,
+        0.16875153364576476,
+        0.16232613595244663,
+        0.15637209867401536,
+        0.1508393892232458,
+        0.14568481398876265,
+        0.14087088841903173,
+        0.136364923958595,
+        0.13213828478710998,
+        0.12816577862742454,
+        0.12442515423227761,
+        0.12089668437314931,
+        0.11756281782651308,
+        0.11440788739612989,
+        0.1114178637199611,
+        0.10858014669903666,
+        0.10588338800747572,
+        0.10331733941096967,
+        0.10087272261910592,
+        0.09854111718734976,
+        0.09631486361422334,
+        0.09418697928372882,
+        0.09215108530942605,
+        0.09020134266555564,
+        0.08833239625823297,
+        0.08653932580847745,
+        0.08481760259841399,
+        0.08316305128002946,
+        0.0815718160684185,
+        0.08004033074329664
+      ],
+      "pair_orders_sha256": "df0e5f3c0d1080121fc5f3640567dde5b0d1fa8ac5b7a3caba15886d98212c6c",
+      "first_epoch_pair_order": [
+        [
+          3,
+          1
+        ],
+        [
+          2,
+          1
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          3,
+          2
+        ],
+        [
+          3,
+          0
+        ]
+      ]
+    },
+    {
+      "graph": "path_four",
+      "vertices": 4,
+      "locality_k": 1,
+      "locality_fraction": 0.3333333333333333,
+      "seed": 2026,
+      "walk_depth": 5,
+      "epochs": 60,
+      "repulsion_requested": 0.6,
+      "repulsion_effective_float32": 0.6000000238418579,
+      "termination": "fixed_epoch_budget",
+      "attractive_unordered_pairs": 5,
+      "flags": [
+        [
+          0,
+          1,
+          1,
+          0
+        ],
+        [
+          1,
+          0,
+          1,
+          1
+        ],
+        [
+          1,
+          1,
+          0,
+          1
+        ],
+        [
+          0,
+          1,
+          1,
+          0
+        ]
+      ],
+      "coordinates": [
+        [
+          0.47146580419387435,
+          -0.7520424313923254
+        ],
+        [
+          0.5409304218058127,
+          0.3262241771055985
+        ],
+        [
+          0.507644659526296,
+          1.3739971377632745
+        ],
+        [
+          0.579959114474017,
+          2.4518211165234525
+        ]
+      ],
+      "coordinate_max_abs_difference": 2.220446049250313e-16,
+      "objective_code_initial": 1.7637227705589258,
+      "objective_code_final": 0.19296918829122922,
+      "objective_paper_initial": 5.948644913577812,
+      "objective_paper_final": -0.6518767458125873,
+      "diagnostic_upstream_initial": 1.6958669337978538,
+      "diagnostic_upstream_final": 1.27203425696695,
+      "mean_relative_stress_fitted": 0.00010828439519758998,
+      "schedule": [
+        9.0,
+        7.118231008344204,
+        5.629912520905882,
+        4.452779764508616,
+        3.5217683325614257,
+        2.7854178387826,
+        2.203027514579712,
+        1.742406529612974,
+        1.378094687581387,
+        1.089955148619583,
+        1.0,
+        0.8100016826166994,
+        0.6806746453203567,
+        0.5869591723705145,
+        0.5159262974110258,
+        0.4602299887382716,
+        0.4153872704125585,
+        0.37850724481886233,
+        0.34764196448666246,
+        0.3214309561021647,
+        0.29889528005623833,
+        0.27931254564697794,
+        0.26213803704625405,
+        0.2469532527282633,
+        0.23343135120981723,
+        0.22131335956679343,
+        0.21039142668535554,
+        0.20049680207053888,
+        0.19149105440176836,
+        0.183259554981284,
+        0.1757065726477555,
+        0.16875153364576476,
+        0.16232613595244663,
+        0.15637209867401536,
+        0.1508393892232458,
+        0.14568481398876265,
+        0.14087088841903173,
+        0.136364923958595,
+        0.13213828478710998,
+        0.12816577862742454,
+        0.12442515423227761,
+        0.12089668437314931,
+        0.11756281782651308,
+        0.11440788739612989,
+        0.1114178637199611,
+        0.10858014669903666,
+        0.10588338800747572,
+        0.10331733941096967,
+        0.10087272261910592,
+        0.09854111718734976,
+        0.09631486361422334,
+        0.09418697928372882,
+        0.09215108530942605,
+        0.09020134266555564,
+        0.08833239625823297,
+        0.08653932580847745,
+        0.08481760259841399,
+        0.08316305128002946,
+        0.0815718160684185,
+        0.08004033074329664
+      ],
+      "pair_orders_sha256": "72d286263a036a87ebc5a766ebd3a52c14b6c26b783edeef5e82183d18582eec",
+      "first_epoch_pair_order": [
+        [
+          3,
+          0
+        ],
+        [
+          3,
+          1
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          3,
+          2
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          2,
+          1
+        ]
+      ]
+    },
+    {
+      "graph": "path_four",
+      "vertices": 4,
+      "locality_k": 3,
+      "locality_fraction": 1.0,
+      "seed": 17,
+      "walk_depth": 5,
+      "epochs": 60,
+      "repulsion_requested": 0.6,
+      "repulsion_effective_float32": 0.6000000238418579,
+      "termination": "fixed_epoch_budget",
+      "attractive_unordered_pairs": 6,
+      "flags": [
+        [
+          0,
+          1,
+          1,
+          1
+        ],
+        [
+          1,
+          0,
+          1,
+          1
+        ],
+        [
+          1,
+          1,
+          0,
+          1
+        ],
+        [
+          1,
+          1,
+          1,
+          0
+        ]
+      ],
+      "coordinates": [
+        [
+          0.0597678082111172,
+          -0.5608892251107457
+        ],
+        [
+          0.5220206035580888,
+          0.33483593963899855
+        ],
+        [
+          0.5840848092886752,
+          1.342559254172586
+        ],
+        [
+          0.9341267789421194,
+          2.2834940312991634
+        ]
+      ],
+      "coordinate_max_abs_difference": 4.440892098500626e-16,
+      "objective_code_initial": 1.4971434290377437,
+      "objective_code_final": 0.00010468977405819306,
+      "objective_paper_initial": 7.263403748854347,
+      "objective_paper_final": 0.0014866929091850263,
+      "diagnostic_upstream_initial": 1.7646703017684646,
+      "diagnostic_upstream_final": 1.2869477981092992,
+      "mean_relative_stress_fitted": 6.952921165276944e-05,
+      "schedule": [
+        9.0,
+        7.118231008344204,
+        5.629912520905882,
+        4.452779764508616,
+        3.5217683325614257,
+        2.7854178387826,
+        2.203027514579712,
+        1.742406529612974,
+        1.378094687581387,
+        1.089955148619583,
+        1.0,
+        0.8100016826166994,
+        0.6806746453203567,
+        0.5869591723705145,
+        0.5159262974110258,
+        0.4602299887382716,
+        0.4153872704125585,
+        0.37850724481886233,
+        0.34764196448666246,
+        0.3214309561021647,
+        0.29889528005623833,
+        0.27931254564697794,
+        0.26213803704625405,
+        0.2469532527282633,
+        0.23343135120981723,
+        0.22131335956679343,
+        0.21039142668535554,
+        0.20049680207053888,
+        0.19149105440176836,
+        0.183259554981284,
+        0.1757065726477555,
+        0.16875153364576476,
+        0.16232613595244663,
+        0.15637209867401536,
+        0.1508393892232458,
+        0.14568481398876265,
+        0.14087088841903173,
+        0.136364923958595,
+        0.13213828478710998,
+        0.12816577862742454,
+        0.12442515423227761,
+        0.12089668437314931,
+        0.11756281782651308,
+        0.11440788739612989,
+        0.1114178637199611,
+        0.10858014669903666,
+        0.10588338800747572,
+        0.10331733941096967,
+        0.10087272261910592,
+        0.09854111718734976,
+        0.09631486361422334,
+        0.09418697928372882,
+        0.09215108530942605,
+        0.09020134266555564,
+        0.08833239625823297,
+        0.08653932580847745,
+        0.08481760259841399,
+        0.08316305128002946,
+        0.0815718160684185,
+        0.08004033074329664
+      ],
+      "pair_orders_sha256": "c0e5caa79dbb9475b161bc07a3bbff78da47481b009b01dd046a905d93d233f2",
+      "first_epoch_pair_order": [
+        [
+          2,
+          1
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          3,
+          2
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          3,
+          0
+        ],
+        [
+          3,
+          1
+        ]
+      ]
+    },
+    {
+      "graph": "path_four",
+      "vertices": 4,
+      "locality_k": 3,
+      "locality_fraction": 1.0,
+      "seed": 314,
+      "walk_depth": 5,
+      "epochs": 60,
+      "repulsion_requested": 0.6,
+      "repulsion_effective_float32": 0.6000000238418579,
+      "termination": "fixed_epoch_budget",
+      "attractive_unordered_pairs": 6,
+      "flags": [
+        [
+          0,
+          1,
+          1,
+          1
+        ],
+        [
+          1,
+          0,
+          1,
+          1
+        ],
+        [
+          1,
+          1,
+          0,
+          1
+        ],
+        [
+          1,
+          1,
+          1,
+          0
+        ]
+      ],
+      "coordinates": [
+        [
+          0.053902227765511436,
+          -0.5598823154741567
+        ],
+        [
+          0.49029107114240467,
+          0.34729275924244146
+        ],
+        [
+          0.5484396704090386,
+          1.3577768825157874
+        ],
+        [
+          1.007367030683044,
+          2.254812673715928
+        ]
+      ],
+      "coordinate_max_abs_difference": 8.881784197001252e-16,
+      "objective_code_initial": 1.4971434290377437,
+      "objective_code_final": 0.00014361363547229594,
+      "objective_paper_initial": 7.263403748854347,
+      "objective_paper_final": 0.0019885184880770496,
+      "diagnostic_upstream_initial": 1.7646703017684646,
+      "diagnostic_upstream_final": 1.2870408257329407,
+      "mean_relative_stress_fitted": 9.52982819689365e-05,
+      "schedule": [
+        9.0,
+        7.118231008344204,
+        5.629912520905882,
+        4.452779764508616,
+        3.5217683325614257,
+        2.7854178387826,
+        2.203027514579712,
+        1.742406529612974,
+        1.378094687581387,
+        1.089955148619583,
+        1.0,
+        0.8100016826166994,
+        0.6806746453203567,
+        0.5869591723705145,
+        0.5159262974110258,
+        0.4602299887382716,
+        0.4153872704125585,
+        0.37850724481886233,
+        0.34764196448666246,
+        0.3214309561021647,
+        0.29889528005623833,
+        0.27931254564697794,
+        0.26213803704625405,
+        0.2469532527282633,
+        0.23343135120981723,
+        0.22131335956679343,
+        0.21039142668535554,
+        0.20049680207053888,
+        0.19149105440176836,
+        0.183259554981284,
+        0.1757065726477555,
+        0.16875153364576476,
+        0.16232613595244663,
+        0.15637209867401536,
+        0.1508393892232458,
+        0.14568481398876265,
+        0.14087088841903173,
+        0.136364923958595,
+        0.13213828478710998,
+        0.12816577862742454,
+        0.12442515423227761,
+        0.12089668437314931,
+        0.11756281782651308,
+        0.11440788739612989,
+        0.1114178637199611,
+        0.10858014669903666,
+        0.10588338800747572,
+        0.10331733941096967,
+        0.10087272261910592,
+        0.09854111718734976,
+        0.09631486361422334,
+        0.09418697928372882,
+        0.09215108530942605,
+        0.09020134266555564,
+        0.08833239625823297,
+        0.08653932580847745,
+        0.08481760259841399,
+        0.08316305128002946,
+        0.0815718160684185,
+        0.08004033074329664
+      ],
+      "pair_orders_sha256": "df0e5f3c0d1080121fc5f3640567dde5b0d1fa8ac5b7a3caba15886d98212c6c",
+      "first_epoch_pair_order": [
+        [
+          3,
+          1
+        ],
+        [
+          2,
+          1
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          3,
+          2
+        ],
+        [
+          3,
+          0
+        ]
+      ]
+    },
+    {
+      "graph": "path_four",
+      "vertices": 4,
+      "locality_k": 3,
+      "locality_fraction": 1.0,
+      "seed": 2026,
+      "walk_depth": 5,
+      "epochs": 60,
+      "repulsion_requested": 0.6,
+      "repulsion_effective_float32": 0.6000000238418579,
+      "termination": "fixed_epoch_budget",
+      "attractive_unordered_pairs": 6,
+      "flags": [
+        [
+          0,
+          1,
+          1,
+          1
+        ],
+        [
+          1,
+          0,
+          1,
+          1
+        ],
+        [
+          1,
+          1,
+          0,
+          1
+        ],
+        [
+          1,
+          1,
+          1,
+          0
+        ]
+      ],
+      "coordinates": [
+        [
+          0.3721193409958013,
+          -0.6290432100237822
+        ],
+        [
+          0.6043046913480598,
+          0.35062886171823665
+        ],
+        [
+          0.4453036213707618,
+          1.349457196067747
+        ],
+        [
+          0.678272346285377,
+          2.328957152237795
+        ]
+      ],
+      "coordinate_max_abs_difference": 2.220446049250313e-16,
+      "objective_code_initial": 1.4971434290377437,
+      "objective_code_final": 0.0001259159837300725,
+      "objective_paper_initial": 7.263403748854347,
+      "objective_paper_final": 0.0017269162030903497,
+      "diagnostic_upstream_initial": 1.7646703017684646,
+      "diagnostic_upstream_final": 1.286987850461785,
+      "mean_relative_stress_fitted": 8.362098488625346e-05,
+      "schedule": [
+        9.0,
+        7.118231008344204,
+        5.629912520905882,
+        4.452779764508616,
+        3.5217683325614257,
+        2.7854178387826,
+        2.203027514579712,
+        1.742406529612974,
+        1.378094687581387,
+        1.089955148619583,
+        1.0,
+        0.8100016826166994,
+        0.6806746453203567,
+        0.5869591723705145,
+        0.5159262974110258,
+        0.4602299887382716,
+        0.4153872704125585,
+        0.37850724481886233,
+        0.34764196448666246,
+        0.3214309561021647,
+        0.29889528005623833,
+        0.27931254564697794,
+        0.26213803704625405,
+        0.2469532527282633,
+        0.23343135120981723,
+        0.22131335956679343,
+        0.21039142668535554,
+        0.20049680207053888,
+        0.19149105440176836,
+        0.183259554981284,
+        0.1757065726477555,
+        0.16875153364576476,
+        0.16232613595244663,
+        0.15637209867401536,
+        0.1508393892232458,
+        0.14568481398876265,
+        0.14087088841903173,
+        0.136364923958595,
+        0.13213828478710998,
+        0.12816577862742454,
+        0.12442515423227761,
+        0.12089668437314931,
+        0.11756281782651308,
+        0.11440788739612989,
+        0.1114178637199611,
+        0.10858014669903666,
+        0.10588338800747572,
+        0.10331733941096967,
+        0.10087272261910592,
+        0.09854111718734976,
+        0.09631486361422334,
+        0.09418697928372882,
+        0.09215108530942605,
+        0.09020134266555564,
+        0.08833239625823297,
+        0.08653932580847745,
+        0.08481760259841399,
+        0.08316305128002946,
+        0.0815718160684185,
+        0.08004033074329664
+      ],
+      "pair_orders_sha256": "72d286263a036a87ebc5a766ebd3a52c14b6c26b783edeef5e82183d18582eec",
+      "first_epoch_pair_order": [
+        [
+          3,
+          0
+        ],
+        [
+          3,
+          1
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          3,
+          2
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          2,
+          1
+        ]
+      ]
+    },
+    {
+      "graph": "cycle_five",
+      "vertices": 5,
+      "locality_k": 1,
+      "locality_fraction": 0.25,
+      "seed": 17,
+      "walk_depth": 5,
+      "epochs": 60,
+      "repulsion_requested": 0.6,
+      "repulsion_effective_float32": 0.6000000238418579,
+      "termination": "fixed_epoch_budget",
+      "attractive_unordered_pairs": 5,
+      "flags": [
+        [
+          0,
+          1,
+          0,
+          0,
+          1
+        ],
+        [
+          1,
+          0,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          1,
+          0
+        ],
+        [
+          0,
+          0,
+          1,
+          0,
+          1
+        ],
+        [
+          1,
+          0,
+          0,
+          1,
+          0
+        ]
+      ],
+      "coordinates": [
+        [
+          0.41903944234151613,
+          -0.6219649028372035
+        ],
+        [
+          1.3283751703673607,
+          0.41058653646424065
+        ],
+        [
+          0.6189333412121065,
+          1.595287605097896
+        ],
+        [
+          -0.7217645252318541,
+          1.293594995879461
+        ],
+        [
+          -0.8445834286891304,
+          -0.07750423460439135
+        ]
+      ],
+      "coordinate_max_abs_difference": 7.771561172376096e-16,
+      "objective_code_initial": 4.658227716315095,
+      "objective_code_final": 1.524162055258587,
+      "objective_paper_initial": 10.738218450653294,
+      "objective_paper_final": -1.6931566781695548,
+      "diagnostic_upstream_initial": 1.5363024507225762,
+      "diagnostic_upstream_final": 0.9898991295208478,
+      "mean_relative_stress_fitted": 0.011025274404694732,
+      "schedule": [
+        4.0,
+        3.253372450349294,
+        2.6461080751729424,
+        2.1521937781036127,
+        1.7504719863738638,
+        1.4237343338942334,
+        1.1579845146269756,
+        1.0,
+        0.82877354164351,
+        0.7076116968929107,
+        0.6173576229941656,
+        0.5475225171813374,
+        0.49188122279708923,
+        0.44650564257337283,
+        0.40879471459440125,
+        0.3769576627920048,
+        0.34972126824932903,
+        0.32615549267901517,
+        0.3055651527013639,
+        0.28742018948366965,
+        0.27130939000680704,
+        0.25690884661069946,
+        0.24395995487845432,
+        0.23225374603626076,
+        0.22161952359588757,
+        0.21191648508875408,
+        0.20302745240461492,
+        0.1948541165278442,
+        0.1873133864277669,
+        0.18033455413674548,
+        0.17385707079801221,
+        0.167828785390746,
+        0.16220453759630238,
+        0.156945024423934,
+        0.15201588041059816,
+        0.14738692587083632,
+        0.1430315484348197,
+        0.13892619109467313,
+        0.13504992595680615,
+        0.1313840974152758,
+        0.12791202190409875,
+        0.12461873403154004,
+        0.12149077094697971,
+        0.11851598838730575,
+        0.11568340310274963,
+        0.1129830573518197,
+        0.11040590194154332,
+        0.1079436949179126,
+        0.10558891351667957,
+        0.10333467739281825,
+        0.10117468147835473,
+        0.09910313708858402,
+        0.09711472011819756,
+        0.09520452535113809,
+        0.09336802605864336,
+        0.0916010381849268,
+        0.08989968852403653,
+        0.08826038637844447,
+        0.08667979826290417,
+        0.08515482527854558
+      ],
+      "pair_orders_sha256": "ccccf85ac9220efb247ea44011cb1954e1857cda1ccee7cbfe3597a8ad8510df",
+      "first_epoch_pair_order": [
+        [
+          4,
+          3
+        ],
+        [
+          3,
+          1
+        ],
+        [
+          4,
+          1
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          4,
+          0
+        ],
+        [
+          2,
+          1
+        ],
+        [
+          4,
+          2
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          3,
+          0
+        ],
+        [
+          3,
+          2
+        ]
+      ]
+    },
+    {
+      "graph": "cycle_five",
+      "vertices": 5,
+      "locality_k": 1,
+      "locality_fraction": 0.25,
+      "seed": 314,
+      "walk_depth": 5,
+      "epochs": 60,
+      "repulsion_requested": 0.6,
+      "repulsion_effective_float32": 0.6000000238418579,
+      "termination": "fixed_epoch_budget",
+      "attractive_unordered_pairs": 5,
+      "flags": [
+        [
+          0,
+          1,
+          0,
+          0,
+          1
+        ],
+        [
+          1,
+          0,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          1,
+          0
+        ],
+        [
+          0,
+          0,
+          1,
+          0,
+          1
+        ],
+        [
+          1,
+          0,
+          0,
+          1,
+          0
+        ]
+      ],
+      "coordinates": [
+        [
+          0.38453086805700537,
+          -0.6290098387462154
+        ],
+        [
+          1.320802886687827,
+          0.379430240141491
+        ],
+        [
+          0.6518729069468743,
+          1.5832576459833763
+        ],
+        [
+          -0.6952815520858533,
+          1.3181254191732075
+        ],
+        [
+          -0.861925109605853,
+          -0.05180346655185987
+        ]
+      ],
+      "coordinate_max_abs_difference": 4.440892098500626e-16,
+      "objective_code_initial": 4.658227716315095,
+      "objective_code_final": 1.5241866981641745,
+      "objective_paper_initial": 10.738218450653294,
+      "objective_paper_final": -1.694297800183544,
+      "diagnostic_upstream_initial": 1.5363024507225762,
+      "diagnostic_upstream_final": 0.9899206296357677,
+      "mean_relative_stress_fitted": 0.011024984324305652,
+      "schedule": [
+        4.0,
+        3.253372450349294,
+        2.6461080751729424,
+        2.1521937781036127,
+        1.7504719863738638,
+        1.4237343338942334,
+        1.1579845146269756,
+        1.0,
+        0.82877354164351,
+        0.7076116968929107,
+        0.6173576229941656,
+        0.5475225171813374,
+        0.49188122279708923,
+        0.44650564257337283,
+        0.40879471459440125,
+        0.3769576627920048,
+        0.34972126824932903,
+        0.32615549267901517,
+        0.3055651527013639,
+        0.28742018948366965,
+        0.27130939000680704,
+        0.25690884661069946,
+        0.24395995487845432,
+        0.23225374603626076,
+        0.22161952359588757,
+        0.21191648508875408,
+        0.20302745240461492,
+        0.1948541165278442,
+        0.1873133864277669,
+        0.18033455413674548,
+        0.17385707079801221,
+        0.167828785390746,
+        0.16220453759630238,
+        0.156945024423934,
+        0.15201588041059816,
+        0.14738692587083632,
+        0.1430315484348197,
+        0.13892619109467313,
+        0.13504992595680615,
+        0.1313840974152758,
+        0.12791202190409875,
+        0.12461873403154004,
+        0.12149077094697971,
+        0.11851598838730575,
+        0.11568340310274963,
+        0.1129830573518197,
+        0.11040590194154332,
+        0.1079436949179126,
+        0.10558891351667957,
+        0.10333467739281825,
+        0.10117468147835473,
+        0.09910313708858402,
+        0.09711472011819756,
+        0.09520452535113809,
+        0.09336802605864336,
+        0.0916010381849268,
+        0.08989968852403653,
+        0.08826038637844447,
+        0.08667979826290417,
+        0.08515482527854558
+      ],
+      "pair_orders_sha256": "26dedc9c3da5b74400772b2dc3e714d2cffa664ddfebb139b4a1e523d24315a9",
+      "first_epoch_pair_order": [
+        [
+          2,
+          1
+        ],
+        [
+          4,
+          1
+        ],
+        [
+          4,
+          2
+        ],
+        [
+          4,
+          3
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          3,
+          1
+        ],
+        [
+          4,
+          0
+        ],
+        [
+          3,
+          0
+        ],
+        [
+          3,
+          2
+        ]
+      ]
+    },
+    {
+      "graph": "cycle_five",
+      "vertices": 5,
+      "locality_k": 1,
+      "locality_fraction": 0.25,
+      "seed": 2026,
+      "walk_depth": 5,
+      "epochs": 60,
+      "repulsion_requested": 0.6,
+      "repulsion_effective_float32": 0.6000000238418579,
+      "termination": "fixed_epoch_budget",
+      "attractive_unordered_pairs": 5,
+      "flags": [
+        [
+          0,
+          1,
+          0,
+          0,
+          1
+        ],
+        [
+          1,
+          0,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          1,
+          0
+        ],
+        [
+          0,
+          0,
+          1,
+          0,
+          1
+        ],
+        [
+          1,
+          0,
+          0,
+          1,
+          0
+        ]
+      ],
+      "coordinates": [
+        [
+          0.1376197250097209,
+          -0.652546587475277
+        ],
+        [
+          1.265253355600347,
+          0.13932022785384882
+        ],
+        [
+          0.8665503335837627,
+          1.4554965234325228
+        ],
+        [
+          -0.5123161842812298,
+          1.4772619256586488
+        ],
+        [
+          -0.9571072299125988,
+          0.18046791053025765
+        ]
+      ],
+      "coordinate_max_abs_difference": 2.220446049250313e-16,
+      "objective_code_initial": 4.658227716315095,
+      "objective_code_final": 1.524203419890087,
+      "objective_paper_initial": 10.738218450653294,
+      "objective_paper_final": -1.6946405037363843,
+      "diagnostic_upstream_initial": 1.5363024507225762,
+      "diagnostic_upstream_final": 0.9899285095778471,
+      "mean_relative_stress_fitted": 0.011026053295657447,
+      "schedule": [
+        4.0,
+        3.253372450349294,
+        2.6461080751729424,
+        2.1521937781036127,
+        1.7504719863738638,
+        1.4237343338942334,
+        1.1579845146269756,
+        1.0,
+        0.82877354164351,
+        0.7076116968929107,
+        0.6173576229941656,
+        0.5475225171813374,
+        0.49188122279708923,
+        0.44650564257337283,
+        0.40879471459440125,
+        0.3769576627920048,
+        0.34972126824932903,
+        0.32615549267901517,
+        0.3055651527013639,
+        0.28742018948366965,
+        0.27130939000680704,
+        0.25690884661069946,
+        0.24395995487845432,
+        0.23225374603626076,
+        0.22161952359588757,
+        0.21191648508875408,
+        0.20302745240461492,
+        0.1948541165278442,
+        0.1873133864277669,
+        0.18033455413674548,
+        0.17385707079801221,
+        0.167828785390746,
+        0.16220453759630238,
+        0.156945024423934,
+        0.15201588041059816,
+        0.14738692587083632,
+        0.1430315484348197,
+        0.13892619109467313,
+        0.13504992595680615,
+        0.1313840974152758,
+        0.12791202190409875,
+        0.12461873403154004,
+        0.12149077094697971,
+        0.11851598838730575,
+        0.11568340310274963,
+        0.1129830573518197,
+        0.11040590194154332,
+        0.1079436949179126,
+        0.10558891351667957,
+        0.10333467739281825,
+        0.10117468147835473,
+        0.09910313708858402,
+        0.09711472011819756,
+        0.09520452535113809,
+        0.09336802605864336,
+        0.0916010381849268,
+        0.08989968852403653,
+        0.08826038637844447,
+        0.08667979826290417,
+        0.08515482527854558
+      ],
+      "pair_orders_sha256": "57fe20a6e4a84c380a02185402b3d428d6395ae60cf1c2c8fd3f3b56b1b37b3a",
+      "first_epoch_pair_order": [
+        [
+          3,
+          2
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          4,
+          2
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          4,
+          0
+        ],
+        [
+          4,
+          1
+        ],
+        [
+          3,
+          0
+        ],
+        [
+          2,
+          1
+        ],
+        [
+          4,
+          3
+        ],
+        [
+          3,
+          1
+        ]
+      ]
+    },
+    {
+      "graph": "cycle_five",
+      "vertices": 5,
+      "locality_k": 4,
+      "locality_fraction": 1.0,
+      "seed": 17,
+      "walk_depth": 5,
+      "epochs": 60,
+      "repulsion_requested": 0.6,
+      "repulsion_effective_float32": 0.6000000238418579,
+      "termination": "fixed_epoch_budget",
+      "attractive_unordered_pairs": 10,
+      "flags": [
+        [
+          0,
+          1,
+          1,
+          1,
+          1
+        ],
+        [
+          1,
+          0,
+          1,
+          1,
+          1
+        ],
+        [
+          1,
+          1,
+          0,
+          1,
+          1
+        ],
+        [
+          1,
+          1,
+          1,
+          0,
+          1
+        ],
+        [
+          1,
+          1,
+          1,
+          1,
+          0
+        ]
+      ],
+      "coordinates": [
+        [
+          0.47014370077859396,
+          -0.3552611953265154
+        ],
+        [
+          1.088508412163023,
+          0.5439235267726111
+        ],
+        [
+          0.42283115731864035,
+          1.4098981562635486
+        ],
+        [
+          -0.6055382093049444,
+          1.046217186592259
+        ],
+        [
+          -0.5759450609553147,
+          -0.044777674301902694
+        ]
+      ],
+      "coordinate_max_abs_difference": 4.440892098500626e-16,
+      "objective_code_initial": 3.4332386101191026,
+      "objective_code_final": 0.027565757641753324,
+      "objective_paper_initial": 15.284778232700443,
+      "objective_paper_final": 0.31578188359717474,
+      "diagnostic_upstream_initial": 1.6397573686625802,
+      "diagnostic_upstream_final": 1.0398834823204428,
+      "mean_relative_stress_fitted": 0.0110229883024386,
+      "schedule": [
+        4.0,
+        3.253372450349294,
+        2.6461080751729424,
+        2.1521937781036127,
+        1.7504719863738638,
+        1.4237343338942334,
+        1.1579845146269756,
+        1.0,
+        0.82877354164351,
+        0.7076116968929107,
+        0.6173576229941656,
+        0.5475225171813374,
+        0.49188122279708923,
+        0.44650564257337283,
+        0.40879471459440125,
+        0.3769576627920048,
+        0.34972126824932903,
+        0.32615549267901517,
+        0.3055651527013639,
+        0.28742018948366965,
+        0.27130939000680704,
+        0.25690884661069946,
+        0.24395995487845432,
+        0.23225374603626076,
+        0.22161952359588757,
+        0.21191648508875408,
+        0.20302745240461492,
+        0.1948541165278442,
+        0.1873133864277669,
+        0.18033455413674548,
+        0.17385707079801221,
+        0.167828785390746,
+        0.16220453759630238,
+        0.156945024423934,
+        0.15201588041059816,
+        0.14738692587083632,
+        0.1430315484348197,
+        0.13892619109467313,
+        0.13504992595680615,
+        0.1313840974152758,
+        0.12791202190409875,
+        0.12461873403154004,
+        0.12149077094697971,
+        0.11851598838730575,
+        0.11568340310274963,
+        0.1129830573518197,
+        0.11040590194154332,
+        0.1079436949179126,
+        0.10558891351667957,
+        0.10333467739281825,
+        0.10117468147835473,
+        0.09910313708858402,
+        0.09711472011819756,
+        0.09520452535113809,
+        0.09336802605864336,
+        0.0916010381849268,
+        0.08989968852403653,
+        0.08826038637844447,
+        0.08667979826290417,
+        0.08515482527854558
+      ],
+      "pair_orders_sha256": "ccccf85ac9220efb247ea44011cb1954e1857cda1ccee7cbfe3597a8ad8510df",
+      "first_epoch_pair_order": [
+        [
+          4,
+          3
+        ],
+        [
+          3,
+          1
+        ],
+        [
+          4,
+          1
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          4,
+          0
+        ],
+        [
+          2,
+          1
+        ],
+        [
+          4,
+          2
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          3,
+          0
+        ],
+        [
+          3,
+          2
+        ]
+      ]
+    },
+    {
+      "graph": "cycle_five",
+      "vertices": 5,
+      "locality_k": 4,
+      "locality_fraction": 1.0,
+      "seed": 314,
+      "walk_depth": 5,
+      "epochs": 60,
+      "repulsion_requested": 0.6,
+      "repulsion_effective_float32": 0.6000000238418579,
+      "termination": "fixed_epoch_budget",
+      "attractive_unordered_pairs": 10,
+      "flags": [
+        [
+          0,
+          1,
+          1,
+          1,
+          1
+        ],
+        [
+          1,
+          0,
+          1,
+          1,
+          1
+        ],
+        [
+          1,
+          1,
+          0,
+          1,
+          1
+        ],
+        [
+          1,
+          1,
+          1,
+          0,
+          1
+        ],
+        [
+          1,
+          1,
+          1,
+          1,
+          0
+        ]
+      ],
+      "coordinates": [
+        [
+          0.022822782744932782,
+          -0.398155645863105
+        ],
+        [
+          0.9905362126888381,
+          0.10627474200413813
+        ],
+        [
+          0.8103253897578865,
+          1.1828391616252343
+        ],
+        [
+          -0.26830134380805276,
+          1.3432304790860798
+        ],
+        [
+          -0.7553830413836047,
+          0.36581126314765283
+        ]
+      ],
+      "coordinate_max_abs_difference": 3.469446951953614e-16,
+      "objective_code_initial": 3.4332386101191026,
+      "objective_code_final": 0.027567485928559038,
+      "objective_paper_initial": 15.284778232700443,
+      "objective_paper_final": 0.31636162799371353,
+      "diagnostic_upstream_initial": 1.6397573686625802,
+      "diagnostic_upstream_final": 1.0399680542000709,
+      "mean_relative_stress_fitted": 0.011022976020781923,
+      "schedule": [
+        4.0,
+        3.253372450349294,
+        2.6461080751729424,
+        2.1521937781036127,
+        1.7504719863738638,
+        1.4237343338942334,
+        1.1579845146269756,
+        1.0,
+        0.82877354164351,
+        0.7076116968929107,
+        0.6173576229941656,
+        0.5475225171813374,
+        0.49188122279708923,
+        0.44650564257337283,
+        0.40879471459440125,
+        0.3769576627920048,
+        0.34972126824932903,
+        0.32615549267901517,
+        0.3055651527013639,
+        0.28742018948366965,
+        0.27130939000680704,
+        0.25690884661069946,
+        0.24395995487845432,
+        0.23225374603626076,
+        0.22161952359588757,
+        0.21191648508875408,
+        0.20302745240461492,
+        0.1948541165278442,
+        0.1873133864277669,
+        0.18033455413674548,
+        0.17385707079801221,
+        0.167828785390746,
+        0.16220453759630238,
+        0.156945024423934,
+        0.15201588041059816,
+        0.14738692587083632,
+        0.1430315484348197,
+        0.13892619109467313,
+        0.13504992595680615,
+        0.1313840974152758,
+        0.12791202190409875,
+        0.12461873403154004,
+        0.12149077094697971,
+        0.11851598838730575,
+        0.11568340310274963,
+        0.1129830573518197,
+        0.11040590194154332,
+        0.1079436949179126,
+        0.10558891351667957,
+        0.10333467739281825,
+        0.10117468147835473,
+        0.09910313708858402,
+        0.09711472011819756,
+        0.09520452535113809,
+        0.09336802605864336,
+        0.0916010381849268,
+        0.08989968852403653,
+        0.08826038637844447,
+        0.08667979826290417,
+        0.08515482527854558
+      ],
+      "pair_orders_sha256": "26dedc9c3da5b74400772b2dc3e714d2cffa664ddfebb139b4a1e523d24315a9",
+      "first_epoch_pair_order": [
+        [
+          2,
+          1
+        ],
+        [
+          4,
+          1
+        ],
+        [
+          4,
+          2
+        ],
+        [
+          4,
+          3
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          3,
+          1
+        ],
+        [
+          4,
+          0
+        ],
+        [
+          3,
+          0
+        ],
+        [
+          3,
+          2
+        ]
+      ]
+    },
+    {
+      "graph": "cycle_five",
+      "vertices": 5,
+      "locality_k": 4,
+      "locality_fraction": 1.0,
+      "seed": 2026,
+      "walk_depth": 5,
+      "epochs": 60,
+      "repulsion_requested": 0.6,
+      "repulsion_effective_float32": 0.6000000238418579,
+      "termination": "fixed_epoch_budget",
+      "attractive_unordered_pairs": 10,
+      "flags": [
+        [
+          0,
+          1,
+          1,
+          1,
+          1
+        ],
+        [
+          1,
+          0,
+          1,
+          1,
+          1
+        ],
+        [
+          1,
+          1,
+          0,
+          1,
+          1
+        ],
+        [
+          1,
+          1,
+          1,
+          0,
+          1
+        ],
+        [
+          1,
+          1,
+          1,
+          1,
+          0
+        ]
+      ],
+      "coordinates": [
+        [
+          0.07863277233578703,
+          -0.40535650295196407
+        ],
+        [
+          1.013933041772689,
+          0.15742783556674927
+        ],
+        [
+          0.7694769157949588,
+          1.2207302248973464
+        ],
+        [
+          -0.31837932906450744,
+          1.3153909359860017
+        ],
+        [
+          -0.743663400838928,
+          0.31180750650186606
+        ]
+      ],
+      "coordinate_max_abs_difference": 4.440892098500626e-16,
+      "objective_code_initial": 3.4332386101191026,
+      "objective_code_final": 0.027568314752999486,
+      "objective_paper_initial": 15.284778232700443,
+      "objective_paper_final": 0.31651837515748354,
+      "diagnostic_upstream_initial": 1.6397573686625802,
+      "diagnostic_upstream_final": 1.0399905255179374,
+      "mean_relative_stress_fitted": 0.011023111971753806,
+      "schedule": [
+        4.0,
+        3.253372450349294,
+        2.6461080751729424,
+        2.1521937781036127,
+        1.7504719863738638,
+        1.4237343338942334,
+        1.1579845146269756,
+        1.0,
+        0.82877354164351,
+        0.7076116968929107,
+        0.6173576229941656,
+        0.5475225171813374,
+        0.49188122279708923,
+        0.44650564257337283,
+        0.40879471459440125,
+        0.3769576627920048,
+        0.34972126824932903,
+        0.32615549267901517,
+        0.3055651527013639,
+        0.28742018948366965,
+        0.27130939000680704,
+        0.25690884661069946,
+        0.24395995487845432,
+        0.23225374603626076,
+        0.22161952359588757,
+        0.21191648508875408,
+        0.20302745240461492,
+        0.1948541165278442,
+        0.1873133864277669,
+        0.18033455413674548,
+        0.17385707079801221,
+        0.167828785390746,
+        0.16220453759630238,
+        0.156945024423934,
+        0.15201588041059816,
+        0.14738692587083632,
+        0.1430315484348197,
+        0.13892619109467313,
+        0.13504992595680615,
+        0.1313840974152758,
+        0.12791202190409875,
+        0.12461873403154004,
+        0.12149077094697971,
+        0.11851598838730575,
+        0.11568340310274963,
+        0.1129830573518197,
+        0.11040590194154332,
+        0.1079436949179126,
+        0.10558891351667957,
+        0.10333467739281825,
+        0.10117468147835473,
+        0.09910313708858402,
+        0.09711472011819756,
+        0.09520452535113809,
+        0.09336802605864336,
+        0.0916010381849268,
+        0.08989968852403653,
+        0.08826038637844447,
+        0.08667979826290417,
+        0.08515482527854558
+      ],
+      "pair_orders_sha256": "57fe20a6e4a84c380a02185402b3d428d6395ae60cf1c2c8fd3f3b56b1b37b3a",
+      "first_epoch_pair_order": [
+        [
+          3,
+          2
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          4,
+          2
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          4,
+          0
+        ],
+        [
+          4,
+          1
+        ],
+        [
+          3,
+          0
+        ],
+        [
+          2,
+          1
+        ],
+        [
+          4,
+          3
+        ],
+        [
+          3,
+          1
+        ]
+      ]
+    },
+    {
+      "graph": "star_five",
+      "vertices": 5,
+      "locality_k": 1,
+      "locality_fraction": 0.25,
+      "seed": 17,
+      "walk_depth": 5,
+      "epochs": 60,
+      "repulsion_requested": 0.6,
+      "repulsion_effective_float32": 0.6000000238418579,
+      "termination": "fixed_epoch_budget",
+      "attractive_unordered_pairs": 5,
+      "flags": [
+        [
+          0,
+          0,
+          0,
+          1,
+          1
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          1
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          1
+        ],
+        [
+          1,
+          0,
+          0,
+          0,
+          1
+        ],
+        [
+          1,
+          1,
+          1,
+          1,
+          0
+        ]
+      ],
+      "coordinates": [
+        [
+          0.6050473705890619,
+          1.0620347487830122
+        ],
+        [
+          1.6815511196795851,
+          -2.0243249128408114
+        ],
+        [
+          -2.639063526204228,
+          1.4767074598220034
+        ],
+        [
+          1.2347321622148857,
+          1.8760368015809388
+        ],
+        [
+          -0.08226712627930266,
+          0.2095459026548573
+        ]
+      ],
+      "coordinate_max_abs_difference": 4.440892098500626e-16,
+      "objective_code_initial": 2.1615927274990434,
+      "objective_code_final": 0.8755435740626974,
+      "objective_paper_initial": 3.543341825746363,
+      "objective_paper_final": -2.6172993302909777,
+      "diagnostic_upstream_initial": 1.1627711313017195,
+      "diagnostic_upstream_final": 0.9026223786207894,
+      "mean_relative_stress_fitted": 0.16030214930666215,
+      "schedule": [
+        4.0,
+        3.253372450349294,
+        2.6461080751729424,
+        2.1521937781036127,
+        1.7504719863738638,
+        1.4237343338942334,
+        1.1579845146269756,
+        1.0,
+        0.82877354164351,
+        0.7076116968929107,
+        0.6173576229941656,
+        0.5475225171813374,
+        0.49188122279708923,
+        0.44650564257337283,
+        0.40879471459440125,
+        0.3769576627920048,
+        0.34972126824932903,
+        0.32615549267901517,
+        0.3055651527013639,
+        0.28742018948366965,
+        0.27130939000680704,
+        0.25690884661069946,
+        0.24395995487845432,
+        0.23225374603626076,
+        0.22161952359588757,
+        0.21191648508875408,
+        0.20302745240461492,
+        0.1948541165278442,
+        0.1873133864277669,
+        0.18033455413674548,
+        0.17385707079801221,
+        0.167828785390746,
+        0.16220453759630238,
+        0.156945024423934,
+        0.15201588041059816,
+        0.14738692587083632,
+        0.1430315484348197,
+        0.13892619109467313,
+        0.13504992595680615,
+        0.1313840974152758,
+        0.12791202190409875,
+        0.12461873403154004,
+        0.12149077094697971,
+        0.11851598838730575,
+        0.11568340310274963,
+        0.1129830573518197,
+        0.11040590194154332,
+        0.1079436949179126,
+        0.10558891351667957,
+        0.10333467739281825,
+        0.10117468147835473,
+        0.09910313708858402,
+        0.09711472011819756,
+        0.09520452535113809,
+        0.09336802605864336,
+        0.0916010381849268,
+        0.08989968852403653,
+        0.08826038637844447,
+        0.08667979826290417,
+        0.08515482527854558
+      ],
+      "pair_orders_sha256": "ccccf85ac9220efb247ea44011cb1954e1857cda1ccee7cbfe3597a8ad8510df",
+      "first_epoch_pair_order": [
+        [
+          4,
+          3
+        ],
+        [
+          3,
+          1
+        ],
+        [
+          4,
+          1
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          4,
+          0
+        ],
+        [
+          2,
+          1
+        ],
+        [
+          4,
+          2
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          3,
+          0
+        ],
+        [
+          3,
+          2
+        ]
+      ]
+    },
+    {
+      "graph": "star_five",
+      "vertices": 5,
+      "locality_k": 1,
+      "locality_fraction": 0.25,
+      "seed": 314,
+      "walk_depth": 5,
+      "epochs": 60,
+      "repulsion_requested": 0.6,
+      "repulsion_effective_float32": 0.6000000238418579,
+      "termination": "fixed_epoch_budget",
+      "attractive_unordered_pairs": 5,
+      "flags": [
+        [
+          0,
+          0,
+          0,
+          1,
+          1
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          1
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          1
+        ],
+        [
+          1,
+          0,
+          0,
+          0,
+          1
+        ],
+        [
+          1,
+          1,
+          1,
+          1,
+          0
+        ]
+      ],
+      "coordinates": [
+        [
+          0.6930223696323272,
+          1.0723827804782733
+        ],
+        [
+          1.3713543692791912,
+          -2.166433644080311
+        ],
+        [
+          -2.5850977394198824,
+          1.5938829616417738
+        ],
+        [
+          1.395103325545424,
+          1.8272382184648823
+        ],
+        [
+          -0.07438232503705494,
+          0.2729296834953786
+        ]
+      ],
+      "coordinate_max_abs_difference": 1.1102230246251565e-16,
+      "objective_code_initial": 2.1615927274990434,
+      "objective_code_final": 0.8645205528456061,
+      "objective_paper_initial": 3.543341825746363,
+      "objective_paper_final": -2.686031203851232,
+      "diagnostic_upstream_initial": 1.1627711313017195,
+      "diagnostic_upstream_final": 0.8988547848519789,
+      "mean_relative_stress_fitted": 0.16118531263367206,
+      "schedule": [
+        4.0,
+        3.253372450349294,
+        2.6461080751729424,
+        2.1521937781036127,
+        1.7504719863738638,
+        1.4237343338942334,
+        1.1579845146269756,
+        1.0,
+        0.82877354164351,
+        0.7076116968929107,
+        0.6173576229941656,
+        0.5475225171813374,
+        0.49188122279708923,
+        0.44650564257337283,
+        0.40879471459440125,
+        0.3769576627920048,
+        0.34972126824932903,
+        0.32615549267901517,
+        0.3055651527013639,
+        0.28742018948366965,
+        0.27130939000680704,
+        0.25690884661069946,
+        0.24395995487845432,
+        0.23225374603626076,
+        0.22161952359588757,
+        0.21191648508875408,
+        0.20302745240461492,
+        0.1948541165278442,
+        0.1873133864277669,
+        0.18033455413674548,
+        0.17385707079801221,
+        0.167828785390746,
+        0.16220453759630238,
+        0.156945024423934,
+        0.15201588041059816,
+        0.14738692587083632,
+        0.1430315484348197,
+        0.13892619109467313,
+        0.13504992595680615,
+        0.1313840974152758,
+        0.12791202190409875,
+        0.12461873403154004,
+        0.12149077094697971,
+        0.11851598838730575,
+        0.11568340310274963,
+        0.1129830573518197,
+        0.11040590194154332,
+        0.1079436949179126,
+        0.10558891351667957,
+        0.10333467739281825,
+        0.10117468147835473,
+        0.09910313708858402,
+        0.09711472011819756,
+        0.09520452535113809,
+        0.09336802605864336,
+        0.0916010381849268,
+        0.08989968852403653,
+        0.08826038637844447,
+        0.08667979826290417,
+        0.08515482527854558
+      ],
+      "pair_orders_sha256": "26dedc9c3da5b74400772b2dc3e714d2cffa664ddfebb139b4a1e523d24315a9",
+      "first_epoch_pair_order": [
+        [
+          2,
+          1
+        ],
+        [
+          4,
+          1
+        ],
+        [
+          4,
+          2
+        ],
+        [
+          4,
+          3
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          3,
+          1
+        ],
+        [
+          4,
+          0
+        ],
+        [
+          3,
+          0
+        ],
+        [
+          3,
+          2
+        ]
+      ]
+    },
+    {
+      "graph": "star_five",
+      "vertices": 5,
+      "locality_k": 1,
+      "locality_fraction": 0.25,
+      "seed": 2026,
+      "walk_depth": 5,
+      "epochs": 60,
+      "repulsion_requested": 0.6,
+      "repulsion_effective_float32": 0.6000000238418579,
+      "termination": "fixed_epoch_budget",
+      "attractive_unordered_pairs": 5,
+      "flags": [
+        [
+          0,
+          0,
+          0,
+          1,
+          1
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          1
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          1
+        ],
+        [
+          1,
+          0,
+          0,
+          0,
+          1
+        ],
+        [
+          1,
+          1,
+          1,
+          1,
+          0
+        ]
+      ],
+      "coordinates": [
+        [
+          0.6442404076046795,
+          1.1383728982715786
+        ],
+        [
+          1.6497908326894624,
+          -2.0241770446255853
+        ],
+        [
+          -2.6806495996615087,
+          1.234916524487614
+        ],
+        [
+          1.213629293114724,
+          1.9975281597863266
+        ],
+        [
+          -0.02701093374735452,
+          0.2533594620800651
+        ]
+      ],
+      "coordinate_max_abs_difference": 4.440892098500626e-16,
+      "objective_code_initial": 2.1615927274990434,
+      "objective_code_final": 0.8618051306238325,
+      "objective_paper_initial": 3.543341825746363,
+      "objective_paper_final": -2.7136892479660193,
+      "diagnostic_upstream_initial": 1.1627711313017195,
+      "diagnostic_upstream_final": 0.8975459725418474,
+      "mean_relative_stress_fitted": 0.16144148418169324,
+      "schedule": [
+        4.0,
+        3.253372450349294,
+        2.6461080751729424,
+        2.1521937781036127,
+        1.7504719863738638,
+        1.4237343338942334,
+        1.1579845146269756,
+        1.0,
+        0.82877354164351,
+        0.7076116968929107,
+        0.6173576229941656,
+        0.5475225171813374,
+        0.49188122279708923,
+        0.44650564257337283,
+        0.40879471459440125,
+        0.3769576627920048,
+        0.34972126824932903,
+        0.32615549267901517,
+        0.3055651527013639,
+        0.28742018948366965,
+        0.27130939000680704,
+        0.25690884661069946,
+        0.24395995487845432,
+        0.23225374603626076,
+        0.22161952359588757,
+        0.21191648508875408,
+        0.20302745240461492,
+        0.1948541165278442,
+        0.1873133864277669,
+        0.18033455413674548,
+        0.17385707079801221,
+        0.167828785390746,
+        0.16220453759630238,
+        0.156945024423934,
+        0.15201588041059816,
+        0.14738692587083632,
+        0.1430315484348197,
+        0.13892619109467313,
+        0.13504992595680615,
+        0.1313840974152758,
+        0.12791202190409875,
+        0.12461873403154004,
+        0.12149077094697971,
+        0.11851598838730575,
+        0.11568340310274963,
+        0.1129830573518197,
+        0.11040590194154332,
+        0.1079436949179126,
+        0.10558891351667957,
+        0.10333467739281825,
+        0.10117468147835473,
+        0.09910313708858402,
+        0.09711472011819756,
+        0.09520452535113809,
+        0.09336802605864336,
+        0.0916010381849268,
+        0.08989968852403653,
+        0.08826038637844447,
+        0.08667979826290417,
+        0.08515482527854558
+      ],
+      "pair_orders_sha256": "57fe20a6e4a84c380a02185402b3d428d6395ae60cf1c2c8fd3f3b56b1b37b3a",
+      "first_epoch_pair_order": [
+        [
+          3,
+          2
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          4,
+          2
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          4,
+          0
+        ],
+        [
+          4,
+          1
+        ],
+        [
+          3,
+          0
+        ],
+        [
+          2,
+          1
+        ],
+        [
+          4,
+          3
+        ],
+        [
+          3,
+          1
+        ]
+      ]
+    },
+    {
+      "graph": "star_five",
+      "vertices": 5,
+      "locality_k": 4,
+      "locality_fraction": 1.0,
+      "seed": 17,
+      "walk_depth": 5,
+      "epochs": 60,
+      "repulsion_requested": 0.6,
+      "repulsion_effective_float32": 0.6000000238418579,
+      "termination": "fixed_epoch_budget",
+      "attractive_unordered_pairs": 10,
+      "flags": [
+        [
+          0,
+          1,
+          1,
+          1,
+          1
+        ],
+        [
+          1,
+          0,
+          1,
+          1,
+          1
+        ],
+        [
+          1,
+          1,
+          0,
+          1,
+          1
+        ],
+        [
+          1,
+          1,
+          1,
+          0,
+          1
+        ],
+        [
+          1,
+          1,
+          1,
+          1,
+          0
+        ]
+      ],
+      "coordinates": [
+        [
+          0.16043813590681624,
+          0.5205654008078261
+        ],
+        [
+          1.0349407243082365,
+          -0.15072492891255948
+        ],
+        [
+          -0.7150951430586714,
+          1.1880024688218045
+        ],
+        [
+          0.8299340708186835,
+          1.3952213493900554
+        ],
+        [
+          -0.5102177879750649,
+          -0.3530642901071256
+        ]
+      ],
+      "coordinate_max_abs_difference": 3.3306690738754696e-16,
+      "objective_code_initial": 1.011596815686371,
+      "objective_code_final": 0.06434906890200721,
+      "objective_paper_initial": 8.48291258816229,
+      "objective_paper_final": 0.9058266396158721,
+      "diagnostic_upstream_initial": 1.299664091503457,
+      "diagnostic_upstream_final": 1.0556079266804583,
+      "mean_relative_stress_fitted": 0.025736425259551443,
+      "schedule": [
+        4.0,
+        3.253372450349294,
+        2.6461080751729424,
+        2.1521937781036127,
+        1.7504719863738638,
+        1.4237343338942334,
+        1.1579845146269756,
+        1.0,
+        0.82877354164351,
+        0.7076116968929107,
+        0.6173576229941656,
+        0.5475225171813374,
+        0.49188122279708923,
+        0.44650564257337283,
+        0.40879471459440125,
+        0.3769576627920048,
+        0.34972126824932903,
+        0.32615549267901517,
+        0.3055651527013639,
+        0.28742018948366965,
+        0.27130939000680704,
+        0.25690884661069946,
+        0.24395995487845432,
+        0.23225374603626076,
+        0.22161952359588757,
+        0.21191648508875408,
+        0.20302745240461492,
+        0.1948541165278442,
+        0.1873133864277669,
+        0.18033455413674548,
+        0.17385707079801221,
+        0.167828785390746,
+        0.16220453759630238,
+        0.156945024423934,
+        0.15201588041059816,
+        0.14738692587083632,
+        0.1430315484348197,
+        0.13892619109467313,
+        0.13504992595680615,
+        0.1313840974152758,
+        0.12791202190409875,
+        0.12461873403154004,
+        0.12149077094697971,
+        0.11851598838730575,
+        0.11568340310274963,
+        0.1129830573518197,
+        0.11040590194154332,
+        0.1079436949179126,
+        0.10558891351667957,
+        0.10333467739281825,
+        0.10117468147835473,
+        0.09910313708858402,
+        0.09711472011819756,
+        0.09520452535113809,
+        0.09336802605864336,
+        0.0916010381849268,
+        0.08989968852403653,
+        0.08826038637844447,
+        0.08667979826290417,
+        0.08515482527854558
+      ],
+      "pair_orders_sha256": "ccccf85ac9220efb247ea44011cb1954e1857cda1ccee7cbfe3597a8ad8510df",
+      "first_epoch_pair_order": [
+        [
+          4,
+          3
+        ],
+        [
+          3,
+          1
+        ],
+        [
+          4,
+          1
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          4,
+          0
+        ],
+        [
+          2,
+          1
+        ],
+        [
+          4,
+          2
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          3,
+          0
+        ],
+        [
+          3,
+          2
+        ]
+      ]
+    },
+    {
+      "graph": "star_five",
+      "vertices": 5,
+      "locality_k": 4,
+      "locality_fraction": 1.0,
+      "seed": 314,
+      "walk_depth": 5,
+      "epochs": 60,
+      "repulsion_requested": 0.6,
+      "repulsion_effective_float32": 0.6000000238418579,
+      "termination": "fixed_epoch_budget",
+      "attractive_unordered_pairs": 10,
+      "flags": [
+        [
+          0,
+          1,
+          1,
+          1,
+          1
+        ],
+        [
+          1,
+          0,
+          1,
+          1,
+          1
+        ],
+        [
+          1,
+          1,
+          0,
+          1,
+          1
+        ],
+        [
+          1,
+          1,
+          1,
+          0,
+          1
+        ],
+        [
+          1,
+          1,
+          1,
+          1,
+          0
+        ]
+      ],
+      "coordinates": [
+        [
+          0.1599836242342895,
+          0.5200111555501717
+        ],
+        [
+          1.000033560142575,
+          -0.192507853411972
+        ],
+        [
+          -0.680521343194545,
+          1.2331372047898674
+        ],
+        [
+          0.8727959891392837,
+          1.359930683417032
+        ],
+        [
+          -0.552291830321603,
+          -0.32057119034510084
+        ]
+      ],
+      "coordinate_max_abs_difference": 3.3306690738754696e-16,
+      "objective_code_initial": 1.011596815686371,
+      "objective_code_final": 0.06434614103277625,
+      "objective_paper_initial": 8.48291258816229,
+      "objective_paper_final": 0.9051804507924175,
+      "diagnostic_upstream_initial": 1.299664091503457,
+      "diagnostic_upstream_final": 1.0555082491687704,
+      "mean_relative_stress_fitted": 0.02573599475669307,
+      "schedule": [
+        4.0,
+        3.253372450349294,
+        2.6461080751729424,
+        2.1521937781036127,
+        1.7504719863738638,
+        1.4237343338942334,
+        1.1579845146269756,
+        1.0,
+        0.82877354164351,
+        0.7076116968929107,
+        0.6173576229941656,
+        0.5475225171813374,
+        0.49188122279708923,
+        0.44650564257337283,
+        0.40879471459440125,
+        0.3769576627920048,
+        0.34972126824932903,
+        0.32615549267901517,
+        0.3055651527013639,
+        0.28742018948366965,
+        0.27130939000680704,
+        0.25690884661069946,
+        0.24395995487845432,
+        0.23225374603626076,
+        0.22161952359588757,
+        0.21191648508875408,
+        0.20302745240461492,
+        0.1948541165278442,
+        0.1873133864277669,
+        0.18033455413674548,
+        0.17385707079801221,
+        0.167828785390746,
+        0.16220453759630238,
+        0.156945024423934,
+        0.15201588041059816,
+        0.14738692587083632,
+        0.1430315484348197,
+        0.13892619109467313,
+        0.13504992595680615,
+        0.1313840974152758,
+        0.12791202190409875,
+        0.12461873403154004,
+        0.12149077094697971,
+        0.11851598838730575,
+        0.11568340310274963,
+        0.1129830573518197,
+        0.11040590194154332,
+        0.1079436949179126,
+        0.10558891351667957,
+        0.10333467739281825,
+        0.10117468147835473,
+        0.09910313708858402,
+        0.09711472011819756,
+        0.09520452535113809,
+        0.09336802605864336,
+        0.0916010381849268,
+        0.08989968852403653,
+        0.08826038637844447,
+        0.08667979826290417,
+        0.08515482527854558
+      ],
+      "pair_orders_sha256": "26dedc9c3da5b74400772b2dc3e714d2cffa664ddfebb139b4a1e523d24315a9",
+      "first_epoch_pair_order": [
+        [
+          2,
+          1
+        ],
+        [
+          4,
+          1
+        ],
+        [
+          4,
+          2
+        ],
+        [
+          4,
+          3
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          3,
+          1
+        ],
+        [
+          4,
+          0
+        ],
+        [
+          3,
+          0
+        ],
+        [
+          3,
+          2
+        ]
+      ]
+    },
+    {
+      "graph": "star_five",
+      "vertices": 5,
+      "locality_k": 4,
+      "locality_fraction": 1.0,
+      "seed": 2026,
+      "walk_depth": 5,
+      "epochs": 60,
+      "repulsion_requested": 0.6,
+      "repulsion_effective_float32": 0.6000000238418579,
+      "termination": "fixed_epoch_budget",
+      "attractive_unordered_pairs": 10,
+      "flags": [
+        [
+          0,
+          1,
+          1,
+          1,
+          1
+        ],
+        [
+          1,
+          0,
+          1,
+          1,
+          1
+        ],
+        [
+          1,
+          1,
+          0,
+          1,
+          1
+        ],
+        [
+          1,
+          1,
+          1,
+          0,
+          1
+        ],
+        [
+          1,
+          1,
+          1,
+          1,
+          0
+        ]
+      ],
+      "coordinates": [
+        [
+          0.15826545557096178,
+          0.5202224554578464
+        ],
+        [
+          1.050306697186305,
+          -0.12666719618745334
+        ],
+        [
+          -0.7311769918855316,
+          1.1683823434149
+        ],
+        [
+          0.8080212861657445,
+          1.4097217244126181
+        ],
+        [
+          -0.4854164470374777,
+          -0.37165932709791
+        ]
+      ],
+      "coordinate_max_abs_difference": 3.3306690738754696e-16,
+      "objective_code_initial": 1.011596815686371,
+      "objective_code_final": 0.06435496071028482,
+      "objective_paper_initial": 8.48291258816229,
+      "objective_paper_final": 0.9073182753399193,
+      "diagnostic_upstream_initial": 1.299664091503457,
+      "diagnostic_upstream_final": 1.0558398493200278,
+      "mean_relative_stress_fitted": 0.025736667826758448,
+      "schedule": [
+        4.0,
+        3.253372450349294,
+        2.6461080751729424,
+        2.1521937781036127,
+        1.7504719863738638,
+        1.4237343338942334,
+        1.1579845146269756,
+        1.0,
+        0.82877354164351,
+        0.7076116968929107,
+        0.6173576229941656,
+        0.5475225171813374,
+        0.49188122279708923,
+        0.44650564257337283,
+        0.40879471459440125,
+        0.3769576627920048,
+        0.34972126824932903,
+        0.32615549267901517,
+        0.3055651527013639,
+        0.28742018948366965,
+        0.27130939000680704,
+        0.25690884661069946,
+        0.24395995487845432,
+        0.23225374603626076,
+        0.22161952359588757,
+        0.21191648508875408,
+        0.20302745240461492,
+        0.1948541165278442,
+        0.1873133864277669,
+        0.18033455413674548,
+        0.17385707079801221,
+        0.167828785390746,
+        0.16220453759630238,
+        0.156945024423934,
+        0.15201588041059816,
+        0.14738692587083632,
+        0.1430315484348197,
+        0.13892619109467313,
+        0.13504992595680615,
+        0.1313840974152758,
+        0.12791202190409875,
+        0.12461873403154004,
+        0.12149077094697971,
+        0.11851598838730575,
+        0.11568340310274963,
+        0.1129830573518197,
+        0.11040590194154332,
+        0.1079436949179126,
+        0.10558891351667957,
+        0.10333467739281825,
+        0.10117468147835473,
+        0.09910313708858402,
+        0.09711472011819756,
+        0.09520452535113809,
+        0.09336802605864336,
+        0.0916010381849268,
+        0.08989968852403653,
+        0.08826038637844447,
+        0.08667979826290417,
+        0.08515482527854558
+      ],
+      "pair_orders_sha256": "57fe20a6e4a84c380a02185402b3d428d6395ae60cf1c2c8fd3f3b56b1b37b3a",
+      "first_epoch_pair_order": [
+        [
+          3,
+          2
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          4,
+          2
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          4,
+          0
+        ],
+        [
+          4,
+          1
+        ],
+        [
+          3,
+          0
+        ],
+        [
+          2,
+          1
+        ],
+        [
+          4,
+          3
+        ],
+        [
+          3,
+          1
+        ]
+      ]
+    },
+    {
+      "graph": "irregular_six",
+      "vertices": 6,
+      "locality_k": 1,
+      "locality_fraction": 0.2,
+      "seed": 17,
+      "walk_depth": 5,
+      "epochs": 60,
+      "repulsion_requested": 0.6,
+      "repulsion_effective_float32": 0.6000000238418579,
+      "termination": "fixed_epoch_budget",
+      "attractive_unordered_pairs": 7,
+      "flags": [
+        [
+          0,
+          0,
+          1,
+          0,
+          1,
+          0
+        ],
+        [
+          0,
+          0,
+          1,
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          1,
+          0,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          1,
+          0,
+          1,
+          1
+        ],
+        [
+          1,
+          0,
+          0,
+          1,
+          0,
+          1
+        ],
+        [
+          0,
+          0,
+          0,
+          1,
+          1,
+          0
+        ]
+      ],
+      "coordinates": [
+        [
+          -0.5812369210064096,
+          0.5704911157944558
+        ],
+        [
+          0.7492028653363952,
+          -1.7317586628035104
+        ],
+        [
+          0.5033579509815141,
+          -0.3306173910046998
+        ],
+        [
+          1.1425603961670687,
+          1.1465653243237497
+        ],
+        [
+          0.18242198850671584,
+          1.7675099481286838
+        ],
+        [
+          1.203693720014716,
+          2.377809665561322
+        ]
+      ],
+      "coordinate_max_abs_difference": 7.771561172376096e-16,
+      "objective_code_initial": 7.999036365713316,
+      "objective_code_final": 2.061368577779707,
+      "objective_paper_initial": 19.55579749066097,
+      "objective_paper_final": -3.818904441307927,
+      "diagnostic_upstream_initial": 1.4908361263996337,
+      "diagnostic_upstream_final": 0.7603318953372037,
+      "mean_relative_stress_fitted": 0.06979897392356636,
+      "schedule": [
+        9.0,
+        7.118231008344204,
+        5.629912520905882,
+        4.452779764508616,
+        3.5217683325614257,
+        2.7854178387826,
+        2.203027514579712,
+        1.742406529612974,
+        1.378094687581387,
+        1.089955148619583,
+        1.0,
+        0.8100016826166994,
+        0.6806746453203567,
+        0.5869591723705145,
+        0.5159262974110258,
+        0.4602299887382716,
+        0.4153872704125585,
+        0.37850724481886233,
+        0.34764196448666246,
+        0.3214309561021647,
+        0.29889528005623833,
+        0.27931254564697794,
+        0.26213803704625405,
+        0.2469532527282633,
+        0.23343135120981723,
+        0.22131335956679343,
+        0.21039142668535554,
+        0.20049680207053888,
+        0.19149105440176836,
+        0.183259554981284,
+        0.1757065726477555,
+        0.16875153364576476,
+        0.16232613595244663,
+        0.15637209867401536,
+        0.1508393892232458,
+        0.14568481398876265,
+        0.14087088841903173,
+        0.136364923958595,
+        0.13213828478710998,
+        0.12816577862742454,
+        0.12442515423227761,
+        0.12089668437314931,
+        0.11756281782651308,
+        0.11440788739612989,
+        0.1114178637199611,
+        0.10858014669903666,
+        0.10588338800747572,
+        0.10331733941096967,
+        0.10087272261910592,
+        0.09854111718734976,
+        0.09631486361422334,
+        0.09418697928372882,
+        0.09215108530942605,
+        0.09020134266555564,
+        0.08833239625823297,
+        0.08653932580847745,
+        0.08481760259841399,
+        0.08316305128002946,
+        0.0815718160684185,
+        0.08004033074329664
+      ],
+      "pair_orders_sha256": "980f54891feded4101cca1e54c3bf7decec9682e4dc2bb21e452bf704a939dea",
+      "first_epoch_pair_order": [
+        [
+          5,
+          2
+        ],
+        [
+          3,
+          2
+        ],
+        [
+          4,
+          2
+        ],
+        [
+          3,
+          1
+        ],
+        [
+          5,
+          3
+        ],
+        [
+          3,
+          0
+        ],
+        [
+          2,
+          1
+        ],
+        [
+          4,
+          0
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          5,
+          0
+        ],
+        [
+          5,
+          1
+        ],
+        [
+          5,
+          4
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          4,
+          3
+        ],
+        [
+          4,
+          1
+        ]
+      ]
+    },
+    {
+      "graph": "irregular_six",
+      "vertices": 6,
+      "locality_k": 1,
+      "locality_fraction": 0.2,
+      "seed": 314,
+      "walk_depth": 5,
+      "epochs": 60,
+      "repulsion_requested": 0.6,
+      "repulsion_effective_float32": 0.6000000238418579,
+      "termination": "fixed_epoch_budget",
+      "attractive_unordered_pairs": 7,
+      "flags": [
+        [
+          0,
+          0,
+          1,
+          0,
+          1,
+          0
+        ],
+        [
+          0,
+          0,
+          1,
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          1,
+          0,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          1,
+          0,
+          1,
+          1
+        ],
+        [
+          1,
+          0,
+          0,
+          1,
+          0,
+          1
+        ],
+        [
+          0,
+          0,
+          0,
+          1,
+          1,
+          0
+        ]
+      ],
+      "coordinates": [
+        [
+          -0.524515445677578,
+          0.26690160577718985
+        ],
+        [
+          1.3934832165536513,
+          -1.5814086914460608
+        ],
+        [
+          0.7678001659425954,
+          -0.2998341849484778
+        ],
+        [
+          0.9792532079531702,
+          1.2955567446089657
+        ],
+        [
+          -0.11440243669444969,
+          1.6284023522587259
+        ],
+        [
+          0.6983812919226097,
+          2.4903821737496568
+        ]
+      ],
+      "coordinate_max_abs_difference": 8.881784197001252e-16,
+      "objective_code_initial": 7.999036365713316,
+      "objective_code_final": 2.061387480542448,
+      "objective_paper_initial": 19.55579749066097,
+      "objective_paper_final": -3.8178473206035513,
+      "diagnostic_upstream_initial": 1.4908361263996337,
+      "diagnostic_upstream_final": 0.7604559100784855,
+      "mean_relative_stress_fitted": 0.07025956629018958,
+      "schedule": [
+        9.0,
+        7.118231008344204,
+        5.629912520905882,
+        4.452779764508616,
+        3.5217683325614257,
+        2.7854178387826,
+        2.203027514579712,
+        1.742406529612974,
+        1.378094687581387,
+        1.089955148619583,
+        1.0,
+        0.8100016826166994,
+        0.6806746453203567,
+        0.5869591723705145,
+        0.5159262974110258,
+        0.4602299887382716,
+        0.4153872704125585,
+        0.37850724481886233,
+        0.34764196448666246,
+        0.3214309561021647,
+        0.29889528005623833,
+        0.27931254564697794,
+        0.26213803704625405,
+        0.2469532527282633,
+        0.23343135120981723,
+        0.22131335956679343,
+        0.21039142668535554,
+        0.20049680207053888,
+        0.19149105440176836,
+        0.183259554981284,
+        0.1757065726477555,
+        0.16875153364576476,
+        0.16232613595244663,
+        0.15637209867401536,
+        0.1508393892232458,
+        0.14568481398876265,
+        0.14087088841903173,
+        0.136364923958595,
+        0.13213828478710998,
+        0.12816577862742454,
+        0.12442515423227761,
+        0.12089668437314931,
+        0.11756281782651308,
+        0.11440788739612989,
+        0.1114178637199611,
+        0.10858014669903666,
+        0.10588338800747572,
+        0.10331733941096967,
+        0.10087272261910592,
+        0.09854111718734976,
+        0.09631486361422334,
+        0.09418697928372882,
+        0.09215108530942605,
+        0.09020134266555564,
+        0.08833239625823297,
+        0.08653932580847745,
+        0.08481760259841399,
+        0.08316305128002946,
+        0.0815718160684185,
+        0.08004033074329664
+      ],
+      "pair_orders_sha256": "7c5fc2d9338b8eabbfde4410a21065976efcfd2ab6f264527974209a6f804271",
+      "first_epoch_pair_order": [
+        [
+          4,
+          2
+        ],
+        [
+          5,
+          1
+        ],
+        [
+          5,
+          2
+        ],
+        [
+          3,
+          1
+        ],
+        [
+          4,
+          3
+        ],
+        [
+          5,
+          4
+        ],
+        [
+          5,
+          0
+        ],
+        [
+          3,
+          0
+        ],
+        [
+          4,
+          0
+        ],
+        [
+          3,
+          2
+        ],
+        [
+          5,
+          3
+        ],
+        [
+          2,
+          1
+        ],
+        [
+          4,
+          1
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          1,
+          0
+        ]
+      ]
+    },
+    {
+      "graph": "irregular_six",
+      "vertices": 6,
+      "locality_k": 1,
+      "locality_fraction": 0.2,
+      "seed": 2026,
+      "walk_depth": 5,
+      "epochs": 60,
+      "repulsion_requested": 0.6,
+      "repulsion_effective_float32": 0.6000000238418579,
+      "termination": "fixed_epoch_budget",
+      "attractive_unordered_pairs": 7,
+      "flags": [
+        [
+          0,
+          0,
+          1,
+          0,
+          1,
+          0
+        ],
+        [
+          0,
+          0,
+          1,
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          1,
+          0,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          1,
+          0,
+          1,
+          1
+        ],
+        [
+          1,
+          0,
+          0,
+          1,
+          0,
+          1
+        ],
+        [
+          0,
+          0,
+          0,
+          1,
+          1,
+          0
+        ]
+      ],
+      "coordinates": [
+        [
+          -0.007901045369038661,
+          -0.3401397844027574
+        ],
+        [
+          -1.5108927276109991,
+          1.848850631912964
+        ],
+        [
+          -0.34577545288186345,
+          1.0255715307001398
+        ],
+        [
+          1.26253144569967,
+          0.9617498092938961
+        ],
+        [
+          1.4064790375821532,
+          -0.17419134466282685
+        ],
+        [
+          2.395558742580075,
+          0.478159157158583
+        ]
+      ],
+      "coordinate_max_abs_difference": 2.3869795029440866e-15,
+      "objective_code_initial": 7.999036365713316,
+      "objective_code_final": 2.0612784179168373,
+      "objective_paper_initial": 19.55579749066097,
+      "objective_paper_final": -3.8185476369138516,
+      "diagnostic_upstream_initial": 1.4908361263996337,
+      "diagnostic_upstream_final": 0.7603410112061905,
+      "mean_relative_stress_fitted": 0.06958873428737779,
+      "schedule": [
+        9.0,
+        7.118231008344204,
+        5.629912520905882,
+        4.452779764508616,
+        3.5217683325614257,
+        2.7854178387826,
+        2.203027514579712,
+        1.742406529612974,
+        1.378094687581387,
+        1.089955148619583,
+        1.0,
+        0.8100016826166994,
+        0.6806746453203567,
+        0.5869591723705145,
+        0.5159262974110258,
+        0.4602299887382716,
+        0.4153872704125585,
+        0.37850724481886233,
+        0.34764196448666246,
+        0.3214309561021647,
+        0.29889528005623833,
+        0.27931254564697794,
+        0.26213803704625405,
+        0.2469532527282633,
+        0.23343135120981723,
+        0.22131335956679343,
+        0.21039142668535554,
+        0.20049680207053888,
+        0.19149105440176836,
+        0.183259554981284,
+        0.1757065726477555,
+        0.16875153364576476,
+        0.16232613595244663,
+        0.15637209867401536,
+        0.1508393892232458,
+        0.14568481398876265,
+        0.14087088841903173,
+        0.136364923958595,
+        0.13213828478710998,
+        0.12816577862742454,
+        0.12442515423227761,
+        0.12089668437314931,
+        0.11756281782651308,
+        0.11440788739612989,
+        0.1114178637199611,
+        0.10858014669903666,
+        0.10588338800747572,
+        0.10331733941096967,
+        0.10087272261910592,
+        0.09854111718734976,
+        0.09631486361422334,
+        0.09418697928372882,
+        0.09215108530942605,
+        0.09020134266555564,
+        0.08833239625823297,
+        0.08653932580847745,
+        0.08481760259841399,
+        0.08316305128002946,
+        0.0815718160684185,
+        0.08004033074329664
+      ],
+      "pair_orders_sha256": "ccd840ccdaba81f468d6672c52bbfe3a782455be402252b752df87ab84235df6",
+      "first_epoch_pair_order": [
+        [
+          2,
+          1
+        ],
+        [
+          3,
+          2
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          3,
+          1
+        ],
+        [
+          4,
+          3
+        ],
+        [
+          3,
+          0
+        ],
+        [
+          5,
+          2
+        ],
+        [
+          5,
+          4
+        ],
+        [
+          5,
+          3
+        ],
+        [
+          4,
+          0
+        ],
+        [
+          5,
+          1
+        ],
+        [
+          4,
+          1
+        ],
+        [
+          4,
+          2
+        ],
+        [
+          5,
+          0
+        ],
+        [
+          1,
+          0
+        ]
+      ]
+    },
+    {
+      "graph": "irregular_six",
+      "vertices": 6,
+      "locality_k": 5,
+      "locality_fraction": 1.0,
+      "seed": 17,
+      "walk_depth": 5,
+      "epochs": 60,
+      "repulsion_requested": 0.6,
+      "repulsion_effective_float32": 0.6000000238418579,
+      "termination": "fixed_epoch_budget",
+      "attractive_unordered_pairs": 15,
+      "flags": [
+        [
+          0,
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        [
+          1,
+          0,
+          1,
+          1,
+          1,
+          1
+        ],
+        [
+          1,
+          1,
+          0,
+          1,
+          1,
+          1
+        ],
+        [
+          1,
+          1,
+          1,
+          0,
+          1,
+          1
+        ],
+        [
+          1,
+          1,
+          1,
+          1,
+          0,
+          1
+        ],
+        [
+          1,
+          1,
+          1,
+          1,
+          1,
+          0
+        ]
+      ],
+      "coordinates": [
+        [
+          0.7824813878661677,
+          -0.08840440108359837
+        ],
+        [
+          -0.07258635727282232,
+          -0.6257766672798195
+        ],
+        [
+          -0.18575408762008477,
+          0.3768466509270427
+        ],
+        [
+          0.2844361054422215,
+          1.3553650920693898
+        ],
+        [
+          1.2526199195567471,
+          0.8894027917238928
+        ],
+        [
+          1.1388030320277698,
+          1.8925665336430937
+        ]
+      ],
+      "coordinate_max_abs_difference": 6.661338147750939e-16,
+      "objective_code_initial": 6.338456904297254,
+      "objective_code_final": 0.03565695799212832,
+      "objective_paper_initial": 29.34449560287623,
+      "objective_paper_final": 0.5160800643908808,
+      "diagnostic_upstream_initial": 1.6872458270725887,
+      "diagnostic_upstream_final": 0.8488146510435572,
+      "mean_relative_stress_fitted": 0.009507384119418929,
+      "schedule": [
+        9.0,
+        7.118231008344204,
+        5.629912520905882,
+        4.452779764508616,
+        3.5217683325614257,
+        2.7854178387826,
+        2.203027514579712,
+        1.742406529612974,
+        1.378094687581387,
+        1.089955148619583,
+        1.0,
+        0.8100016826166994,
+        0.6806746453203567,
+        0.5869591723705145,
+        0.5159262974110258,
+        0.4602299887382716,
+        0.4153872704125585,
+        0.37850724481886233,
+        0.34764196448666246,
+        0.3214309561021647,
+        0.29889528005623833,
+        0.27931254564697794,
+        0.26213803704625405,
+        0.2469532527282633,
+        0.23343135120981723,
+        0.22131335956679343,
+        0.21039142668535554,
+        0.20049680207053888,
+        0.19149105440176836,
+        0.183259554981284,
+        0.1757065726477555,
+        0.16875153364576476,
+        0.16232613595244663,
+        0.15637209867401536,
+        0.1508393892232458,
+        0.14568481398876265,
+        0.14087088841903173,
+        0.136364923958595,
+        0.13213828478710998,
+        0.12816577862742454,
+        0.12442515423227761,
+        0.12089668437314931,
+        0.11756281782651308,
+        0.11440788739612989,
+        0.1114178637199611,
+        0.10858014669903666,
+        0.10588338800747572,
+        0.10331733941096967,
+        0.10087272261910592,
+        0.09854111718734976,
+        0.09631486361422334,
+        0.09418697928372882,
+        0.09215108530942605,
+        0.09020134266555564,
+        0.08833239625823297,
+        0.08653932580847745,
+        0.08481760259841399,
+        0.08316305128002946,
+        0.0815718160684185,
+        0.08004033074329664
+      ],
+      "pair_orders_sha256": "980f54891feded4101cca1e54c3bf7decec9682e4dc2bb21e452bf704a939dea",
+      "first_epoch_pair_order": [
+        [
+          5,
+          2
+        ],
+        [
+          3,
+          2
+        ],
+        [
+          4,
+          2
+        ],
+        [
+          3,
+          1
+        ],
+        [
+          5,
+          3
+        ],
+        [
+          3,
+          0
+        ],
+        [
+          2,
+          1
+        ],
+        [
+          4,
+          0
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          5,
+          0
+        ],
+        [
+          5,
+          1
+        ],
+        [
+          5,
+          4
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          4,
+          3
+        ],
+        [
+          4,
+          1
+        ]
+      ]
+    },
+    {
+      "graph": "irregular_six",
+      "vertices": 6,
+      "locality_k": 5,
+      "locality_fraction": 1.0,
+      "seed": 314,
+      "walk_depth": 5,
+      "epochs": 60,
+      "repulsion_requested": 0.6,
+      "repulsion_effective_float32": 0.6000000238418579,
+      "termination": "fixed_epoch_budget",
+      "attractive_unordered_pairs": 15,
+      "flags": [
+        [
+          0,
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        [
+          1,
+          0,
+          1,
+          1,
+          1,
+          1
+        ],
+        [
+          1,
+          1,
+          0,
+          1,
+          1,
+          1
+        ],
+        [
+          1,
+          1,
+          1,
+          0,
+          1,
+          1
+        ],
+        [
+          1,
+          1,
+          1,
+          1,
+          0,
+          1
+        ],
+        [
+          1,
+          1,
+          1,
+          1,
+          1,
+          0
+        ]
+      ],
+      "coordinates": [
+        [
+          0.9675000956007944,
+          0.0057738893253877965
+        ],
+        [
+          0.28993116361412213,
+          -0.7428902737510428
+        ],
+        [
+          -0.09024777823939568,
+          0.1922300501731251
+        ],
+        [
+          0.09935340516077042,
+          1.2616514094180247
+        ],
+        [
+          1.1565285376509502,
+          1.0742459893054281
+        ],
+        [
+          0.7769345762127577,
+          2.008988935529081
+        ]
+      ],
+      "coordinate_max_abs_difference": 1.3530843112619095e-16,
+      "objective_code_initial": 6.338456904297254,
+      "objective_code_final": 0.035657727582454585,
+      "objective_paper_initial": 29.34449560287623,
+      "objective_paper_final": 0.5162564443049128,
+      "diagnostic_upstream_initial": 1.6872458270725887,
+      "diagnostic_upstream_final": 0.8488446795957362,
+      "mean_relative_stress_fitted": 0.009507421472870257,
+      "schedule": [
+        9.0,
+        7.118231008344204,
+        5.629912520905882,
+        4.452779764508616,
+        3.5217683325614257,
+        2.7854178387826,
+        2.203027514579712,
+        1.742406529612974,
+        1.378094687581387,
+        1.089955148619583,
+        1.0,
+        0.8100016826166994,
+        0.6806746453203567,
+        0.5869591723705145,
+        0.5159262974110258,
+        0.4602299887382716,
+        0.4153872704125585,
+        0.37850724481886233,
+        0.34764196448666246,
+        0.3214309561021647,
+        0.29889528005623833,
+        0.27931254564697794,
+        0.26213803704625405,
+        0.2469532527282633,
+        0.23343135120981723,
+        0.22131335956679343,
+        0.21039142668535554,
+        0.20049680207053888,
+        0.19149105440176836,
+        0.183259554981284,
+        0.1757065726477555,
+        0.16875153364576476,
+        0.16232613595244663,
+        0.15637209867401536,
+        0.1508393892232458,
+        0.14568481398876265,
+        0.14087088841903173,
+        0.136364923958595,
+        0.13213828478710998,
+        0.12816577862742454,
+        0.12442515423227761,
+        0.12089668437314931,
+        0.11756281782651308,
+        0.11440788739612989,
+        0.1114178637199611,
+        0.10858014669903666,
+        0.10588338800747572,
+        0.10331733941096967,
+        0.10087272261910592,
+        0.09854111718734976,
+        0.09631486361422334,
+        0.09418697928372882,
+        0.09215108530942605,
+        0.09020134266555564,
+        0.08833239625823297,
+        0.08653932580847745,
+        0.08481760259841399,
+        0.08316305128002946,
+        0.0815718160684185,
+        0.08004033074329664
+      ],
+      "pair_orders_sha256": "7c5fc2d9338b8eabbfde4410a21065976efcfd2ab6f264527974209a6f804271",
+      "first_epoch_pair_order": [
+        [
+          4,
+          2
+        ],
+        [
+          5,
+          1
+        ],
+        [
+          5,
+          2
+        ],
+        [
+          3,
+          1
+        ],
+        [
+          4,
+          3
+        ],
+        [
+          5,
+          4
+        ],
+        [
+          5,
+          0
+        ],
+        [
+          3,
+          0
+        ],
+        [
+          4,
+          0
+        ],
+        [
+          3,
+          2
+        ],
+        [
+          5,
+          3
+        ],
+        [
+          2,
+          1
+        ],
+        [
+          4,
+          1
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          1,
+          0
+        ]
+      ]
+    },
+    {
+      "graph": "irregular_six",
+      "vertices": 6,
+      "locality_k": 5,
+      "locality_fraction": 1.0,
+      "seed": 2026,
+      "walk_depth": 5,
+      "epochs": 60,
+      "repulsion_requested": 0.6,
+      "repulsion_effective_float32": 0.6000000238418579,
+      "termination": "fixed_epoch_budget",
+      "attractive_unordered_pairs": 15,
+      "flags": [
+        [
+          0,
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        [
+          1,
+          0,
+          1,
+          1,
+          1,
+          1
+        ],
+        [
+          1,
+          1,
+          0,
+          1,
+          1,
+          1
+        ],
+        [
+          1,
+          1,
+          1,
+          0,
+          1,
+          1
+        ],
+        [
+          1,
+          1,
+          1,
+          1,
+          0,
+          1
+        ],
+        [
+          1,
+          1,
+          1,
+          1,
+          1,
+          0
+        ]
+      ],
+      "coordinates": [
+        [
+          -0.10716405285742481,
+          0.21792262204735408
+        ],
+        [
+          0.23404088947995685,
+          -0.7316900593102417
+        ],
+        [
+          0.9418763155035207,
+          -0.012409861767588714
+        ],
+        [
+          1.1739874260952463,
+          1.0487900503171232
+        ],
+        [
+          0.12476370457010398,
+          1.278893780282413
+        ],
+        [
+          0.8324957172085978,
+          1.9984934684309394
+        ]
+      ],
+      "coordinate_max_abs_difference": 3.3306690738754696e-16,
+      "objective_code_initial": 6.338456904297254,
+      "objective_code_final": 0.03565489308371123,
+      "objective_paper_initial": 29.34449560287623,
+      "objective_paper_final": 0.5153340134618761,
+      "diagnostic_upstream_initial": 1.6872458270725887,
+      "diagnostic_upstream_final": 0.8487450123593863,
+      "mean_relative_stress_fitted": 0.009507107497515602,
+      "schedule": [
+        9.0,
+        7.118231008344204,
+        5.629912520905882,
+        4.452779764508616,
+        3.5217683325614257,
+        2.7854178387826,
+        2.203027514579712,
+        1.742406529612974,
+        1.378094687581387,
+        1.089955148619583,
+        1.0,
+        0.8100016826166994,
+        0.6806746453203567,
+        0.5869591723705145,
+        0.5159262974110258,
+        0.4602299887382716,
+        0.4153872704125585,
+        0.37850724481886233,
+        0.34764196448666246,
+        0.3214309561021647,
+        0.29889528005623833,
+        0.27931254564697794,
+        0.26213803704625405,
+        0.2469532527282633,
+        0.23343135120981723,
+        0.22131335956679343,
+        0.21039142668535554,
+        0.20049680207053888,
+        0.19149105440176836,
+        0.183259554981284,
+        0.1757065726477555,
+        0.16875153364576476,
+        0.16232613595244663,
+        0.15637209867401536,
+        0.1508393892232458,
+        0.14568481398876265,
+        0.14087088841903173,
+        0.136364923958595,
+        0.13213828478710998,
+        0.12816577862742454,
+        0.12442515423227761,
+        0.12089668437314931,
+        0.11756281782651308,
+        0.11440788739612989,
+        0.1114178637199611,
+        0.10858014669903666,
+        0.10588338800747572,
+        0.10331733941096967,
+        0.10087272261910592,
+        0.09854111718734976,
+        0.09631486361422334,
+        0.09418697928372882,
+        0.09215108530942605,
+        0.09020134266555564,
+        0.08833239625823297,
+        0.08653932580847745,
+        0.08481760259841399,
+        0.08316305128002946,
+        0.0815718160684185,
+        0.08004033074329664
+      ],
+      "pair_orders_sha256": "ccd840ccdaba81f468d6672c52bbfe3a782455be402252b752df87ab84235df6",
+      "first_epoch_pair_order": [
+        [
+          2,
+          1
+        ],
+        [
+          3,
+          2
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          3,
+          1
+        ],
+        [
+          4,
+          3
+        ],
+        [
+          3,
+          0
+        ],
+        [
+          5,
+          2
+        ],
+        [
+          5,
+          4
+        ],
+        [
+          5,
+          3
+        ],
+        [
+          4,
+          0
+        ],
+        [
+          5,
+          1
+        ],
+        [
+          4,
+          1
+        ],
+        [
+          4,
+          2
+        ],
+        [
+          5,
+          0
+        ],
+        [
+          1,
+          0
+        ]
+      ]
+    },
+    {
+      "graph": "complete_four",
+      "vertices": 4,
+      "locality_k": 1,
+      "locality_fraction": 0.3333333333333333,
+      "seed": 17,
+      "walk_depth": 5,
+      "epochs": 60,
+      "repulsion_requested": 0.6,
+      "repulsion_effective_float32": 0.6000000238418579,
+      "termination": "fixed_epoch_budget",
+      "attractive_unordered_pairs": 5,
+      "flags": [
+        [
+          0,
+          0,
+          1,
+          1
+        ],
+        [
+          0,
+          0,
+          1,
+          1
+        ],
+        [
+          1,
+          1,
+          0,
+          1
+        ],
+        [
+          1,
+          1,
+          1,
+          0
+        ]
+      ],
+      "coordinates": [
+        [
+          -0.5088662887149986,
+          1.037020415295222
+        ],
+        [
+          1.558264486507093,
+          0.6642398013461043
+        ],
+        [
+          0.44723449119210285,
+          0.41185085106604347
+        ],
+        [
+          0.6033673110158027,
+          1.2868889322926318
+        ]
+      ],
+      "coordinate_max_abs_difference": 3.3306690738754696e-16,
+      "objective_code_initial": 2.6408616015309643,
+      "objective_code_final": 0.30845185483866133,
+      "objective_paper_initial": 8.878569369329819,
+      "objective_paper_final": -0.35408945958510396,
+      "diagnostic_upstream_initial": 1.9184798411506354,
+      "diagnostic_upstream_final": 1.356363414681887,
+      "mean_relative_stress_fitted": 0.0866338824957349,
+      "schedule": [
+        1.0,
+        1.0,
+        0.8629624501081011,
+        0.7589568613544428,
+        0.6773246335750072,
+        0.6115475262066628,
+        0.5574151980532188,
+        0.512086828535804,
+        0.4735761546145069,
+        0.4404526173919929,
+        0.411659727042989,
+        0.38640029847880136,
+        0.36406149595355514,
+        0.3441644568761225,
+        0.3263295788287445,
+        0.3102520679601326,
+        0.2956843760380781,
+        0.2824233635373301,
+        0.27030076875744025,
+        0.2591760305092577,
+        0.24893081311479862,
+        0.23946478058624318,
+        0.23069229964968632,
+        0.2225398418418907,
+        0.21494391765045234,
+        0.20784941977198196,
+        0.20120828398428062,
+        0.19497839879393639,
+        0.189122711559921,
+        0.18360849099285217,
+        0.1784067150181842,
+        0.1734915598266465,
+        0.16883997112097607,
+        0.1644313025350519,
+        0.16024700926004962,
+        0.15627038728765866,
+        0.1524863505381449,
+        0.14888123960349453,
+        0.14544265699433367,
+        0.14215932470241013,
+        0.13902096063010877,
+        0.13601817103436473,
+        0.13314235661484256,
+        0.1303856302688393,
+        0.12774074485628717,
+        0.12520102958172483,
+        0.1227603338173694,
+        0.1204129773712971,
+        0.11815370635423902,
+        0.11597765392321942,
+        0.11388030528468386,
+        0.11185746642749288,
+        0.10990523613010338,
+        0.10801998084879284,
+        0.10619831214682078,
+        0.10443706636954654,
+        0.10273328630902054,
+        0.10108420463450297,
+        0.099487228893617,
+        0.09793992791314289
+      ],
+      "pair_orders_sha256": "c0e5caa79dbb9475b161bc07a3bbff78da47481b009b01dd046a905d93d233f2",
+      "first_epoch_pair_order": [
+        [
+          2,
+          1
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          3,
+          2
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          3,
+          0
+        ],
+        [
+          3,
+          1
+        ]
+      ]
+    },
+    {
+      "graph": "complete_four",
+      "vertices": 4,
+      "locality_k": 1,
+      "locality_fraction": 0.3333333333333333,
+      "seed": 314,
+      "walk_depth": 5,
+      "epochs": 60,
+      "repulsion_requested": 0.6,
+      "repulsion_effective_float32": 0.6000000238418579,
+      "termination": "fixed_epoch_budget",
+      "attractive_unordered_pairs": 5,
+      "flags": [
+        [
+          0,
+          0,
+          1,
+          1
+        ],
+        [
+          0,
+          0,
+          1,
+          1
+        ],
+        [
+          1,
+          1,
+          0,
+          1
+        ],
+        [
+          1,
+          1,
+          1,
+          0
+        ]
+      ],
+      "coordinates": [
+        [
+          -0.2846559998484376,
+          0.18082608929554542
+        ],
+        [
+          1.3366756896874339,
+          1.520849501240522
+        ],
+        [
+          0.23965714928679438,
+          1.1918238368488807
+        ],
+        [
+          0.8083231608742097,
+          0.5065005726150518
+        ]
+      ],
+      "coordinate_max_abs_difference": 4.440892098500626e-16,
+      "objective_code_initial": 2.6408616015309643,
+      "objective_code_final": 0.3084399302490297,
+      "objective_paper_initial": 8.878569369329819,
+      "objective_paper_final": -0.353377827812467,
+      "diagnostic_upstream_initial": 1.9184798411506354,
+      "diagnostic_upstream_final": 1.3560546842198613,
+      "mean_relative_stress_fitted": 0.0865851195437755,
+      "schedule": [
+        1.0,
+        1.0,
+        0.8629624501081011,
+        0.7589568613544428,
+        0.6773246335750072,
+        0.6115475262066628,
+        0.5574151980532188,
+        0.512086828535804,
+        0.4735761546145069,
+        0.4404526173919929,
+        0.411659727042989,
+        0.38640029847880136,
+        0.36406149595355514,
+        0.3441644568761225,
+        0.3263295788287445,
+        0.3102520679601326,
+        0.2956843760380781,
+        0.2824233635373301,
+        0.27030076875744025,
+        0.2591760305092577,
+        0.24893081311479862,
+        0.23946478058624318,
+        0.23069229964968632,
+        0.2225398418418907,
+        0.21494391765045234,
+        0.20784941977198196,
+        0.20120828398428062,
+        0.19497839879393639,
+        0.189122711559921,
+        0.18360849099285217,
+        0.1784067150181842,
+        0.1734915598266465,
+        0.16883997112097607,
+        0.1644313025350519,
+        0.16024700926004962,
+        0.15627038728765866,
+        0.1524863505381449,
+        0.14888123960349453,
+        0.14544265699433367,
+        0.14215932470241013,
+        0.13902096063010877,
+        0.13601817103436473,
+        0.13314235661484256,
+        0.1303856302688393,
+        0.12774074485628717,
+        0.12520102958172483,
+        0.1227603338173694,
+        0.1204129773712971,
+        0.11815370635423902,
+        0.11597765392321942,
+        0.11388030528468386,
+        0.11185746642749288,
+        0.10990523613010338,
+        0.10801998084879284,
+        0.10619831214682078,
+        0.10443706636954654,
+        0.10273328630902054,
+        0.10108420463450297,
+        0.099487228893617,
+        0.09793992791314289
+      ],
+      "pair_orders_sha256": "df0e5f3c0d1080121fc5f3640567dde5b0d1fa8ac5b7a3caba15886d98212c6c",
+      "first_epoch_pair_order": [
+        [
+          3,
+          1
+        ],
+        [
+          2,
+          1
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          3,
+          2
+        ],
+        [
+          3,
+          0
+        ]
+      ]
+    },
+    {
+      "graph": "complete_four",
+      "vertices": 4,
+      "locality_k": 1,
+      "locality_fraction": 0.3333333333333333,
+      "seed": 2026,
+      "walk_depth": 5,
+      "epochs": 60,
+      "repulsion_requested": 0.6,
+      "repulsion_effective_float32": 0.6000000238418579,
+      "termination": "fixed_epoch_budget",
+      "attractive_unordered_pairs": 5,
+      "flags": [
+        [
+          0,
+          0,
+          1,
+          1
+        ],
+        [
+          0,
+          0,
+          1,
+          1
+        ],
+        [
+          1,
+          1,
+          0,
+          1
+        ],
+        [
+          1,
+          1,
+          1,
+          0
+        ]
+      ],
+      "coordinates": [
+        [
+          -0.47038094484221105,
+          1.178863400424751
+        ],
+        [
+          1.5227342779319297,
+          0.5205777907713306
+        ],
+        [
+          0.38586786422287656,
+          0.4276098381349352
+        ],
+        [
+          0.6617788026874035,
+          1.272948970668983
+        ]
+      ],
+      "coordinate_max_abs_difference": 8.881784197001252e-16,
+      "objective_code_initial": 2.6408616015309643,
+      "objective_code_final": 0.30846734396348435,
+      "objective_paper_initial": 8.878569369329819,
+      "objective_paper_final": -0.35440601867497823,
+      "diagnostic_upstream_initial": 1.9184798411506354,
+      "diagnostic_upstream_final": 1.3564187736117321,
+      "mean_relative_stress_fitted": 0.08651902415678392,
+      "schedule": [
+        1.0,
+        1.0,
+        0.8629624501081011,
+        0.7589568613544428,
+        0.6773246335750072,
+        0.6115475262066628,
+        0.5574151980532188,
+        0.512086828535804,
+        0.4735761546145069,
+        0.4404526173919929,
+        0.411659727042989,
+        0.38640029847880136,
+        0.36406149595355514,
+        0.3441644568761225,
+        0.3263295788287445,
+        0.3102520679601326,
+        0.2956843760380781,
+        0.2824233635373301,
+        0.27030076875744025,
+        0.2591760305092577,
+        0.24893081311479862,
+        0.23946478058624318,
+        0.23069229964968632,
+        0.2225398418418907,
+        0.21494391765045234,
+        0.20784941977198196,
+        0.20120828398428062,
+        0.19497839879393639,
+        0.189122711559921,
+        0.18360849099285217,
+        0.1784067150181842,
+        0.1734915598266465,
+        0.16883997112097607,
+        0.1644313025350519,
+        0.16024700926004962,
+        0.15627038728765866,
+        0.1524863505381449,
+        0.14888123960349453,
+        0.14544265699433367,
+        0.14215932470241013,
+        0.13902096063010877,
+        0.13601817103436473,
+        0.13314235661484256,
+        0.1303856302688393,
+        0.12774074485628717,
+        0.12520102958172483,
+        0.1227603338173694,
+        0.1204129773712971,
+        0.11815370635423902,
+        0.11597765392321942,
+        0.11388030528468386,
+        0.11185746642749288,
+        0.10990523613010338,
+        0.10801998084879284,
+        0.10619831214682078,
+        0.10443706636954654,
+        0.10273328630902054,
+        0.10108420463450297,
+        0.099487228893617,
+        0.09793992791314289
+      ],
+      "pair_orders_sha256": "72d286263a036a87ebc5a766ebd3a52c14b6c26b783edeef5e82183d18582eec",
+      "first_epoch_pair_order": [
+        [
+          3,
+          0
+        ],
+        [
+          3,
+          1
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          3,
+          2
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          2,
+          1
+        ]
+      ]
+    },
+    {
+      "graph": "complete_four",
+      "vertices": 4,
+      "locality_k": 3,
+      "locality_fraction": 1.0,
+      "seed": 17,
+      "walk_depth": 5,
+      "epochs": 60,
+      "repulsion_requested": 0.6,
+      "repulsion_effective_float32": 0.6000000238418579,
+      "termination": "fixed_epoch_budget",
+      "attractive_unordered_pairs": 6,
+      "flags": [
+        [
+          0,
+          1,
+          1,
+          1
+        ],
+        [
+          1,
+          0,
+          1,
+          1
+        ],
+        [
+          1,
+          1,
+          0,
+          1
+        ],
+        [
+          1,
+          1,
+          1,
+          0
+        ]
+      ],
+      "coordinates": [
+        [
+          0.16409712815136696,
+          0.36688127066407267
+        ],
+        [
+          1.0069140895632531,
+          0.48953536284190685
+        ],
+        [
+          0.0428524439198825,
+          1.2109456932459008
+        ],
+        [
+          0.8861363383654972,
+          1.3326376732481198
+        ]
+      ],
+      "coordinate_max_abs_difference": 4.440892098500626e-16,
+      "objective_code_initial": 2.4691536517047465,
+      "objective_code_final": 0.04289828092580821,
+      "objective_paper_initial": 9.876614606818986,
+      "objective_paper_final": 0.17159312370323285,
+      "diagnostic_upstream_initial": 1.968827397004774,
+      "diagnostic_upstream_final": 1.429087240299233,
+      "mean_relative_stress_fitted": 0.028595792230685466,
+      "schedule": [
+        1.0,
+        1.0,
+        0.8629624501081011,
+        0.7589568613544428,
+        0.6773246335750072,
+        0.6115475262066628,
+        0.5574151980532188,
+        0.512086828535804,
+        0.4735761546145069,
+        0.4404526173919929,
+        0.411659727042989,
+        0.38640029847880136,
+        0.36406149595355514,
+        0.3441644568761225,
+        0.3263295788287445,
+        0.3102520679601326,
+        0.2956843760380781,
+        0.2824233635373301,
+        0.27030076875744025,
+        0.2591760305092577,
+        0.24893081311479862,
+        0.23946478058624318,
+        0.23069229964968632,
+        0.2225398418418907,
+        0.21494391765045234,
+        0.20784941977198196,
+        0.20120828398428062,
+        0.19497839879393639,
+        0.189122711559921,
+        0.18360849099285217,
+        0.1784067150181842,
+        0.1734915598266465,
+        0.16883997112097607,
+        0.1644313025350519,
+        0.16024700926004962,
+        0.15627038728765866,
+        0.1524863505381449,
+        0.14888123960349453,
+        0.14544265699433367,
+        0.14215932470241013,
+        0.13902096063010877,
+        0.13601817103436473,
+        0.13314235661484256,
+        0.1303856302688393,
+        0.12774074485628717,
+        0.12520102958172483,
+        0.1227603338173694,
+        0.1204129773712971,
+        0.11815370635423902,
+        0.11597765392321942,
+        0.11388030528468386,
+        0.11185746642749288,
+        0.10990523613010338,
+        0.10801998084879284,
+        0.10619831214682078,
+        0.10443706636954654,
+        0.10273328630902054,
+        0.10108420463450297,
+        0.099487228893617,
+        0.09793992791314289
+      ],
+      "pair_orders_sha256": "c0e5caa79dbb9475b161bc07a3bbff78da47481b009b01dd046a905d93d233f2",
+      "first_epoch_pair_order": [
+        [
+          2,
+          1
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          3,
+          2
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          3,
+          0
+        ],
+        [
+          3,
+          1
+        ]
+      ]
+    },
+    {
+      "graph": "complete_four",
+      "vertices": 4,
+      "locality_k": 3,
+      "locality_fraction": 1.0,
+      "seed": 314,
+      "walk_depth": 5,
+      "epochs": 60,
+      "repulsion_requested": 0.6,
+      "repulsion_effective_float32": 0.6000000238418579,
+      "termination": "fixed_epoch_budget",
+      "attractive_unordered_pairs": 6,
+      "flags": [
+        [
+          0,
+          1,
+          1,
+          1
+        ],
+        [
+          1,
+          0,
+          1,
+          1
+        ],
+        [
+          1,
+          1,
+          0,
+          1
+        ],
+        [
+          1,
+          1,
+          1,
+          0
+        ]
+      ],
+      "coordinates": [
+        [
+          0.13702119238903993,
+          0.3869547875131999
+        ],
+        [
+          0.989708571645065,
+          0.4635491587104644
+        ],
+        [
+          0.0610536987892997,
+          1.2375682610813394
+        ],
+        [
+          0.9122165371765961,
+          1.3119277926949966
+        ]
+      ],
+      "coordinate_max_abs_difference": 1.1102230246251565e-16,
+      "objective_code_initial": 2.4691536517047465,
+      "objective_code_final": 0.04289659576680697,
+      "objective_paper_initial": 9.876614606818986,
+      "objective_paper_final": 0.17158638306722787,
+      "diagnostic_upstream_initial": 1.968827397004774,
+      "diagnostic_upstream_final": 1.428404238317082,
+      "mean_relative_stress_fitted": 0.028597317005481515,
+      "schedule": [
+        1.0,
+        1.0,
+        0.8629624501081011,
+        0.7589568613544428,
+        0.6773246335750072,
+        0.6115475262066628,
+        0.5574151980532188,
+        0.512086828535804,
+        0.4735761546145069,
+        0.4404526173919929,
+        0.411659727042989,
+        0.38640029847880136,
+        0.36406149595355514,
+        0.3441644568761225,
+        0.3263295788287445,
+        0.3102520679601326,
+        0.2956843760380781,
+        0.2824233635373301,
+        0.27030076875744025,
+        0.2591760305092577,
+        0.24893081311479862,
+        0.23946478058624318,
+        0.23069229964968632,
+        0.2225398418418907,
+        0.21494391765045234,
+        0.20784941977198196,
+        0.20120828398428062,
+        0.19497839879393639,
+        0.189122711559921,
+        0.18360849099285217,
+        0.1784067150181842,
+        0.1734915598266465,
+        0.16883997112097607,
+        0.1644313025350519,
+        0.16024700926004962,
+        0.15627038728765866,
+        0.1524863505381449,
+        0.14888123960349453,
+        0.14544265699433367,
+        0.14215932470241013,
+        0.13902096063010877,
+        0.13601817103436473,
+        0.13314235661484256,
+        0.1303856302688393,
+        0.12774074485628717,
+        0.12520102958172483,
+        0.1227603338173694,
+        0.1204129773712971,
+        0.11815370635423902,
+        0.11597765392321942,
+        0.11388030528468386,
+        0.11185746642749288,
+        0.10990523613010338,
+        0.10801998084879284,
+        0.10619831214682078,
+        0.10443706636954654,
+        0.10273328630902054,
+        0.10108420463450297,
+        0.099487228893617,
+        0.09793992791314289
+      ],
+      "pair_orders_sha256": "df0e5f3c0d1080121fc5f3640567dde5b0d1fa8ac5b7a3caba15886d98212c6c",
+      "first_epoch_pair_order": [
+        [
+          3,
+          1
+        ],
+        [
+          2,
+          1
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          3,
+          2
+        ],
+        [
+          3,
+          0
+        ]
+      ]
+    },
+    {
+      "graph": "complete_four",
+      "vertices": 4,
+      "locality_k": 3,
+      "locality_fraction": 1.0,
+      "seed": 2026,
+      "walk_depth": 5,
+      "epochs": 60,
+      "repulsion_requested": 0.6,
+      "repulsion_effective_float32": 0.6000000238418579,
+      "termination": "fixed_epoch_budget",
+      "attractive_unordered_pairs": 6,
+      "flags": [
+        [
+          0,
+          1,
+          1,
+          1
+        ],
+        [
+          1,
+          0,
+          1,
+          1
+        ],
+        [
+          1,
+          1,
+          0,
+          1
+        ],
+        [
+          1,
+          1,
+          1,
+          0
+        ]
+      ],
+      "coordinates": [
+        [
+          0.13244998533910482,
+          0.39383587249965407
+        ],
+        [
+          0.9813933217385411,
+          0.4548838445921121
+        ],
+        [
+          0.06780368225286557,
+          1.2448044730503558
+        ],
+        [
+          0.9183530106694883,
+          1.3064758098578773
+        ]
+      ],
+      "coordinate_max_abs_difference": 5.551115123125783e-17,
+      "objective_code_initial": 2.4691536517047465,
+      "objective_code_final": 0.04289663304206684,
+      "objective_paper_initial": 9.876614606818986,
+      "objective_paper_final": 0.17158653216826736,
+      "diagnostic_upstream_initial": 1.968827397004774,
+      "diagnostic_upstream_final": 1.4288305095387457,
+      "mean_relative_stress_fitted": 0.02859703079017714,
+      "schedule": [
+        1.0,
+        1.0,
+        0.8629624501081011,
+        0.7589568613544428,
+        0.6773246335750072,
+        0.6115475262066628,
+        0.5574151980532188,
+        0.512086828535804,
+        0.4735761546145069,
+        0.4404526173919929,
+        0.411659727042989,
+        0.38640029847880136,
+        0.36406149595355514,
+        0.3441644568761225,
+        0.3263295788287445,
+        0.3102520679601326,
+        0.2956843760380781,
+        0.2824233635373301,
+        0.27030076875744025,
+        0.2591760305092577,
+        0.24893081311479862,
+        0.23946478058624318,
+        0.23069229964968632,
+        0.2225398418418907,
+        0.21494391765045234,
+        0.20784941977198196,
+        0.20120828398428062,
+        0.19497839879393639,
+        0.189122711559921,
+        0.18360849099285217,
+        0.1784067150181842,
+        0.1734915598266465,
+        0.16883997112097607,
+        0.1644313025350519,
+        0.16024700926004962,
+        0.15627038728765866,
+        0.1524863505381449,
+        0.14888123960349453,
+        0.14544265699433367,
+        0.14215932470241013,
+        0.13902096063010877,
+        0.13601817103436473,
+        0.13314235661484256,
+        0.1303856302688393,
+        0.12774074485628717,
+        0.12520102958172483,
+        0.1227603338173694,
+        0.1204129773712971,
+        0.11815370635423902,
+        0.11597765392321942,
+        0.11388030528468386,
+        0.11185746642749288,
+        0.10990523613010338,
+        0.10801998084879284,
+        0.10619831214682078,
+        0.10443706636954654,
+        0.10273328630902054,
+        0.10108420463450297,
+        0.099487228893617,
+        0.09793992791314289
+      ],
+      "pair_orders_sha256": "72d286263a036a87ebc5a766ebd3a52c14b6c26b783edeef5e82183d18582eec",
+      "first_epoch_pair_order": [
+        [
+          3,
+          0
+        ],
+        [
+          3,
+          1
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          3,
+          2
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          2,
+          1
+        ]
+      ]
+    }
+  ],
+  "limits": [
+    "No 3D implementation or graph-tool end-to-end run",
+    "No integration, scaling, portable adapter or quality-ranking claim",
+    "Float32 alpha and runtime-specific C rand retained",
+    "Failed upstream behavior is preserved in regression counterexamples"
+  ]
+}
