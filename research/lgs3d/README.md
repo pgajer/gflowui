@@ -1,11 +1,12 @@
 # Experimental LGS paper-form 3D adapter
 
-This directory contains the phases 01–02 source interpretation and 2D reference
-reproduction, plus the phase03 paper-form numerical implementation. The explicitly
-selected variant is `lgs-paper-union-v1`; it has a genuine 3D optimizer and retains
-the separate 2D upstream baseline. It has not been integrated into gflowui. The standalone JSON/CSV adapter and bounded locality experiment are described in
-[CONTRACT.md](CONTRACT.md). See [METHOD.md](METHOD.md) for material paper/code differences
-and the explicitly named selected paper variant.
+This standalone research adapter implements `lgs-paper-union-v1`, the explicitly
+selected paper-form variant with a genuine 3D optimizer. It retains a separate
+2D upstream reference reproduction. It has not been integrated into gflowui.
+[METHOD.md](METHOD.md) defines the mathematics and material paper/code differences;
+[CONTRACT.md](CONTRACT.md) defines the portable JSON/CSV interface;
+[EXPERIMENTS.md](EXPERIMENTS.md) reports the bounded locality experiment, including
+its limitations and poor-quality scaling result.
 
 ## Reproduce locally
 
@@ -151,3 +152,29 @@ preflight is conservative evidence, not a performance guarantee.
 
 Measured results and limitations are in [EXPERIMENTS.md](EXPERIMENTS.md), including
 the preserved initial failure and the poor-quality 128-vertex result.
+
+## Final reproducible demonstration (phase 05)
+
+After installing the test lock, run from the repository root:
+
+```sh
+OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 research/lgs3d/.venv/bin/python research/lgs3d/scripts/demonstrate.py --output research/lgs3d/outputs/demonstration
+```
+
+The runner rebuilds the native reference oracle, runs the complete test suite,
+and exercises the JSON/CSV CLI on the four-vertex complete graph at all-neighbors
+locality in both 2D and 3D for seeds 17/314/2026, with 200 epochs available. Frozen
+starts come from `fixtures/paper_3d.json`; the 2D starts use its first two columns.
+It preserves declared unsorted ID order, validates schemas and checksums, checks
+cache reuse, and repeats one 3D calculation in a separate output directory.
+Use a fresh output directory to measure a new run; subsequent invocations can
+reuse valid caches, and the summary explicitly records this.
+
+The independent six-pair residual, centered coordinate rank and tetrahedron
+volume check show that the 3D result is nonplanar and realizes the unit targets.
+The 2D residual remains positive. This is an analytical dimensional check; it
+does not erase the poor 128-vertex result or establish quality on other graphs.
+The runner writes requests, raw coordinates/manifests, build/test logs and a
+compact `summary.json`. The recorded public `results/phase05_summary.json`
+identifies its source commit. App integration and package-build exclusion remain
+separate work for the main project owner.
