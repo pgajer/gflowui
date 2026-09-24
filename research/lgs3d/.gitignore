@@ -1,0 +1,7 @@
+.venv/
+.cache/
+__pycache__/
+*.so
+*.o
+build/
+outputs/

@@ -1,0 +1,19 @@
+{
+  "repository": "https://github.com/JacobLMiller/L2G",
+  "commit": "9af0e3be0d30c40bf46cc3b6f952187268c3e22d",
+  "retrieved": "2026-09-24",
+  "license": "BSD-3-Clause",
+  "files_sha256": {
+    "LICENSE": "1b7861ab56084312c2f57f842e7bfa8db247c44d1a22d1b0ab0ae456f57d6558",
+    "README.md": "c78e2c18f38b4497870f60fdc78deb5db56f8fa280e251d93a0fed391048b436",
+    "layout.py": "fef20f54f6738502524c992a5dd5b1d6f1d8869636d82fb195a92aa5d3cc080c",
+    "modules/L2G.py": "e25f092cf9cf5ac177132a8872ddbc7d2f87006451adeefa6cc0ae5156fe12f4",
+    "modules/cython_l2g.pyx": "2d2c1168fca7ae38c7b381e9d9f75ed8b54ec5d7df25d5383e5d4c380bb4be49",
+    "modules/metrics.py": "8a24711312ae9cbd16a28d0b1cea429b9a864ce456033739e771f005e2193c25",
+    "parameter_exp.py": "2d1169ff7fda9c4447968c72bd32af3a2d1361ed9e8e903a5a8225746eb04a83",
+    "requirements.txt": "7a198c23eaa8edf789bb465e942517e3803e20cb3e268a86e0c65fcadc841850",
+    "setup.py": "14237e9849a2a7dba02414d06f869975e6f28da21f9faf2a520bc126a79341aa"
+  },
+  "paper_url": "https://arxiv.org/html/2308.16403v2",
+  "paper_download_sha256": "9310508d934cb4c2e5ae7b5cdda9e4b83c6e833af02be63d35740ece8a130a68"
+}
