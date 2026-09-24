@@ -56,6 +56,7 @@ def test_persistent_denial_kills_reaps_and_reports_failure(tmp_path,monkeypatch)
     result=run_pilot.supervise([sys.executable,'-c','import time;time.sleep(30)'],tmp_path)
     assert result['status']=='failed' and 'memory_telemetry_unavailable' in result['reason']
     assert result['exit_code']!=0
+    assert result['peak_rss_bytes'] is None and result['memory_complete_samples']==0
     assert owned and all(not run_pilot.psutil.pid_exists(pid) for pid in owned)
     with pytest.raises(ChildProcessError): os.waitpid(owned[0],os.WNOHANG)
 

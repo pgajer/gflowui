@@ -70,6 +70,7 @@ def supervise(command, dest, seconds=600, memory=2*1024**3):
     failure=None
     failure_status=None
     fallback_reads=vanished_reads=0
+    complete_samples=0
     with (dest/'process.log').open('w') as log:
         proc=subprocess.Popen(command,stdout=log,stderr=subprocess.STDOUT,env=env,start_new_session=True)
         try:
@@ -78,12 +79,16 @@ def supervise(command, dest, seconds=600, memory=2*1024**3):
                     parent=psutil.Process(proc.pid)
                     processes=[parent]+parent.children(recursive=True)
                     rss=0
+                    live_reads=0
                     for child in processes:
                         value,method=owned_process_rss(child)
                         rss+=value
                         fallback_reads+=int(method=='ps_fallback')
                         vanished_reads+=int(method=='vanished')
-                    peak=max(peak,rss)
+                        live_reads+=int(method!='vanished')
+                    if live_reads:
+                        peak=max(peak,rss)
+                        complete_samples+=1
                 except psutil.NoSuchProcess:
                     pass
                 except (psutil.AccessDenied,MonitoringUnavailable) as exc:
@@ -107,9 +112,11 @@ def supervise(command, dest, seconds=600, memory=2*1024**3):
             raise
         code=proc.wait()
     return dict(status=failure_status if failure else ('completed' if code==0 else 'failed'),
-                reason=failure,exit_code=code,elapsed_seconds=time.monotonic()-start,peak_rss_bytes=peak,
+                reason=failure,exit_code=code,elapsed_seconds=time.monotonic()-start,
+                peak_rss_bytes=peak if complete_samples else None,
                 limits=dict(seconds=seconds,memory_bytes=memory),
                 memory_fallback_reads=fallback_reads,vanished_process_reads=vanished_reads,
+                memory_complete_samples=complete_samples,
                 memory_measurement='sum parent/descendant RSS sampled every 0.1s; one ps fallback per denied read (0.5s limit); overshoot possible')
 
 
