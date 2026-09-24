@@ -5,6 +5,7 @@ from collections import Counter,defaultdict
 from pathlib import Path
 from statistics import mean
 from common import read_json,sha256,atomic_json
+from tie_diagnostics import validate_coverage
 
 
 def replicate_summary(values):
@@ -23,6 +24,10 @@ def format_replicates(values):
 def report(root):
     root=Path(root)
     runs=read_json(root/'pilot_results.json')
+    # Validate diagnostics before replacing any generated report deliverable.
+    tie_path=root/'tie_sensitivity.json'
+    ties=(validate_coverage(read_json(tie_path),runs,sha256(root/'pilot_results.json'))
+          if tie_path.exists() else None)
     catalog=read_json(root/'catalog/gallery.json')
     cohort=read_json(root/'cohort.json')
     terminations=[]
@@ -95,16 +100,12 @@ def report(root):
                                   **replicate_summary(v)))
         lines.append(f'| {graph} | {method} | {len(done)}/{len(rr)} | '+ ' | '.join(vals)+' |')
     atomic_json(root/'replicate_summary.json',dict(runs=summaries))
-    tie_path=root/'tie_sensitivity.json'
     lines+=['','## Neighborhood tie sensitivity','',
         'Equal graph distances require a tie convention for fixed-size neighborhoods. The canonical scores '
         'use lexical vertex-ID priority. This diagnostic reverses only that priority while holding each '
         'layout and graph distance fixed. Close method differences may therefore depend on the convention. '
         'Trustworthiness and continuity range from 0 to 1; higher is better. This is not an optimizer rerun.', '']
-    if tie_path.exists():
-        ties=read_json(tie_path)
-        if ties['source_index_sha256']!=sha256(root/'pilot_results.json'):
-            raise ValueError('tie diagnostic is stale for this result index')
+    if ties is not None:
         lines+=['Coverage: completed main-cohort runs with seed 17 only. Full k=5,10,20,50 values '
                 'are in tie_sensitivity.json. The last column is the largest absolute change across '
                 'those valid trustworthiness/continuity scores.', '',

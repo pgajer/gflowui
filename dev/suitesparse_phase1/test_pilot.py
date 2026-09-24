@@ -217,6 +217,61 @@ def test_reporting_ranges_and_tie_priority():
     assert reversed_priorities(reversed_priorities(ids))==ids
 
 
+def test_interrupted_tie_publication_and_report_boundary(tmp_path,monkeypatch):
+    import tie_diagnostics as diagnostic_module
+    from report import report
+    from scipy.sparse import save_npz
+    a,info=convert(coo_matrix([[0,1],[1,0]]),'fixture')
+    graph_dir=tmp_path/'graphs'/'fixture';graph_dir.mkdir(parents=True)
+    save_npz(graph_dir/'adjacency.npz',a)
+    info['adjacency_sha256']=sha256(graph_dir/'adjacency.npz')
+    atomic_json(graph_dir/'graph.json',info)
+    d,p,f,meta=prepare(a,info['vertex_ids'])
+    z=np.array([[0.,0,0],[1.,0,0]])
+    score=score_component(z,d,p,np.array([[0,1]]),info['vertex_ids'])
+    score.update(n_vertices=2,component=0,small_component_placement=True,details={})
+    rows=[]
+    for method in ['isomap_graph','lle']:
+        dest=tmp_path/method;comp=dest/'component_000';comp.mkdir(parents=True)
+        np.savetxt(comp/'coords.csv',z,delimiter=',',header='x,y,z',comments='')
+        for name in ['coords_raw.csv','coords_display.csv']:
+            np.savetxt(dest/name,z,delimiter=',',header='x,y,z',comments='')
+        atomic_json(dest/'request.json',{})
+        atomic_json(dest/'vertices.json',info['vertex_ids'])
+        atomic_json(dest/'result.json',dict(components=[score],coords_sha256=sha256(dest/'coords_raw.csv')))
+        files=[f for f in dest.rglob('*') if f.is_file()]
+        atomic_json(dest/'manifest.json',dict(status='completed',run_key=method,
+            artifacts={str(f.relative_to(dest)):sha256(f) for f in files}))
+        rows.append(dict(graph_id='fixture',method=method,seed=17,status='completed',
+                         scores=aggregate([score]),run_dir=str(dest)))
+    index=dict(commit='fixture',runs=rows)
+    atomic_json(tmp_path/'pilot_results.json',index)
+    (tmp_path/'catalog').mkdir()
+    atomic_json(tmp_path/'catalog'/'gallery.json',dict(gallery_count=1))
+    atomic_json(tmp_path/'cohort.json',dict(records=[dict(graph_id='fixture')]))
+    diagnostic_module.diagnostic(tmp_path)
+    complete=(tmp_path/'tie_sensitivity.json').read_bytes()
+    report(tmp_path)  # Complete control is accepted by the real report boundary.
+    original_verified=diagnostic_module.verified_cached
+    calls=[]
+    def interrupt_before_second(*args):
+        calls.append(1)
+        if len(calls)==2: raise KeyboardInterrupt('after first diagnostic row')
+        return original_verified(*args)
+    monkeypatch.setattr(diagnostic_module,'verified_cached',interrupt_before_second)
+    with pytest.raises(KeyboardInterrupt): diagnostic_module.diagnostic(tmp_path)
+    assert (tmp_path/'tie_sensitivity.json').read_bytes()==complete
+    report(tmp_path)
+    good=json.loads(complete)
+    for bad in [dict(good,runs=good['runs'][:1]),dict(good,runs=good['runs']*2),
+                dict(good,runs=[dict(good['runs'][0],method='unexpected'),good['runs'][1]]),
+                dict(good,status='partial'),dict(good,schema_version=1)]:
+        atomic_json(tmp_path/'tie_sensitivity.json',bad)
+        old_report=(tmp_path/'FINDINGS.md').read_bytes()
+        with pytest.raises(ValueError,match='coverage'): report(tmp_path)
+        assert (tmp_path/'FINDINGS.md').read_bytes()==old_report
+
+
 def test_six_real_adapters(tmp_path):
     from worker import embed
     # Octahedral graph: genuinely three-dimensional distance configuration.

@@ -16,12 +16,28 @@ def reversed_priorities(ids):
     return [reverse[x] for x in ids]
 
 
+def eligible_runs(index):
+    return [r for r in index['runs'] if r['status']=='completed' and r['seed']==17]
+
+
+def validate_coverage(data,index,index_hash):
+    def key(row): return (row['graph_id'],row['method'],row['seed'])
+    expected=[key(row) for row in eligible_runs(index)]
+    actual=[key(row) for row in data.get('runs',[])]
+    if (data.get('status')!='completed' or data.get('schema_version')!=2
+            or data.get('source_index_sha256')!=index_hash
+            or len(expected)!=len(set(expected)) or len(actual)!=len(set(actual))
+            or set(actual)!=set(expected)):
+        raise ValueError('incomplete, duplicate, unexpected or stale tie diagnostic coverage')
+    return data
+
+
 def diagnostic(root):
     root=Path(root)
     index=read_json(root/'pilot_results.json')
     rows=[]
-    for run in index['runs']:
-        if run['status']!='completed' or run['seed']!=17: continue
+    index_hash=sha256(root/'pilot_results.json')
+    for run in eligible_runs(index):
         dest=Path(run['run_dir']); manifest=read_json(dest/'manifest.json')
         if not verified_cached(dest,manifest['run_key']):
             raise ValueError('invalid run artifacts: '+str(dest))
@@ -59,9 +75,14 @@ def diagnostic(root):
             original=original,reversed_id_priority=reverse,delta=delta,
             max_absolute_change=max(map(abs,delta.values()),default=None)))
         print(run['graph_id'],run['method'],'checked',flush=True)
-        atomic_json(root/'tie_sensitivity.json',dict(schema_version=1,source_index_sha256=sha256(root/'pilot_results.json'),
-            diagnostic='reverse lexical vertex-ID tie priority; fixed layouts and graph distances',
-            coverage='completed main-cohort seed-17 runs only; not a new embedding experiment',runs=rows))
+    complete=dict(schema_version=2,status='completed',source_index_sha256=index_hash,
+        diagnostic='reverse lexical vertex-ID tie priority; fixed layouts and graph distances',
+        coverage='completed main-cohort seed-17 runs only; not a new embedding experiment',runs=rows)
+    validate_coverage(complete,index,index_hash)
+    if sha256(root/'pilot_results.json')!=index_hash:
+        raise ValueError('result index changed during diagnostic')
+    # Do not publish a prefix. Cancellation preserves any prior complete artifact.
+    atomic_json(root/'tie_sensitivity.json',complete)
 
 
 if __name__=='__main__':

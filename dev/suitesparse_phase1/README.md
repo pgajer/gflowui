@@ -131,6 +131,10 @@ layouts, while checking canonical scores against saved results. It does not
 rerun optimizers or replace canonical scores. `replicate_summary.json` records
 counts, means and observed min/max by graph/method/metric. Three-seed ranges are
 descriptive, not confidence intervals; deterministic runs have no variability estimate.
+Canonical tie diagnostics are published only after complete coverage succeeds.
+Interruption leaves an earlier completed diagnostic intact (or no diagnostic);
+the report rejects missing, duplicate, unexpected or stale rows before writing
+any deliverable. Terminal progress messages are not published result artifacts.
 
 Tests include analytic/folded paths, independently accumulated fixed paths and
 chord sums, rigid/scale transformations, independent scikit-learn rank checks,
