@@ -104,8 +104,10 @@ These are safeguards on optimization, not changes to the scalar objective.
 Pairwise descent does not imply full-objective descent after each pair or epoch.
 
 The optimizer computes the full objective and gradient initially and after every
-epoch, recording the maximum accepted single-pair endpoint movement and total
-halvings in each epoch. It stops if that maximum is <= movement_tolerance or the
+epoch, recording the maximum accepted single-pair endpoint movement and the
+number of halvings for accepted pair steps. Searches ending in roundoff skips
+contribute to roundoff_skipped_pairs, but their discarded halvings are not
+included in the backtracks diagnostic. It stops if that maximum is <= movement_tolerance or the
 epoch budget is exhausted. The termination strings are movement_tolerance and
 epoch_budget. If the movement condition holds in an epoch with roundoff-skipped
 pairs, termination is instead floating_point_stagnation, even if gradients are
