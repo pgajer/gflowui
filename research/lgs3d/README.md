@@ -148,3 +148,6 @@ edge and radius-1/radius-2 neighborhood errors use independently checked formula
 The script uses measured runtime with a factor-two cubic projection to admit or
 skip optional 128- and 2,000-vertex scaling runs under the same limits. This
 preflight is conservative evidence, not a performance guarantee.
+
+Measured results and limitations are in [EXPERIMENTS.md](EXPERIMENTS.md), including
+the preserved initial failure and the poor-quality 128-vertex result.

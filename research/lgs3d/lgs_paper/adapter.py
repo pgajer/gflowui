@@ -93,7 +93,9 @@ def implementation_identity():
 
 def environment():
     return {'python':platform.python_version(),'numpy':np.__version__,'system':platform.system(),
-            'machine':platform.machine(),'blas_threads':1,'arithmetic':'float64'}
+            'machine':platform.machine(),'os_release':platform.release(),
+            'numpy_blas':np.__config__.CONFIG.get('Build Dependencies',{}).get('blas',{}),
+            'blas_threads':1,'arithmetic':'float64'}
 
 
 def normalize_request(raw,base):

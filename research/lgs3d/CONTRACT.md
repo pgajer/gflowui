@@ -99,7 +99,7 @@ failure. A crash between publication steps can leave a valid unindexed result.
 Such a directory is harmless and will not be discovered as a cache hit.
 
 The cache key includes implementation commit, hashes of runtime source files and
-requirements, runtime versions/platform, preparation version, graph ID and file
+requirements, runtime versions/platform/OS release and NumPy BLAS build metadata, preparation version, graph ID and file
 hashes, vertex order, dimension, expanded parameters, initial-coordinate checksum
 (or canonical seeded initialization), seed, and variant. Cache reuse verifies
 identity, completed status, manifest receipt/hash, coordinate checksum, exact ID

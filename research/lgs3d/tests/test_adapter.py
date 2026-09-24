@@ -70,6 +70,7 @@ class AdapterTests(unittest.TestCase):
             self.assertEqual(receipt['result_sha256'],digest((directory/'result.json').read_bytes()))
             self.assertEqual(a['coordinate_sha256'],digest(Path(a['coordinate_path']).read_bytes()))
             self.assertTrue(a['implementation']['commit']);self.assertTrue(a['input_hashes']['vertex_sha256'])
+            self.assertTrue(a['environment']['os_release']);self.assertTrue(a['environment']['numpy_blas'])
             self.req['output_directory']='repeat'+str(dim)
             c=self.run_adapter()
             self.assertEqual(a['coordinate_sha256'],c['coordinate_sha256'])
