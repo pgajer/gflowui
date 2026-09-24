@@ -46,12 +46,12 @@ def matrix_from_archive(path, name, metadata, extracted_limit=1024**3):
     return matrix
 
 
-def convert(matrix, graph_id, expected_nnz=None):
+def convert(matrix, graph_id, expected_nnz=None, max_vertices=2999):
     matrix = coo_matrix(matrix)
     if not np.isfinite(matrix.data).all():
         raise ValueError('nonfinite matrix coefficient')
     rows, cols = matrix.shape
-    admitted, reason = admission(rows, cols, 0)
+    admitted, reason = admission(rows, cols, 0, max_vertices=max_vertices)
     if not admitted:
         raise ValueError(reason)
     stored = int(matrix.nnz)
@@ -128,8 +128,8 @@ def prepare(adjacency, vertex_ids, landmark_count=64):
     return distances, predecessors, features, policy
 
 
-def import_record(record, root):
-    ok, reason = admission(record['rows'], record['columns'], record['nonzeros'])
+def import_record(record, root, max_vertices=2999):
+    ok, reason = admission(record['rows'], record['columns'], record['nonzeros'], max_vertices=max_vertices)
     if not ok or not record.get('eligible'):
         raise ValueError(reason)
     token = record['graph_id'].replace('/', '__')
@@ -139,7 +139,7 @@ def import_record(record, root):
         raise ValueError('catalog has no archive URL')
     bounded_download(record['archive_url'], archive)
     matrix = matrix_from_archive(archive, record['graph_id'].split('/')[-1], record)
-    adjacency, info = convert(matrix, record['graph_id'], record['nonzeros'])
+    adjacency, info = convert(matrix, record['graph_id'], record['nonzeros'], max_vertices=max_vertices)
     info.update(source=record, archive_sha256=sha256(archive), archive_file=str(archive),
                 archive_bytes=archive.stat().st_size)
     dest = root/'graphs'/token

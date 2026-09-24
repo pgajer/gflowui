@@ -34,12 +34,12 @@ def bounded_download(url, target, limit=100 * 1024**2):
         tmp.unlink(missing_ok=True)
 
 
-def admission(rows, columns, nonzeros):
+def admission(rows, columns, nonzeros, max_vertices=2999):
     if min(rows, columns) < 1 or nonzeros < 0:
         return False, 'invalid metadata'
     n = rows if rows == columns else rows + columns
-    if n >= 3000:
-        return False, 'vertex count is not below 3000'
+    if n > max_vertices:
+        return False, 'vertex count is not below 3000' if max_vertices==2999 else f'vertex count exceeds {max_vertices}'
     # Website Nonzeros is full numerical support, not MM triangular storage.
     if nonzeros > 100000:
         return False, 'conservative full-nonzero edge bound exceeds 100000'

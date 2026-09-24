@@ -58,7 +58,7 @@ def embed(method, adjacency, ids, d, features, seed, dest, initial=None):
     return validate_coords(coords,ids,ids),detail
 
 
-def run(request, embedder=embed, input_type=None):
+def run(request, embedder=embed, input_type=None, scorer=score_component, aggregator=aggregate):
     graph_dir=Path(request['graph_dir'])
     info=read_json(graph_dir/'graph.json')
     if sha256(graph_dir/'adjacency.npz')!=info['adjacency_sha256']:
@@ -97,7 +97,7 @@ def run(request, embedder=embed, input_type=None):
         from scipy.sparse import triu
         upper=triu(sub,k=1).tocoo()
         edges=np.column_stack((upper.row,upper.col))
-        score=score_component(z,d,p,edges,ids)
+        score=scorer(z,d,p,edges,ids)
         score['n_vertices']=len(ids)
         score['component']=component
         score['small_component_placement']=small
@@ -118,7 +118,7 @@ def run(request, embedder=embed, input_type=None):
     np.savetxt(root/'coords_display.csv',packed,delimiter=',',header='x,y,z',comments='')
     atomic_json(root/'vertices.json',info['vertex_ids'])
     result=dict(schema_version=1,status='completed',method=method,seed=seed,dimension=3,
-                graph_sha256=info['graph_sha256'],components=components,summary=aggregate(components),
+                graph_sha256=info['graph_sha256'],components=components,summary=aggregator(components),
                 cross_component_pairs_excluded=int(len(labels)*(len(labels)-1)//2-sum(x['n_pairs'] for x in components)),
                 packing='x separated components; display only; not used in scores',
                 coords_sha256=sha256(root/'coords_raw.csv'),display_sha256=sha256(root/'coords_display.csv'),
