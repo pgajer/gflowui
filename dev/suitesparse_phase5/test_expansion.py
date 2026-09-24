@@ -58,3 +58,27 @@ def test_explicit_expansion_preserves_original_admission():
     with pytest.raises(ValueError):convert(csr_matrix((3000,3000)),'large')
     _,g=convert(csr_matrix((3000,3000)),'large',max_vertices=10000)
     assert g['n_isolates']==3000
+
+def test_admission_uses_verified_largest_same_method_reference(tmp_path):
+    from run_expansion import admission as resource_admission
+    from common import atomic_json,sha256,read_json
+    rows=[]
+    for name,n,memory,seconds,method in [('small',30,900,8,'test'),('large',50,200,3,'test'),('other',60,999,99,'different')]:
+        folder=tmp_path/'graphs'/name;folder.mkdir(parents=True)
+        atomic_json(folder/'graph.json',dict(component_sizes=[n],graph_sha256=name))
+        dest=tmp_path/'runs'/name;dest.mkdir(parents=True)
+        for filename in ['request.json','result.json','coords_raw.csv','coords_display.csv','vertices.json']:
+            (dest/filename).write_text('fixture')
+        atomic_json(dest/'manifest.json',dict(run_key=name,status='completed',peak_rss_bytes=memory,
+            elapsed_seconds=seconds,request=dict(graph_sha256=name),
+            artifacts={p.name:sha256(p) for p in dest.iterdir()}))
+        rows.append(dict(method=method,status='completed',graph_id=name,seed=17,run_dir=str(dest),peak_rss_bytes=memory,elapsed_seconds=seconds))
+    info=dict(component_sizes=[100,1])
+    a=resource_admission(info,'test',rows,tmp_path)
+    assert a['admitted'] and a['reference_component_vertices']==50
+    assert a['projected_memory_bytes']==pytest.approx(880)
+    assert a['projected_seconds']==pytest.approx(30)
+    assert not resource_admission(info,'missing',rows,tmp_path)['admitted']
+    manifest=tmp_path/'runs/large/manifest.json';changed=read_json(manifest);changed['peak_rss_bytes']=201
+    atomic_json(manifest,changed)
+    with pytest.raises(ValueError,match='calibration'):resource_admission(info,'test',rows,tmp_path)
