@@ -85,6 +85,7 @@ def run(root,graph,contracts,native_manifests):
                     except Exception as exc:timing=dict(status='failed',reason=f'supervisor_error: {type(exc).__name__}: {exc}',elapsed_seconds=time.monotonic()-started,peak_rss_bytes=None)
                 else:timing=dict(status='resource_limited' if method!='metric_mds_edge_kk' else 'unavailable',reason=reason,elapsed_seconds=0.,peak_rss_bytes=None)
                 if timing['status']=='completed' and not (dest/'result.json').exists():timing.update(status='failed',reason='missing result')
+                if timing['status']=='failed' and not timing.get('reason'):timing['reason']=f"worker exit {timing.get('exit_code')}; see process.log"
                 artifacts={str(p.relative_to(dest)):sha256(p) for p in sorted(dest.rglob('*')) if p.is_file() and p.name!='manifest.json' and 'numba_cache' not in p.parts}
                 atomic_json(dest/'manifest.json',dict(run_key=key,request=request,artifacts=artifacts,**timing))
             manifest=read_json(dest/'manifest.json')
