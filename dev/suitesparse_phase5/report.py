@@ -37,18 +37,18 @@ def report(root):
         '', '## Method coverage','', '| Graph | Method | Terminal outcomes | Reasons for gaps |','|---|---|---|---|']
     lines += [f"| {r['graph_id']} | {r['method']} | {r['counts']} | {'; '.join(r['reasons'])} |" for r in coverage]
     lines += ['', 'Every job retains the 600-second/2-GiB allowance. Admission uses the largest completed '
-        'same-method graph, worst replicate, quadratic memory scaling with a1.1factor and cubic time scaling '
-        'with a1.25factor. These conservative estimates are not measured failures. Expanded runs may '
-        'calibrate the next graph; results record the exact references. LGS components above2000vertices '
+        'same-method graph, worst replicate, quadratic memory scaling with a 1.1 factor and cubic time scaling '
+        'with a 1.25 factor. These admission heuristics are not guaranteed upper bounds or measured failures. Expanded runs may '
+        'calibrate the next graph; results record the exact references. LGS components above 2,000 vertices '
         'remain outside its accepted contract. No LGS optimizer was attempted here.',
         '', '## Sampled versus exact evaluation','',
-        'Expanded distance scores use up to20000shared uniform unordered pairs per component. '
+        'Expanded distance scores use up to 20,000 shared uniform unordered pairs per component. '
         'Both scales are refitted on that sample; component sums are weighted by the population/sample '
         'pair ratio before aggregation. Neighborhood ranks are streamed exactly; edge errors are exact. '
         'Original pilot coordinates and exact scores are unchanged.',
         '', 'Validation used six fixed pilot layouts (weighted GRIP and original-graph Isomap on three '
-        'graphs),20independent pair samples each. Every result is retained. These are evaluation reruns, '
-        'not new optimization results. Approximate95% intervals use200paired bootstrap draws and a '
+        'graphs), 20 independent pair samples each. Every result is retained. These are evaluation reruns, '
+        'not new optimization results. Approximate 95% intervals use 200 paired bootstrap draws and a '
         'finite-population correction. Their coverage is empirical, not guaranteed.',
         '', '| Graph | Method | Metric | Largest absolute difference | Intervals covering exact value |',
         '|---|---|---|---:|---:|']
@@ -62,7 +62,7 @@ def report(root):
         'and PDF/SVG figures for the selected graph. A standalone R script rebuilds those figures from '
         'the exported table and settings. Sample intervals and active-run guides are labeled. The ZIP '
         'is an analysis bundle, not a self-contained installation of every optimizer and its environment.',
-        '', 'No graph above10000vertices or100000edges was downloaded. Only two additional eligible '
+        '', 'No graph above 10,000 vertices or 100,000 edges was downloaded. Only two additional eligible '
         'graphs were selected; other eligible cases remain untested. Sample intervals are approximate, '
         'distance-band summaries are not computed for this evaluator, optional cluster diagnostics '
         'remain deferred, and exact neighborhood scores still depend on the declared lexical-ID tie rule. '
