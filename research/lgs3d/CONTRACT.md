@@ -27,7 +27,13 @@ or Infinity literals are rejected. Requests are limited to 1 MiB.
 Required fields: `schema_version` (1), `graph_id`, `graph_sha256`, `vertex_file`,
 `vertex_sha256`, `edge_file`, `edge_sha256`, `dimension` (2 or 3), `seed` (unsigned
 64-bit integer), `locality_k` (1 through n-1), and `parameters`. Booleans do not
-count as numbers. IDs are nonempty case-sensitive strings, compared by Unicode
+count as numbers. Integral decimal/exponent spellings (for example `3.0` and
+`3e0`) are canonicalized to integers without passing integer seeds through
+float64. Genuinely fractional tokens remain invalid in integer fields, even if
+float64 would round them to an integer. Decimal exponent expansion beyond the
+finite float64 range is rejected before allocating a huge integer; plain integer
+tokens retain their exact values and domain checks. Excessive JSON nesting gives
+a structured `invalid_input` response on stdout. IDs are nonempty case-sensitive strings, compared by Unicode
 code point for ties. No implicit ID or coordinate reordering is allowed.
 
 * Vertex CSV: exact header `vertex_id`; unique nonempty IDs; declared order is

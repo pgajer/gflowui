@@ -1,6 +1,7 @@
 """Version-1 JSON/CSV adapter with supervised, isolated numerical execution."""
 import argparse
 from dataclasses import asdict,fields
+from decimal import Decimal,DecimalException
 import csv
 import fcntl
 import hashlib
@@ -68,8 +69,30 @@ def unique_object(pairs):
     return result
 
 
-def parse_json(data):
-    return json.loads(data,parse_constant=reject_constant,object_pairs_hook=unique_object)
+def request_number(token):
+    # JSON Schema integer semantics depend on value, not decimal/exponent
+    # spelling. Decimal keeps seeds beyond 2**53 exact; integer tokens still
+    # use json.loads' int parser without any floating-point intermediate.
+    try:value=Decimal(token)
+    except DecimalException as exc:
+        raise InputFailure('unsupported JSON decimal exponent') from exc
+    if value==value.to_integral_value():
+        # Bound exponent expansion before constructing an arbitrarily huge int.
+        # The numerical interface uses finite float64 reals throughout.
+        if value and value.adjusted()>308:
+            raise InputFailure('JSON decimal exponent exceeds supported finite range')
+        return int(value)
+    # A genuinely fractional token remains a float (and fails integer-only
+    # fields), even if float64 rounding makes its stored value integral.
+    return float(value)
+
+
+def parse_json(data,request=False):
+    try:
+        return json.loads(data,parse_constant=reject_constant,object_pairs_hook=unique_object,
+                          parse_float=request_number if request else float)
+    except RecursionError as exc:
+        raise InputFailure('JSON nesting exceeds parser depth limit') from exc
 
 
 def atomic_json(path,value):
@@ -114,6 +137,12 @@ def normalize_request(raw,base):
         raise InputFailure('unknown or invalid algorithm parameters')
     if not {'walk_depth','walk_decay','repulsion_alpha'}.issubset(params):
         raise InputFailure('parameters must specify walk_depth, walk_decay, repulsion_alpha')
+    params=dict(params)
+    # Canonicalize real-valued controls too: explicit 1 and 1.0 must also
+    # match an omitted default 1.0 in scientific/cache identity.
+    for key in CONTROL_KEYS-{'epochs','transition_epochs','max_backtracks'}:
+        if key in params:
+            params[key]=real(params[key],key)
     controls=Controls(**{k:v for k,v in params.items() if k in CONTROL_KEYS})
     integer(params['walk_depth'],'walk_depth',1)
     decay=real(params['walk_decay'],'walk_decay')
@@ -424,7 +453,7 @@ def main():
     try:
         with request_path.open('rb') as inp:data=inp.read(1024**2+1)
         if len(data)>1024**2:raise InputFailure('request exceeds 1 MiB')
-        raw=parse_json(data)
+        raw=parse_json(data,request=True)
         if not isinstance(raw,dict):raise InputFailure('request must be an object')
         configured=args.output_dir if args.output_dir is not None else raw.get('output_directory','lgs3d-output')
         if not isinstance(configured,(str,Path)):raise InputFailure('invalid output_directory')

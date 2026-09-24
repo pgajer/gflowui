@@ -12,11 +12,14 @@ import tempfile
 import time
 import unittest
 import numpy as np
+from jsonschema import Draft202012Validator
 from lgs_paper.adapter import digest,graph_hash,normalize_request,cache_identity,canonical
 from lgs_paper.metrics import evaluate_quality
 
 ROOT=Path(__file__).resolve().parents[1]
 PYTHON=str(ROOT/'.venv/bin/python')
+REQUEST_SCHEMA=Draft202012Validator(json.loads((ROOT/'schemas/request-v1.json').read_text()))
+RESPONSE_SCHEMA=Draft202012Validator(json.loads((ROOT/'schemas/response-v1.json').read_text()))
 
 
 class AdapterTests(unittest.TestCase):
@@ -42,6 +45,7 @@ class AdapterTests(unittest.TestCase):
         run=subprocess.run(self.command(),capture_output=True,text=True,timeout=15)
         self.assertTrue(run.stdout,run.stderr)
         response=json.loads(run.stdout)
+        RESPONSE_SCHEMA.validate(response)
         self.assertEqual(response['status'],status,response)
         self.assertEqual(run.returncode,0 if status=='completed' else 1)
         if status!='completed':
@@ -131,6 +135,61 @@ class AdapterTests(unittest.TestCase):
         initial(b'vertex_id,x,y,z\na,0,0,0\nd,1,0,0\nc,0,1,0\nb,0,0,1\n')
         self.run_adapter('invalid_input')
         self.req['initial_coordinate_sha256']='0'*64;self.run_adapter('invalid_input')
+
+    def test_schema_integral_spellings_and_exact_seeds(self):
+        REQUEST_SCHEMA.check_schema(REQUEST_SCHEMA.schema)
+        RESPONSE_SCHEMA.check_schema(RESPONSE_SCHEMA.schema)
+        base=copy.deepcopy(self.req)
+        for seed in (17,2**53+1,2**64-1):
+            self.req=copy.deepcopy(base);self.req['seed']=seed
+            REQUEST_SCHEMA.validate(self.req)
+            ordinary=self.run_adapter()
+            # Write decimal tokens directly so the test itself never rounds
+            # large integer seeds through float before they reach the CLI.
+            self.req['schema_version']=1.0;self.req['dimension']=3.0
+            self.req['locality_k']=3.0
+            self.req['parameters'].update(epochs=4.0,transition_epochs=30.0,
+                                         max_backtracks=60.0,walk_depth=10.0,
+                                         max_pair_displacement=1,collision_distance=1e-12)
+            self.req['job_limits']={'wall_seconds':600.0,'memory_mib':2048.0}
+            REQUEST_SCHEMA.validate(self.req)
+            path=self.write_request()
+            payload=path.read_text().replace(f'"seed": {seed}',f'"seed": {seed}.0')
+            path.write_text(payload)
+            if seed==17:REQUEST_SCHEMA.validate(json.loads(payload))
+            run=subprocess.run([PYTHON,str(ROOT/'run.py'),str(path)],capture_output=True,text=True,timeout=15)
+            result=json.loads(run.stdout);RESPONSE_SCHEMA.validate(result)
+            self.assertEqual(run.returncode,0,run.stderr)
+            self.assertEqual(result['seed'],seed)
+            self.assertEqual(result['cache_key'],ordinary['cache_key'])
+            self.assertEqual(result['coordinate_sha256'],ordinary['coordinate_sha256'])
+            self.assertTrue(result['cache_hit'])
+        for field,value in [('dimension',3.5),('dimension',True),('seed',2**64),
+                            ('seed',False),('locality_k',1.5),('schema_version',1.5)]:
+            self.req={**base,field:value};self.run_adapter('invalid_input')
+        for field,value in [('epochs',2.5),('epochs',True),('walk_depth',-1),
+                            ('max_backtracks',.5),('transition_epochs',1.0)]:
+            self.req=copy.deepcopy(base);self.req['parameters'][field]=value
+            self.run_adapter('invalid_input')
+        # A truly fractional spelling must not acquire integer validity from
+        # rounding to 3.0 in binary float64.
+        self.req=copy.deepcopy(base);path=self.write_request()
+        path.write_text(path.read_text().replace('"dimension": 3','"dimension": 3.0000000000000000000001'))
+        run=subprocess.run([PYTHON,str(ROOT/'run.py'),str(path)],capture_output=True,text=True,timeout=15)
+        result=json.loads(run.stdout);RESPONSE_SCHEMA.validate(result)
+        self.assertEqual(result['status'],'invalid_input')
+
+    def test_excessive_json_nesting_is_structured_failure(self):
+        path=self.p/'deep.json';path.write_text('['*10000+'0'+']'*10000)
+        self.assertLess(path.stat().st_size,1024**2)
+        run=subprocess.run([PYTHON,str(ROOT/'run.py'),str(path)],capture_output=True,text=True,timeout=15)
+        result=json.loads(run.stdout);RESPONSE_SCHEMA.validate(result)
+        self.assertEqual(run.returncode,1)
+        self.assertEqual(result['status'],'invalid_input')
+        self.assertIn('nesting',result['termination'])
+        self.assertNotIn('coordinate_path',result);self.assertNotIn('coordinate_sha256',result)
+        self.assertNotIn('Traceback',run.stderr)
+        self.assertEqual(len(run.stdout.strip().splitlines()),1)
 
     def test_limits(self):
         self.req['job_limits']={'wall_seconds':.001}

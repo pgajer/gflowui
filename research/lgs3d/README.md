@@ -10,8 +10,8 @@ and the explicitly named selected paper variant.
 ## Reproduce locally
 
 Use CPython 3.12 and a working C compiler. The recorded environment is Python
-3.12.10 on macOS arm64; NumPy and Cython match upstream's versions. Only the
-three dependencies needed for the numerical reproduction are installed;
+3.12.10 on macOS arm64; NumPy and Cython match upstream's versions. The numerical runtime uses three locked dependencies; the test environment also
+installs a separately locked JSON Schema validator and its dependencies;
 graph-tool and the full visualization stack are not installed. Small graph
 interfaces and AST-extracted original function bodies replace those imports
 for tests, as described in `lgs_reference/upstream.py`. This does not verify
@@ -22,7 +22,7 @@ From the repository root:
 
 ```sh
 python3.12 -m venv research/lgs3d/.venv
-PIP_CACHE_DIR="$PWD/research/lgs3d/.cache/pip" research/lgs3d/.venv/bin/python -m pip install -r research/lgs3d/requirements.lock
+PIP_CACHE_DIR="$PWD/research/lgs3d/.cache/pip" research/lgs3d/.venv/bin/python -m pip install -r research/lgs3d/requirements-test.lock
 research/lgs3d/.venv/bin/python research/lgs3d/scripts/build_oracle.py
 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 PYTHONPATH=research/lgs3d research/lgs3d/.venv/bin/python -m unittest discover -s research/lgs3d/tests -v
 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 research/lgs3d/.venv/bin/python research/lgs3d/scripts/reproduce.py --output research/lgs3d/outputs/phase02
