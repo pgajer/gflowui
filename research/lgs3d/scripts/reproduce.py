@@ -100,7 +100,7 @@ def main():
     rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
     peak_bytes = int(rss if sys.platform=='darwin' else 1024*rss)
     commit = subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()
-    dirty = subprocess.check_output(['git','status','--porcelain','--','research/lgs3d'],cwd=ROOT,text=True).strip()
+    dirty = subprocess.check_output(['git','status','--porcelain','--','.'],cwd=ROOT,text=True).strip()
     report = {'schema_version':1,'covered_phases':[1,2],
               'implementation_commit':commit,'worktree_changes_at_run':dirty,
               'upstream_commit':json.loads((ROOT/'upstream.json').read_text())['commit'],
