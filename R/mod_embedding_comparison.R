@@ -32,7 +32,7 @@ gflowui_ec_workspace_ui <- function(id) {
         shiny::uiOutput(ns("quality_table"))),
       shiny::tags$details(open=NA,shiny::tags$summary("Quality comparisons"),
         shiny::selectInput(ns("metric"),"Metric by method",choices=choices,selected="chord_error"),
-        plotly::plotlyOutput(ns("metric_plot"),height="390px"),shiny::textOutput(ns("metric_note")),
+        plotly::plotlyOutput(ns("metric_plot"),height="590px"),shiny::textOutput(ns("metric_note")),
         shiny::selectInput(ns("trade_x"),"Trade-off x",choices=choices,selected="chord_error"),
         shiny::selectInput(ns("trade_y"),"Trade-off y",choices=choices,selected="path_error"),
         plotly::plotlyOutput(ns("trade_plot"),height="430px"),

@@ -10,11 +10,14 @@ gflowui_ec_quality_outputs <- function(input,output,session,index,cohort,current
     tbl <- tbl[tbl$status=="completed" & is.finite(tbl[[key]]),,drop=FALSE]
     shiny::validate(shiny::need(nrow(tbl)>0,"This metric is unavailable for the selected graph."))
     active_value <- tbl[[key]][match(run_id(),tbl$id)]
-    p <- plotly::plot_ly(tbl,x=~method,y=tbl[[key]],type="scatter",mode="markers",customdata=~id,
-      text=run_label(tbl),hovertemplate="%{text}<br>%{y:.6g}<extra></extra>",marker=list(color="#3575B2",size=9),showlegend=FALSE)
-    shapes <- if(is.finite(active_value))list(list(type="line",xref="paper",x0=0,x1=1,y0=active_value,y1=active_value,line=list(color="#737A80",dash="dash"))) else list()
+    p <- plotly::plot_ly(tbl,x=tbl[[key]],y=~method,type="scatter",mode="markers",customdata=~id,
+      text=run_label(tbl),hovertemplate="%{text}<br>%{x:.6g}<extra></extra>",marker=list(color="#3575B2",size=9),showlegend=FALSE)
+    shapes <- if(is.finite(active_value))list(list(type="line",yref="paper",y0=0,y1=1,x0=active_value,x1=active_value,line=list(color="#737A80",dash="dash"))) else list()
     p <- plotly::layout(p,title=list(text=gflowui_ec_metrics()[key],font=list(size=15)),shapes=shapes,
-      xaxis=list(title="",tickangle=-25),yaxis=list(title="Score"),margin=list(l=65,r=15,b=100,t=50))
+      xaxis=list(title="Score"),yaxis=list(title="",automargin=TRUE,
+        categoryorder="array",categoryarray=rev(unique(tbl$method)),
+        tickvals=unique(tbl$method),ticktext=vapply(unique(tbl$method),function(x)paste(strwrap(x,21),collapse="<br>"),"")),
+      margin=list(l=150,r=15,b=55,t=50))
     gflowui_ec_plot_events(p,session$ns("choose_run"))
   })
   output$metric_note <- shiny::renderText({

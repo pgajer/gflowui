@@ -26,10 +26,12 @@ After the complete Phase 3 matrix and its diagnostics are generated, include it
 explicitly without dropping the original indexes:
 
     python dev/suitesparse_project/report_expansion.py /path/to/pilot-data
-    python dev/suitesparse_project/export_viewer.py /path/to/pilot-data --indexes pilot_results.json lle_landmarks16.json lle_landmarks32.json phase03_results.json
+    python dev/suitesparse_project/export_viewer.py /path/to/pilot-data --indexes pilot_results.json lle_landmarks16.json lle_landmarks32.json phase03_results.json phase03_trimap_graph_results.json
 
-This adds PaCMAP, LocalMAP, TriMAP, PHATE, LargeVis and NCVis results. Their input
-track is shared landmark-distance features; backend preprocessing/settings and
+This adds PaCMAP, LocalMAP, TriMAP, PHATE, LargeVis and NCVis results. Their main input
+track is shared landmark-distance features; a separately labeled TriMAP variant
+uses original graph distances and does not replace the feature-based results.
+Backend preprocessing/settings and
 limitations are described in ../suitesparse_phase3/README.md and each run record.
 The seed-range panel groups different settings separately and includes the new
 methods. LGS remains unavailable until its separate integration gate.

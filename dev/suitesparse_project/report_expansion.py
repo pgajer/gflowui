@@ -70,6 +70,15 @@ def report(root):
         '', 'A separately identified TriMAP variant uses the original graph shortest-path distances through the public precomputed-distance interface. '
         'It was added after the feature-based runs exposed repeated feature rows, extreme triplet weights and very large coordinates. '
         'The original feature-based results remain in the comparison; the new variant is not a replacement or a best-seed selection.',
+        '', 'The saved diagnostic phase03_trimap_scale_diagnosis.json reconstructs seed-17 triplets and weights '
+        'and matches their saved hashes. In graph order illc1033, lock1074, lock_700, nemscem, the largest '
+        'components contain 1353, 1038, 691, 2363 vertices but only 293, 226, 234, 997 distinct float32 '
+        'feature rows. Local bandwidths reach the backend floor for 919, 797, 240, 1107 vertices; '
+        'maximum triplet weights are approximately 5.9e10–8.5e10. The retained feature layouts have '
+        'raw coordinate magnitudes of approximately 17–125 million. These are poor outputs, not successful '
+        'quality results merely because their coordinates are finite. The original-distance variant changes '
+        'the input geometry as well as removing these repeated-feature targets; quality differences cannot '
+        'be attributed solely to the degeneracy.',
         '', 'Exact metrics still use original graph targets, not internal neighbor or diffusion distances. '
         'Euclidean error and relative stress fit a component scale; fixed-path and edge errors use identity scale. '
         'These answer different questions and are not combined into a winner score. '

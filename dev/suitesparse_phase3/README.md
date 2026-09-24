@@ -101,6 +101,11 @@ includes source, installed versions, native build files, binary hash, graph,
 contract, settings and seed. Failed runs are retained, not overwritten. The
 output `phase03_results.json` is separate from all frozen pilot indexes.
 
-Use the existing viewer exporter with all four result indexes to expose new
+The retained feature-degeneracy diagnostic can be reproduced with
+`python dev/suitesparse_phase3/diagnose_feature_degeneracy.py DATA_ROOT`.
+It reconstructs saved triplets/weights without rerunning optimization.
+
+Use the existing viewer exporter with all five result indexes (including the
+separate `phase03_trimap_graph_results.json`) to expose new
 layouts. A completed adapter contract does not imply every cohort job succeeded;
 retain resource failures, warnings and unsupported statuses in the comparison.
