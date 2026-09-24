@@ -1,0 +1,5 @@
+-r ../suitesparse_phase1/requirements.txt
+pacmap==0.9.1
+trimap==1.1.5
+phate==2.0.0
+annoy==1.17.3

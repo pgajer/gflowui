@@ -58,7 +58,7 @@ def embed(method, adjacency, ids, d, features, seed, dest, initial=None):
     return validate_coords(coords,ids,ids),detail
 
 
-def run(request):
+def run(request, embedder=embed, input_type=None):
     graph_dir=Path(request['graph_dir'])
     info=read_json(graph_dir/'graph.json')
     if sha256(graph_dir/'adjacency.npz')!=info['adjacency_sha256']:
@@ -89,7 +89,8 @@ def run(request):
                 z,detail=embed('isomap_graph',sub,ids,d,f,seed,dest)
                 detail['small_component_placement']='classical scaling; not attributed to requested method'
             else:
-                z,detail=embed(method,sub,ids,d,f,seed,dest,initial)
+                z,detail=embedder(method,sub,ids,d,f,seed,dest,initial)
+                z=validate_coords(z,ids,ids)
         coord_file=dest/'coords.csv'
         np.savetxt(coord_file,z,delimiter=',',header='x,y,z',comments='')
         atomic_json(dest/'vertices.json',ids)
@@ -122,7 +123,7 @@ def run(request):
                 packing='x separated components; display only; not used in scores',
                 coords_sha256=sha256(root/'coords_raw.csv'),display_sha256=sha256(root/'coords_display.csv'),
                 cluster_distance_status='deferred optional metric; no frozen partition',
-                input_type='landmark_distance_features' if method=='lle' else 'original_graph_distances_or_edges')
+                input_type=input_type or ('landmark_distance_features' if method=='lle' else 'original_graph_distances_or_edges'))
     atomic_json(root/'result.json',result)
 
 
