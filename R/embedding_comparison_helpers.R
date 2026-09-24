@@ -217,7 +217,13 @@ gflowui_ec_export <- function(index, settings, output_dir) {
       "render_figures <-",deparse(gflowui_ec_publication_render),
       "render_figures(read.csv('all_runs.csv',check.names=FALSE), jsonlite::fromJSON('figure_specifications.json'), '.')")
     writeLines(script,file.path(stage,"rebuild_publication_figures.R"))
-    paths <- c(paths,figures,"rebuild_publication_figures.R")
+    table <- index$table[index$table$graph_id==settings$graph_id & index$table$status=="completed",,drop=FALSE]
+    figure_manifest <- lapply(names(gflowui_ec_metrics()),function(key)list(metric=key,
+      population=settings$graph_id,available_replicates=sum(is.finite(table[[key]])),
+      status=if(any(is.finite(table[[key]])))"exported" else "unavailable: no finite completed scores",
+      formats=c("PDF","SVG"),uncertainty="Approximate conditional pair-sampling intervals when provided; no intervals for exact scores."))
+    jsonlite::write_json(figure_manifest,file.path(stage,"publication_figure_manifest.json"),auto_unbox=TRUE,pretty=TRUE)
+    paths <- c(paths,figures,"rebuild_publication_figures.R","publication_figure_manifest.json")
   }
   hashes <- setNames(lapply(paths,function(p) digest::digest(file=file.path(stage,p),algo="sha256")),paths)
   jsonlite::write_json(hashes,file.path(stage,"bundle_checksums.json"),auto_unbox=TRUE,pretty=TRUE)
