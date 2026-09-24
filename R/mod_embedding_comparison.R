@@ -31,6 +31,7 @@ gflowui_ec_workspace_ui <- function(id) {
         shiny::p(class="gf-hint","Click a heading to sort. Load selects an exact replicate; the active row is highlighted. Blank scores are unavailable, not zero."),
         shiny::uiOutput(ns("quality_table"))),
       shiny::tags$details(open=NA,shiny::tags$summary("Quality comparisons"),
+        shiny::textOutput(ns("evaluation_note")),
         shiny::selectInput(ns("metric"),"Metric by method",choices=choices,selected="chord_error"),
         plotly::plotlyOutput(ns("metric_plot"),height="590px"),shiny::textOutput(ns("metric_note")),
         shiny::selectInput(ns("trade_x"),"Trade-off x",choices=choices,selected="chord_error"),
@@ -54,7 +55,7 @@ gflowui_ec_workspace_ui <- function(id) {
       shiny::tags$details(shiny::tags$summary("Metric definitions and interpretation"),
         lapply(names(gflowui_ec_definitions()),function(k) shiny::p(shiny::strong(paste0(k,": ")),gflowui_ec_definitions()[[k]]))),
       shiny::tags$details(shiny::tags$summary("Export comparison bundle"),
-        shiny::p("Save every graph and run table, coordinates, metrics, source manifests and figure settings—not just the current selection."),
+        shiny::p("Save every graph and run table, coordinates, metrics, source manifests and figure settings—not just the current selection. PDF/SVG comparisons for the selected graph and a figure-rebuilding R script are included."),
         shiny::textInput(ns("export_dir"),"Bundle directory",value=""),
         shiny::actionButton(ns("save_bundle"),"Save ZIP bundle",class="btn-light"),shiny::textOutput(ns("export_status")))
     )
@@ -177,7 +178,7 @@ gflowui_ec_server <- function(id,manifest) {
     })
     output$quality_table <- shiny::renderUI({
       tbl <- cohort();selected <- run_id()
-      columns <- c(method="Method",settings="Settings",seed="Seed",status="Status",termination="Termination / reason",input_type="Input",
+      columns <- c(method="Method",settings="Settings",seed="Seed",status="Status",termination="Termination / reason",input_type="Input",evaluation="Evaluation",evaluated_pairs="Evaluated pairs",
         chord_error="Euclidean",relative_stress="Relative",path_error="Fixed path",edge_error="Edge",distance_rank_correlation="Correlation",elapsed_seconds="Seconds",memory_mib="MiB")
       shiny::div(class="ec-table-scroll",shiny::tags$table(class="ec-table ec-sortable",
         shiny::tags$thead(shiny::tags$tr(shiny::tags$th("View"),lapply(columns,function(x)shiny::tags$th(x,tabindex="0")))),
@@ -187,8 +188,12 @@ gflowui_ec_server <- function(id,manifest) {
             if(tbl$id[i]==selected)"Active" else "Load")),
           lapply(names(columns),function(k) {
             value <- tbl[[k]][i]
+            display <- if(is.na(value))"—" else if(is.numeric(value))format(value,digits=5) else value
+            if(k %in% names(gflowui_ec_metrics()) && is.finite(tbl[[paste0(k,"_lower")]][i]) && is.finite(tbl[[paste0(k,"_upper")]][i])) {
+              display <- paste0(display," [",format(tbl[[paste0(k,"_lower")]][i],digits=4),", ",format(tbl[[paste0(k,"_upper")]][i],digits=4),"]")
+            }
             shiny::tags$td("data-sort"=if(is.na(value))"" else as.character(value),
-              if(is.na(value))"—" else if(is.numeric(value))format(value,digits=5) else value)
+              display)
           }))))))
     })
     output$run_details <- shiny::renderUI({

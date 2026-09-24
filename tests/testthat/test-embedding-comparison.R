@@ -43,6 +43,32 @@ ec_fixture <- function() {
   root
 }
 
+test_that("sampled evaluation and vector exports preserve intervals and selected graph",{
+  root<-ec_fixture();on.exit(unlink(root,recursive=TRUE))
+  path<-file.path(root,"A1-result.json");r<-gflowui_ec_json(path)
+  r$summary$n_pairs<-1000;r$summary$evaluation<-list(mode="uniform_pair_sample",pair_count=100)
+  r$summary$intervals<-list(chord_error=list(lower=.08,upper=.12))
+  jsonlite::write_json(r,path,auto_unbox=TRUE,pretty=TRUE,null="null")
+  manifest<-gflowui_ec_json(file.path(root,"viewer_manifest.json"))
+  manifest$runs[[1]]$result$sha256<-digest::digest(file=path,algo="sha256")
+  jsonlite::write_json(manifest,file.path(root,"viewer_manifest.json"),auto_unbox=TRUE,pretty=TRUE,null="null")
+  index<-gflowui_ec_load_index(root)
+  expect_identical(index$table$evaluation[1],"uniform_pair_sample")
+  expect_equal(index$table$chord_error_lower[1],.08)
+  expect_equal(index$table$evaluated_pairs[1],100)
+  dest<-tempfile("publication-");dir.create(dest);on.exit(unlink(dest,recursive=TRUE),add=TRUE)
+  zip<-gflowui_ec_export(index,list(graph_id="A",run_id="A1"),dest)
+  stage<-file.path(dest,"unzipped");utils::unzip(zip,exdir=stage)
+  expect_true(file.exists(file.path(stage,"figures/chord_error.pdf")))
+  expect_true(file.exists(file.path(stage,"figures/chord_error.svg")))
+  expect_true(file.exists(file.path(stage,"rebuild_publication_figures.R")))
+  hashes<-gflowui_ec_json(file.path(stage,"bundle_checksums.json"))
+  expect_true(all(vapply(names(hashes),function(p)identical(hashes[[p]],digest::digest(file=file.path(stage,p),algo="sha256")),TRUE)))
+  e<-new.env();old<-setwd(stage);on.exit(setwd(old),add=TRUE)
+  source("rebuild_publication_figures.R",local=e)
+  expect_true(file.info("figures/chord_error.pdf")$size>1000)
+})
+
 test_that("embedding adapter validates identity and finite exact 3D coordinates",{
   root <- ec_fixture();on.exit(unlink(root,recursive=TRUE))
   idx <- gflowui_ec_load_index(root);g <- gflowui_ec_graph(idx,"A")

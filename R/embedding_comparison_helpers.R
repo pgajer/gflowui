@@ -45,7 +45,8 @@ gflowui_ec_metrics <- function() c(
 )
 
 gflowui_ec_definitions <- function() list(
-  version = "suitesparse-pilot-v1", evaluation = "Exact unordered within-component pairs; exclude cross-component pairs.",
+  version = "suitesparse-pilot-v1; suitesparse-uniform-pairs-v1",
+  evaluation = "Original pilot: exact unordered within-component pairs. Expanded graphs: up to 20,000 shared uniform pairs per component, with N/m weighting of component sums; exclude cross-component pairs. Edge and streamed neighborhood scores remain exact.",
   chord_error = "sqrt(sum((s*r-d)^2)/sum(d^2)); s=sum(r*d)/sum(r^2), separately per component.",
   relative_stress = "mean(((s*r-d)/d)^2); s=sum(r/d)/sum((r/d)^2), separately per component.",
   path_error = "sqrt(sum((p-d)^2)/sum(d^2)), identity scale; p follows fixed original shortest routes.",
@@ -53,7 +54,7 @@ gflowui_ec_definitions <- function() list(
   distance_rank_correlation = "Spearman correlation of graph and chord distances, average tied ranks; per-component when disconnected.",
   neighborhoods = "Trustworthiness penalizes false neighbors; continuity penalizes lost neighbors. k=5,10,20,50 where k<n/2; lexical-ID ties.",
   interpretation = "Do not combine fitted-scale and identity-scale measures into a single ranking. Fixed-path preservation alone does not establish unfolding.",
-  uncertainty = "Observed seed ranges are not confidence intervals. Reverse-ID tie sensitivity changes convention, not layout."
+  uncertainty = "Expanded distance intervals: approximate 95% paired percentile bootstrap, 200 draws, refitted scales, finite-population-corrected component-sum deviations. Conditional on fixed coordinates, not optimizer variability. Observed seed ranges are not confidence intervals. Reverse-ID tie sensitivity changes convention, not layout."
 )
 
 gflowui_ec_seed_ranges <- function(table, graph_id, metric = "chord_error") {
@@ -122,7 +123,7 @@ gflowui_ec_load_index <- function(root) {
       paste(unique(details[nzchar(details)]), collapse = "; ")
     }
     summary <- result$summary
-    data.frame(id = run$id, graph_id = run$graph_id, method = method,
+    row <- data.frame(id = run$id, graph_id = run$graph_id, method = method,
       method_id = run$method, settings = settings, seed = gflowui_ec_number(run$seed),
       status = run$status, termination = term,
       input_type = gflowui_ec_text(result$input_type, "unavailable"),
@@ -131,6 +132,14 @@ gflowui_ec_load_index <- function(root) {
       distance_rank_correlation = gflowui_ec_number(summary$distance_rank_correlation),
       elapsed_seconds = gflowui_ec_number(run$elapsed_seconds), memory_mib = gflowui_ec_number(run$peak_rss_bytes)/1024^2,
       stringsAsFactors = FALSE)
+    row$evaluation <- if(is.null(result)) "unavailable" else gflowui_ec_text(summary$evaluation$mode,"exact")
+    row$evaluated_pairs <- gflowui_ec_number(if(is.null(summary$evaluation))summary$n_pairs else summary$evaluation$pair_count)
+    row$population_pairs <- gflowui_ec_number(summary$n_pairs)
+    for(key in names(gflowui_ec_metrics())) {
+      row[[paste0(key,"_lower")]] <- gflowui_ec_number(summary$intervals[[key]]$lower)
+      row[[paste0(key,"_upper")]] <- gflowui_ec_number(summary$intervals[[key]]$upper)
+    }
+    row
   })
   index$table <- do.call(rbind, rows)
   index
@@ -202,6 +211,14 @@ gflowui_ec_export <- function(index, settings, output_dir) {
   jsonlite::write_json(settings,file.path(stage,"figure_specifications.json"),auto_unbox=TRUE,pretty=TRUE,null="null")
   utils::write.csv(index$table,file.path(stage,"all_runs.csv"),row.names=FALSE,na="")
   paths <- unique(c(paths,"metric_definitions.json","figure_specifications.json","all_runs.csv"))
+  if(!is.null(settings$graph_id)) {
+    figures <- gflowui_ec_publication_render(index$table,settings,stage)
+    script <- c("# Run from the extracted bundle root; requires jsonlite and base R.",
+      "render_figures <-",deparse(gflowui_ec_publication_render),
+      "render_figures(read.csv('all_runs.csv',check.names=FALSE), jsonlite::fromJSON('figure_specifications.json'), '.')")
+    writeLines(script,file.path(stage,"rebuild_publication_figures.R"))
+    paths <- c(paths,figures,"rebuild_publication_figures.R")
+  }
   hashes <- setNames(lapply(paths,function(p) digest::digest(file=file.path(stage,p),algo="sha256")),paths)
   jsonlite::write_json(hashes,file.path(stage,"bundle_checksums.json"),auto_unbox=TRUE,pretty=TRUE)
   zipfile <- tempfile(paste0("suitesparse-",format(Sys.time(),"%Y%m%d-%H%M%S"),"-"),tmpdir=output_dir,fileext=".zip")

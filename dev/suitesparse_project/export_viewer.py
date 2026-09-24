@@ -20,13 +20,14 @@ def pair_sample(n,limit=2000,seed=2718):
     return np.column_stack((i,i+1+ranks-starts[i])).astype(int)
 
 
-def build(root,index_names):
+def build(root,index_names,cohort_file='cohort.json'):
     root=Path(root).resolve()
     def asset(path):
         path=Path(path).resolve()
         if not path.is_relative_to(root): raise ValueError('asset outside project root')
         return dict(path=str(path.relative_to(root)),sha256=sha256(path))
-    cohort=read_json(root/'cohort.json')
+    if Path(cohort_file).name!=cohort_file:raise ValueError('cohort must be a plain filename')
+    cohort=read_json(root/cohort_file)
     graphs=[];by_graph={};inputs={}
     for rec in cohort['records']:
         if rec['status']!='completed': continue
@@ -82,7 +83,8 @@ def build(root,index_names):
                         shepard=samples,edge_residuals=residual.tolist(),
                         sampling='up to 2000 uniform unordered pairs per component, seed 2718; display only',
                         scale='chord fitted separately per component; edge residuals identity scale',
-                        exact_pair_count=result['summary'].get('n_pairs',0)))
+                        exact_pair_count=result['summary'].get('n_pairs',0),
+                        evaluation=result['summary'].get('evaluation',dict(mode='exact',pair_count=result['summary'].get('n_pairs',0)))))
                     row['diagnostics']=asset(diag)
             else:
                 row['id']=identity(dict(index=filename,**row))
@@ -101,7 +103,8 @@ def build(root,index_names):
                  'PHASE03_FINDINGS.md','phase03_scores.csv','phase03_replicate_summary.json',
                  'phase03_capabilities.json','phase03_tie_sensitivity.json','phase03_trimap_graph_ties.json',
                  'phase03_trimap_scale_diagnosis.json','PHASE04_FINDINGS.md','phase04_lgs_summary.json',
-                 'lgs_validation/phase04_validation_results.json']:
+                 'lgs_validation/phase04_validation_results.json',cohort_file,'phase05_admission.json',
+                 'phase05_sampling_validation.json','phase05_summary.json','PHASE05_FINDINGS.md']:
         if (root/name).exists(): extras[name]=asset(root/name)
     for path in sorted((root/'lgs_dependency_documents').glob('*')):
         if path.is_file(): extras[str(path.relative_to(root))]=asset(path)
@@ -112,11 +115,12 @@ def build(root,index_names):
     atomic_json(root/'viewer_manifest.json',dict(schema_version=1,kind='gflowui_embedding_comparison',
         title='SuiteSparse 3D Embedding Comparison',graphs=graphs,runs=runs,artifacts=extras,
         indexes=[asset(root/name) for name in index_names],
-        notes='Components packed only for display; original graph targets and exact pilot scores remain unchanged.'))
+        notes='Components packed only for display; exact pilot scores unchanged. Expanded distance scores use labeled shared uniform pair samples; edge/neighborhood scores remain exact.'))
     print(len(graphs),'graphs;',len(runs),'run/availability rows;',len([r for r in runs if r['status']=='completed']),'completed layouts')
 
 
 if __name__=='__main__':
     parser=argparse.ArgumentParser();parser.add_argument('root')
     parser.add_argument('--indexes',nargs='+',default=['pilot_results.json','lle_landmarks16.json','lle_landmarks32.json'])
-    args=parser.parse_args();build(args.root,args.indexes)
+    parser.add_argument('--cohort-file',default='cohort.json')
+    args=parser.parse_args();build(args.root,args.indexes,args.cohort_file)

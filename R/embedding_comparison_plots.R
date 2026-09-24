@@ -1,6 +1,11 @@
 # Each renderer depends only on its own controls and the selected saved assets.
 gflowui_ec_quality_outputs <- function(input,output,session,index,cohort,current,run_id,active_label,graph_id) {
-  run_label <- function(row)paste(row$method,row$settings,paste0("seed ",row$seed),sep=" | ")
+  run_label <- function(row)paste(row$method,row$settings,paste0("seed ",row$seed),row$evaluation,sep=" | ")
+  output$evaluation_note <- shiny::renderText({
+    rows<-cohort();modes<-unique(rows$evaluation[rows$status=="completed"])
+    if("uniform_pair_sample" %in% modes)"Expanded distance scores use shared uniform pairs, up to 20,000 per component. Brackets/bars are approximate 95% conditional sampling intervals, not seed ranges. Edge and neighborhood scores remain exact."
+    else "Pilot scores use all within-component pairs. Edge and neighborhood scores are exact. Replicate spread describes optimizer variability, not a confidence interval."
+  })
   metric_key <- shiny::reactive({
     key <- input$metric
     if(is.null(key) || !key %in% names(gflowui_ec_metrics()))"chord_error" else key
@@ -12,6 +17,10 @@ gflowui_ec_quality_outputs <- function(input,output,session,index,cohort,current
     active_value <- tbl[[key]][match(run_id(),tbl$id)]
     p <- plotly::plot_ly(tbl,x=tbl[[key]],y=~method,type="scatter",mode="markers",customdata=~id,
       text=run_label(tbl),hovertemplate="%{text}<br>%{x:.6g}<extra></extra>",marker=list(color="#3575B2",size=9),showlegend=FALSE)
+    lo<-tbl[[paste0(key,"_lower")]];hi<-tbl[[paste0(key,"_upper")]];valid<-is.finite(lo)&is.finite(hi)
+    if(any(valid))p<-plotly::add_trace(p,x=as.vector(rbind(lo[valid],hi[valid],NA_real_)),
+      y=rep(tbl$method[valid],each=3),type="scatter",mode="lines",line=list(color="#3575B2",width=1),
+      hoverinfo="skip",inherit=FALSE,showlegend=FALSE)
     shapes <- if(is.finite(active_value))list(list(type="line",yref="paper",y0=0,y1=1,x0=active_value,x1=active_value,line=list(color="#737A80",dash="dash"))) else list()
     p <- plotly::layout(p,title=list(text=gflowui_ec_metrics()[key],font=list(size=15)),shapes=shapes,
       xaxis=list(title="Score"),yaxis=list(title="",automargin=TRUE,
@@ -130,8 +139,9 @@ gflowui_ec_quality_outputs <- function(input,output,session,index,cohort,current
   })
   output$diagnostic_note <- shiny::renderText({
     d <- current()$diagnostics
-    sprintf("%s displayed pairs; %s. Pilot metric evaluation still uses all %s eligible pairs. Edge histogram includes every edge. %s.",
-      length(d$shepard),d$sampling,d$exact_pair_count,d$scale)
+    e<-d$evaluation;mode<-gflowui_ec_text(e$mode,"exact")
+    sprintf("%s displayed pairs; %s. Metric evaluation: %s, %s of %s eligible pairs. Edge histogram includes every edge. %s.",
+      length(d$shepard),d$sampling,mode,gflowui_ec_text(e$pair_count,as.character(d$exact_pair_count)),d$exact_pair_count,d$scale)
   })
   metric_key
 }
