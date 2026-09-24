@@ -2315,7 +2315,7 @@ register_project <- function(
     id = project_id,
     label = project_name,
     origin = sprintf("registered:%s", as.character(profile_resolved %||% "custom")),
-    has_graphs = length(graph_sets_use) > 0L,
+    has_graphs = length(graph_sets_use) > 0L || gflowui_ec_active(manifest),
     has_condexp = length(condexp_sets_use) > 0L ||
       length(occupation_density_sets_use) > 0L,
     has_endpoints = length(endpoint_runs_use) > 0L,

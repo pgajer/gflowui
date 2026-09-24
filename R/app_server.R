@@ -22,6 +22,12 @@ app_server <- function(input, output, session) {
   )
   list2env(project_helpers, envir = environment())
 
+  embedding_comparison_active <- shiny::reactive(gflowui_ec_active(active_manifest()))
+  embedding_comparison_state <- if (requireNamespace("plotly", quietly = TRUE) &&
+                                    requireNamespace("htmlwidgets", quietly = TRUE)) {
+    gflowui_ec_server("embedding_comparison", manifest = active_manifest)
+  } else NULL
+
   graph_helpers <- gflowui_make_server_graph_helpers(rv = rv)
   list2env(graph_helpers, envir = environment())
 
@@ -10495,7 +10501,7 @@ app_server <- function(input, output, session) {
   }, ignoreInit = TRUE)
 
   reference_renderer_state <- shiny::reactive({
-    if (isTRUE(quadform_project_active())) {
+    if (isTRUE(quadform_project_active()) || isTRUE(embedding_comparison_active())) {
       return(list(
         st = list(error = "Quadform benchmark uses the benchmark viewer."),
         requested = "none",
@@ -13327,6 +13333,10 @@ app_server <- function(input, output, session) {
     }
 
     manifest <- active_manifest()
+    if (isTRUE(embedding_comparison_active())) {
+      if (is.null(embedding_comparison_state)) return(shiny::p("Install plotly and htmlwidgets to view embedding comparisons."))
+      return(gflowui_ec_sidebar_ui("embedding_comparison"))
+    }
     if (quadform_is_benchmark_manifest(manifest)) {
       idx <- quadform_index_state()
       sel <- quadform_selection_state()
@@ -15610,6 +15620,9 @@ app_server <- function(input, output, session) {
   })
 
   output$chip_renderer <- shiny::renderUI({
+    if (isTRUE(embedding_comparison_active())) {
+      return(shiny::span(class="gf-chip","3D renderer: Plotly [embedding comparison]"))
+    }
     rr <- reference_renderer_state()
 
     if (!isTRUE(rv$project.active)) {
@@ -15656,6 +15669,10 @@ app_server <- function(input, output, session) {
   })
 
   output$workspace_view <- shiny::renderUI({
+    if (isTRUE(embedding_comparison_active())) {
+      if (is.null(embedding_comparison_state)) return(shiny::p("Embedding viewer requires plotly and htmlwidgets."))
+      return(gflowui_ec_workspace_ui("embedding_comparison"))
+    }
     if (isTRUE(quadform_project_active())) {
       st <- quadform_view_state()
 

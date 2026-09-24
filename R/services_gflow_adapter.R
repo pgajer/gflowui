@@ -56,6 +56,11 @@ gflow_build_graph <- function(X, kmin, kmax, method = "edit", labels = NULL, ver
     method = method,
     verbose = isTRUE(verbose)
   )
+  # New dgraphs releases accept an explicit grid; retain older range APIs.
+  if ("k.values" %in% names(formals(f_build))) {
+    build_call$kmin <- build_call$kmax <- NULL
+    build_call$k.values <- seq.int(kmin,kmax)
+  }
   if (!is.null(labels_use)) {
     build_call$labels <- labels_use
   }
@@ -63,6 +68,7 @@ gflow_build_graph <- function(X, kmin, kmax, method = "edit", labels = NULL, ver
   extra$X <- NULL
   extra$kmin <- NULL
   extra$kmax <- NULL
+  extra$k.values <- NULL
   extra$method <- NULL
   extra$labels <- NULL
   extra$verbose <- NULL
@@ -81,6 +87,11 @@ gflow_build_graph <- function(X, kmin, kmax, method = "edit", labels = NULL, ver
   selected_graph <- g_list[[selected_idx]]
   adj_list <- selected_graph$adj_list %||% selected_graph$adjacency.list
   weight_list <- selected_graph$weight_list %||% selected_graph$edge.length.list
+  if (inherits(selected_graph,"dgraph") &&
+      all(c("graph.adjacency","graph.lengths") %in% getNamespaceExports("dgraphs"))) {
+    adj_list <- dgraphs::graph.adjacency(selected_graph)
+    weight_list <- dgraphs::graph.lengths(selected_graph)
+  }
 
   conn_row <- res$connectivity[res$connectivity$k == selected_k, , drop = FALSE]
   if (nrow(conn_row) == 0L) {
@@ -246,9 +257,7 @@ gflow_detect_endpoints <- function(graph_obj,
     stop("seed must be a finite integer.", call. = FALSE)
   }
 
-  res <- do.call(
-    f_endpoints,
-    list(
+  endpoint_call <- list(
       adj.list = adj.list,
       weight.list = weight.list,
       core.quantile = as.double(core.quantile),
@@ -258,8 +267,12 @@ gflow_detect_endpoints <- function(graph_obj,
       max.endpoints = max.endpoints,
       seed = seed,
       verbose = isTRUE(verbose)
-    )
   )
+  if ("length.list" %in% names(formals(f_endpoints))) {
+    endpoint_call$length.list <- endpoint_call$weight.list
+    endpoint_call$weight.list <- NULL
+  }
+  res <- do.call(f_endpoints,endpoint_call)
 
   endpoints <- sort(unique(as.integer(res$endpoints %||% integer(0))))
   core.vertices <- sort(unique(as.integer(res$core.vertices %||% integer(0))))

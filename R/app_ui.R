@@ -1,5 +1,7 @@
 app_ui <- function() {
   css.path <- system.file("app/www/styles.css", package = "gflowui")
+  embedding.css.path <- system.file("app/www/embedding-comparison.css", package = "gflowui")
+  embedding.js.path <- system.file("app/www/embedding-comparison.js", package = "gflowui")
   density.state.js.path <- system.file(
     "app/www/density-display-state.js",
     package = "gflowui"
@@ -53,6 +55,8 @@ app_ui <- function() {
     ),
     shiny::tags$head(
       if (nzchar(css.path)) shiny::includeCSS(css.path),
+      if (nzchar(embedding.css.path)) shiny::includeCSS(embedding.css.path),
+      if (nzchar(embedding.js.path)) shiny::includeScript(embedding.js.path),
       if (nzchar(density.state.js.path)) {
         shiny::includeScript(density.state.js.path)
       },

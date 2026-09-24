@@ -511,13 +511,13 @@ gflowui_make_server_project_helpers <- function(
     reg <- payload$reg
     idx <- payload$idx
     reg$manifest_file[[idx]] <- normalizePath(payload$manifest_file, mustWork = FALSE)
-    reg$has_graphs[[idx]] <- isTRUE(length(payload$manifest$graph_sets) > 0L)
+    reg$has_graphs[[idx]] <- isTRUE(length(payload$manifest$graph_sets) > 0L) || gflowui_ec_active(payload$manifest)
     reg$has_condexp[[idx]] <- isTRUE(length(payload$manifest$condexp_sets) > 0L)
     reg$has_endpoints[[idx]] <- isTRUE(length(payload$manifest$endpoint_runs) > 0L)
     reg$updated_at[[idx]] <- now
 
     project_registry(gflowui_sanitize_registry(reg))
-    rv$project.has.graphs <- isTRUE(length(payload$manifest$graph_sets) > 0L)
+    rv$project.has.graphs <- isTRUE(length(payload$manifest$graph_sets) > 0L) || gflowui_ec_active(payload$manifest)
     rv$reference.layout.cache <- list()
     mark_project_clean()
     invisible(TRUE)
