@@ -114,6 +114,9 @@ gflowui_ec_load_index <- function(root) {
       values <- unique(sprintf("%s (%.3g%%)",k[eligible],100*fractions[eligible]))
       settings <- if (length(values)) paste0("k=",paste(values,collapse="; "),"; 60 epochs") else "locality unavailable"
     }
+    if (nzchar(gflowui_ec_text(run$attempt_label))) {
+      settings <- paste(settings, gflowui_ec_text(run$attempt_label), sep="; ")
+    }
     term <- if (is.null(result)) gflowui_ec_text(run$reason, run$status) else {
       details <- vapply(result$components, function(c) {
         if (isTRUE(c$small_component_placement)) return("")

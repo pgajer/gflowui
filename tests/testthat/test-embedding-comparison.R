@@ -43,6 +43,21 @@ ec_fixture <- function() {
   root
 }
 
+test_that("higher-budget attempts are distinct without relabeling historical runs",{
+  root<-ec_fixture();on.exit(unlink(root,recursive=TRUE))
+  path<-file.path(root,"viewer_manifest.json");doc<-gflowui_ec_json(path)
+  doc$runs[[1]]$attempt_label<-"30 GiB; no time limit; serial"
+  jsonlite::write_json(doc,path,auto_unbox=TRUE,null="null")
+  idx<-gflowui_ec_load_index(root)
+  expect_match(idx$table$settings[1],"30 GiB; no time limit; serial",fixed=TRUE)
+  expect_identical(idx$table$settings[2],"fixed pilot settings")
+  app_manifest<-shiny::reactiveVal(list(metadata=list(embedding_comparison=list(schema_version=1L,data_root=root))))
+  shiny::testServer(gflowui_ec_server,args=list(manifest=app_manifest),{
+    session$flushReact()
+    expect_match(paste(as.character(output$quality_table),collapse="\n"),"30 GiB; no time limit; serial",fixed=TRUE)
+  })
+})
+
 test_that("sampled evaluation and vector exports preserve intervals and selected graph",{
   root<-ec_fixture();on.exit(unlink(root,recursive=TRUE))
   path<-file.path(root,"A1-result.json");r<-gflowui_ec_json(path)

@@ -41,6 +41,11 @@ its empirical coverage are included in the exported findings.
 Resource exclusions are not measured optimizer failures. A method may be excluded
 before execution based on its measured memory/time projections or input contract.
 Successful execution means finite saved coordinates, not convergence or good fit.
+Metric-MDS retries on nemscem, sstmodel and circuit_2 use a separately authorized
+30-GiB memory ceiling, no elapsed-time limit, and serial processing. Their settings
+identify this budget; original 2-GiB attempts remain in the table. The optimizer's
+iteration limits and convergence tolerances are unchanged. Edge-KK refinements
+use the matching new MDS seed. Other methods retain their recorded allowances.
 The landmark-feature and original-graph-distance TriMAP variants are distinct.
 Experimental paper-form LGS has synthetic locality evidence but no completed
 gallery layout under the current resource contract; its plots are explicitly

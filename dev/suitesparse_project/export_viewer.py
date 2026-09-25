@@ -59,6 +59,8 @@ def build(root,index_names,cohort_file='cohort.json'):
                 key=manifest['run_key']
                 row.update(id=key,manifest=asset(dest/'manifest.json'),parameters=manifest['request'].get('landmarks'),
                            reason=manifest.get('reason') or row.get('reason'))
+                if manifest['request'].get('attempt_label'):
+                    row['attempt_label']=manifest['request']['attempt_label']
                 if row['status']=='completed':
                     if not verified_cached(dest,key): raise ValueError('invalid completed run '+str(dest))
                     result=read_json(dest/'result.json')
@@ -104,7 +106,8 @@ def build(root,index_names,cohort_file='cohort.json'):
                  'phase03_capabilities.json','phase03_tie_sensitivity.json','phase03_trimap_graph_ties.json',
                  'phase03_trimap_scale_diagnosis.json','PHASE04_FINDINGS.md','phase04_lgs_summary.json',
                  'lgs_validation/phase04_validation_results.json',cohort_file,'phase05_admission.json',
-                 'phase05_sampling_validation.json','phase05_summary.json','PHASE05_FINDINGS.md']:
+                 'phase05_sampling_validation.json','phase05_summary.json','PHASE05_FINDINGS.md',
+                 'MDS_30GIB_FINDINGS.md']:
         if (root/name).exists(): extras[name]=asset(root/name)
     for path in sorted((root/'lgs_dependency_documents').glob('*')):
         if path.is_file(): extras[str(path.relative_to(root))]=asset(path)
