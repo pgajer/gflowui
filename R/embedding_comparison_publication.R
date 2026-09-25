@@ -9,7 +9,14 @@ gflowui_ec_publication_render <- function(table,settings,directory) {
     rr <- rows[is.finite(rows[[key]]),,drop=FALSE]
     if(!nrow(rr))next
     rr <- rr[order(rr$method,rr$settings,rr$seed),,drop=FALSE]
-    labels <- paste0(rr$method,ifelse(rr$method_id=="lle",paste0(" (",rr$settings,")"),"")," / seed ",rr$seed)
+    names <- rr$method
+    sfdp <- rr$method_id=="sfdp"
+    if(any(sfdp)) {
+      version <- ifelse(grepl("graphviz version ",rr$settings[sfdp],fixed=TRUE),
+        sub("^.*graphviz version ([^ ]+).*$","\\1",rr$settings[sfdp]),"version unavailable")
+      names[sfdp] <- paste0("SFDP (Graphviz ",version,")")
+    }
+    labels <- paste0(names,ifelse(rr$method_id=="lle",paste0(" (",rr$settings,")"),"")," / seed ",rr$seed)
     y <- rev(seq_len(nrow(rr)));lo <- rr[[paste0(key,"_lower")]];hi <- rr[[paste0(key,"_upper")]]
     extent <- range(c(rr[[key]],lo,hi),finite=TRUE)
     if(diff(extent)==0)extent<-extent+c(-1,1)*max(.001,abs(extent[1])*.05)

@@ -135,6 +135,22 @@ test_that("sampled evaluation and vector exports preserve intervals and selected
   expect_true(file.info("figures/chord_error.pdf")$size>1000)
 })
 
+test_that("publication figures distinguish SFDP backend versions at the same seed",{
+  root<-ec_fixture();on.exit(unlink(root,recursive=TRUE))
+  idx<-gflowui_ec_load_index(root)
+  rows<-idx$table[1:2,];rows$method_id<-"sfdp";rows$method<-"SFDP — Yifan Hu";rows$seed<-17
+  rows$settings<-c("dot - graphviz version 15.1.1 (build); serial","dot - graphviz version 16.1.0 (build); serial")
+  observed<-list();original_axis<-graphics::axis
+  testthat::local_mocked_bindings(axis=function(side,...,labels=TRUE) {
+    if(side==2 && is.character(labels)) observed[[length(observed)+1L]] <<- labels
+    original_axis(side,...,labels=labels)
+  },.package="graphics")
+  out<-gflowui_ec_publication_render(rows,list(graph_id="A",run_id="A1"),root)
+  expect_length(out,10L);expect_length(observed,10L)
+  expect_true(all(vapply(observed,function(x)identical(x,c(
+    "SFDP (Graphviz 15.1.1) / seed 17","SFDP (Graphviz 16.1.0) / seed 17")),TRUE)))
+})
+
 test_that("embedding adapter validates identity and finite exact 3D coordinates",{
   root <- ec_fixture();on.exit(unlink(root,recursive=TRUE))
   idx <- gflowui_ec_load_index(root);g <- gflowui_ec_graph(idx,"A")
