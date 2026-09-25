@@ -141,11 +141,14 @@ test_that("higher-budget attempts are distinct without relabeling historical run
   shiny::testServer(gflowui_ec_server,args=list(manifest=app_manifest),{
     session$flushReact()
     expect_match(paste(as.character(output$quality_table),collapse="\n"),"30 GiB; no time limit; serial",fixed=TRUE)
-    expect_identical(run_label(idx$table[1,,drop=FALSE]),"Metric MDS | fixed pilot settings | seed 1")
+    expect_identical(run_label(idx$table[1:2,,drop=FALSE]),c("Metric MDS | seed 1","Metric MDS | seed 2"))
     expect_false(grepl("30 GiB",output$title,fixed=TRUE))
+    expect_false(grepl("fixed pilot settings",output$title,fixed=TRUE))
     row<-idx$table[1,,drop=FALSE]
     row$settings<-"64 landmarks; fixed backend settings; dot - graphviz version 16.1.0; 30 GiB; no time limit; serial"
-    expect_identical(run_label(row),"Metric MDS | 64 landmarks; fixed backend settings; dot - graphviz version 16.1.0 | seed 1")
+    expect_identical(run_label(row),"Metric MDS | 64 landmarks; dot - graphviz version 16.1.0 | seed 1")
+    row$method<-"PaCMAP";row$settings<-"64 landmarks; fixed backend settings"
+    expect_identical(run_label(row),"PaCMAP | 64 landmarks | seed 1")
     expect_length(run_label(idx$table[FALSE,,drop=FALSE]),0L)
   })
 })

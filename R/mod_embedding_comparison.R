@@ -134,7 +134,14 @@ gflowui_ec_server <- function(id,manifest) {
       # Execution budgets remain in the Inspector/export records, but are not
       # part of the layout name. Keep method parameters and software versions.
       settings <- gsub("; 30 GiB; no time limit; serial","",row$settings,fixed=TRUE)
-      paste(row$method,settings,paste0("seed ",row$seed),sep=" | ")
+      settings <- vapply(strsplit(settings,";",fixed=TRUE),function(parts) {
+        parts <- trimws(parts)
+        paste(parts[nzchar(parts) & !parts %in% c("fixed pilot settings","fixed backend settings")],collapse="; ")
+      },"")
+      vapply(seq_len(nrow(row)),function(i) {
+        parts <- c(row$method[i],settings[i],paste0("seed ",row$seed[i]))
+        paste(parts[nzchar(parts)],collapse=" | ")
+      },"")
     }
     shiny::observeEvent(cohort(),{
       tbl <- cohort();available <- tbl[tbl$status=="completed",,drop=FALSE];previous <- shiny::isolate(input$run)
