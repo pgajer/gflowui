@@ -51,9 +51,17 @@
         e.preventDefault();var w=setWidth(inspector.getBoundingClientRect().width+(e.key==="ArrowLeft"?20:-20));
         try{localStorage.setItem(storage,String(w));}catch(error){} redraw();
       });
-      split.querySelectorAll("details").forEach(function(d){d.addEventListener("toggle",redraw);});
+      split.querySelectorAll("details").forEach(function(d){
+        function reportOpen() {
+          var input = d.getAttribute("data-ec-open-input");
+          if (input && window.Shiny) window.Shiny.setInputValue(input,d.open,{priority:"event"});
+        }
+        d.addEventListener("toggle",function(){reportOpen();redraw();});
+        reportOpen();
+      });
       // Width, accordion and scroll state stay in this stable DOM shell.
-      // No Shiny input is emitted by resizing or opening a section.
+      // Resizing emits no input. Only explicitly lazy sections report opening;
+      // their state is not a dependency of the graph or other Inspector panels.
     });
   }
   document.addEventListener("click",function(event) {

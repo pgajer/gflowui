@@ -85,6 +85,50 @@ test_that("length color changes preserve camera, selection and Inspector data",{
   })
 })
 
+test_that("run details reuse validated JSON without changing its contents",{
+  root<-ec_fixture();on.exit(unlink(root,recursive=TRUE))
+  idx<-gflowui_ec_load_index(root);record<-idx$runs$A1
+  result<-gflowui_ec_json(file.path(root,record$result$path))
+  text<-gflowui_ec_run_details_text(idx,record)
+  expect_equal(jsonlite::fromJSON(text,simplifyVector=FALSE),list(request=record,result=result))
+  request<-list(parameters=list(seed=1L),note="<script>not executable</script>")
+  path<-file.path(root,"request.json")
+  jsonlite::write_json(request,path,auto_unbox=TRUE,pretty=TRUE)
+  record$manifest<-list(path="request.json",sha256=digest::digest(file=path,algo="sha256"))
+  text<-gflowui_ec_run_details_text(idx,record)
+  expect_equal(jsonlite::fromJSON(text,simplifyVector=FALSE),list(request=request,result=result))
+  expect_match(as.character(shiny::tags$pre(text)),"&lt;script&gt;",fixed=TRUE)
+  writeLines("{}",path)
+  expect_error(gflowui_ec_run_details_text(idx,record),"changed")
+  record$manifest<-NULL
+  writeLines("{}",file.path(root,record$result$path))
+  expect_error(gflowui_ec_run_details_text(idx,record),"changed")
+})
+
+test_that("closed run details do no work and opening shows the latest layout",{
+  root<-ec_fixture();on.exit(unlink(root,recursive=TRUE))
+  manifest<-shiny::reactiveVal(list(metadata=list(embedding_comparison=list(schema_version=1L,data_root=root))))
+  shiny::testServer(gflowui_ec_server,args=list(manifest=manifest),{
+    session$setInputs(graph="A",run="A1")
+    session$setInputs(run="A2")
+    expect_equal(counts$run_details,0L)
+    before<-as.list(counts)
+    session$setInputs(run_details_open=TRUE)
+    expect_match(output$run_details$html,'"seed": *2')
+    expect_equal(counts$run_details,1L)
+    expect_equal(counts$graph_plot,before$graph_plot)
+    expect_equal(counts$layout,before$layout)
+    session$setInputs(run="A1")
+    expect_match(output$run_details$html,'"seed": *1')
+    session$setInputs(run_details_open=FALSE)
+    before<-as.list(counts)
+    session$setInputs(run="A2")
+    expect_equal(counts$run_details,before$run_details)
+    session$setInputs(run_details_open=TRUE)
+    expect_match(output$run_details$html,'"seed": *2')
+  })
+})
+
 test_that("higher-budget attempts are distinct without relabeling historical runs",{
   root<-ec_fixture();on.exit(unlink(root,recursive=TRUE))
   path<-file.path(root,"viewer_manifest.json");doc<-gflowui_ec_json(path)

@@ -54,7 +54,8 @@ gflowui_ec_workspace_ui <- function(id) {
       shiny::tags$details(shiny::tags$summary("Distance diagnostics"),
         plotly::plotlyOutput(ns("shepard_plot"),height="390px"),
         plotly::plotlyOutput(ns("edge_plot"),height="350px"),shiny::textOutput(ns("diagnostic_note"))),
-      shiny::tags$details(shiny::tags$summary("Active run settings and component diagnostics"),shiny::uiOutput(ns("run_details"))),
+      shiny::tags$details("data-ec-open-input"=ns("run_details_open"),
+        shiny::tags$summary("Active run settings and component diagnostics"),shiny::uiOutput(ns("run_details"))),
       shiny::tags$details(shiny::tags$summary("Metric definitions and interpretation"),
         lapply(names(gflowui_ec_definitions()),function(k) shiny::p(shiny::strong(paste0(k,": ")),gflowui_ec_definitions()[[k]]))),
       shiny::tags$details(shiny::tags$summary("Export comparison bundle"),
@@ -97,6 +98,7 @@ gflowui_ec_server <- function(id,manifest) {
     active <- shiny::reactive(gflowui_ec_active(manifest()))
     counts <- new.env(parent=emptyenv())
     counts$index <- counts$graph <- counts$layout <- counts$graph_plot <- 0L
+    counts$run_details <- 0L
     camera <- shiny::reactiveVal(NULL)
     camera_graph <- shiny::reactiveVal(NULL)
     selected_vertices <- shiny::reactiveVal(character())
@@ -200,10 +202,14 @@ gflowui_ec_server <- function(id,manifest) {
           }))))))
     })
     output$run_details <- shiny::renderUI({
+      # Native <details> visibility is not reliably reported to Shiny. Do not
+      # build a potentially large metadata view while this section is closed.
+      shiny::req(isTRUE(input$run_details_open))
+      counts$run_details <- counts$run_details+1L
       value <- current();record <- value$run
-      request <- if(is.list(record$manifest))gflowui_ec_json(gflowui_ec_asset(index()$root,record$manifest)) else record
+      details <- gflowui_ec_run_details_text(index(),record)
       shiny::tagList(shiny::p("Recorded request, software identity and component-level diagnostics. Scores are computed before display packing."),
-        shiny::tags$pre(jsonlite::toJSON(list(request=request,result=value$result),auto_unbox=TRUE,pretty=TRUE,null="null")))
+        shiny::tags$pre(details))
     })
     output$graph_plot <- plotly::renderPlotly({
       counts$graph_plot <- counts$graph_plot+1L

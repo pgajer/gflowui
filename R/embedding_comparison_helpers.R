@@ -194,6 +194,16 @@ gflowui_ec_load_run <- function(index, graph, run_id) {
   list(run = run, result = result, raw = raw, display = display, diagnostics = diag)
 }
 
+gflowui_ec_run_details_text <- function(index, record) {
+  # Results can contain tens of thousands of sampled pair indices. They are
+  # already JSON: preserve the verified source text instead of recursively
+  # serializing every scalar through jsonlite's S4 dispatch on each switch.
+  read_asset <- function(spec) paste(readLines(gflowui_ec_asset(index$root,spec),warn=FALSE),collapse="\n")
+  request <- if(is.list(record$manifest)) read_asset(record$manifest) else
+    jsonlite::toJSON(record,auto_unbox=TRUE,pretty=TRUE,null="null")
+  paste0('{"request":',request,',"result":',read_asset(record$result),'}')
+}
+
 gflowui_ec_export <- function(index, settings, output_dir) {
   dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
   output_dir <- normalizePath(output_dir, mustWork = TRUE)
