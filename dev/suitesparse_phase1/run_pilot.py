@@ -60,6 +60,11 @@ def environment():
 
 
 def supervise(command, dest, seconds=600, memory=2*1024**3):
+    # None explicitly disables wall-clock termination; RSS supervision stays on.
+    if seconds is not None and (not isinstance(seconds,(int,float)) or not 0 < seconds < float('inf')):
+        raise ValueError('seconds must be positive and finite, or None for no time limit')
+    if not isinstance(memory,(int,float)) or not 0 < memory < float('inf'):
+        raise ValueError('memory must be positive and finite')
     dest=Path(dest)
     env=os.environ.copy()
     env.update({key:'1' for key in ['OMP_NUM_THREADS','OPENBLAS_NUM_THREADS','MKL_NUM_THREADS',
@@ -94,7 +99,7 @@ def supervise(command, dest, seconds=600, memory=2*1024**3):
                 except (psutil.AccessDenied,MonitoringUnavailable) as exc:
                     failure='memory_telemetry_unavailable: '+str(exc)
                     failure_status='failed'
-                if time.monotonic()-start>seconds:
+                if seconds is not None and time.monotonic()-start>seconds:
                     failure='timeout'
                     failure_status='resource_limited'
                 elif peak>memory:

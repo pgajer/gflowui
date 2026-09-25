@@ -49,3 +49,23 @@ estimate/interval; it does not overwrite original results or select favorable se
 All commands use the existing isolated Phase 03 Python environment. Paths/contracts
 are explicit CLI arguments. Generated graphs, jobs, reports and publication figures
 belong in the external project-data directory, not this source tree.
+
+## Authorized higher-memory MDS reruns
+
+`run_mds_budget.py DATA_ROOT` retries metric MDS and its matching edge-KK refinements
+on nemscem, sstmodel and circuit_2, for seeds17,29,43. The revised allowance is
+30 GiB for summed worker/descendant RSS, with **no elapsed-time limit**. Jobs run
+serially, with a nonblocking process lock preventing two copies of this runner.
+The memory watchdog remains active; polling can overshoot the ceiling. Existing
+optimizer iteration limits and convergence tolerances are unchanged.
+
+Original results and their 2-GiB/600-second limits remain immutable. New requests
+record the earlier index/manifest identities; `mds_30gib_results.json` is separate.
+Nemscem retains exact evaluation; the two expanded graphs retain the shared-pair
+evaluator. Refinements require the matching new MDS seed, never another run.
+Historical time projections do not exclude the explicitly authorized retries.
+Known input allocations must still fit the memory budget. This entry point does
+not change the frozen pilot/expansion policies or rerun unrelated methods.
+
+`--graphs` can select still-unrecorded cases. An already recorded graph is rejected
+rather than overwriting history. An interrupted directory is also preserved.
