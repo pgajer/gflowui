@@ -8,7 +8,10 @@ coordinates; ordinary Graphviz rendering/overlap machinery is primarily 2D.
 We consume node `pos` coordinates, not its drawn edge paths.
 
 Use Graphviz 16.1.0 (or a separately validated version). Graphviz 15.1.1 has a
-documented SFDP coarsening regression and failed 17 of the first 18 cohort jobs.
+documented SFDP crash regression and failed 17 of the first 18 cohort jobs.
+Seven failures emitted `Multilevel.c` assertions; seven segmentation faults and
+three bus errors had empty Graphviz stderr. The logs do not establish the crash
+locations of those latter ten failures or a shared cause for all seventeen.
 Small complete-graph tests did not expose it; the sparse multilevel regression
 test does. A verified official 16.1.0 source release can be built in a private
 prefix without replacing the system installation. `GFLOWUI_SFDP` selects an

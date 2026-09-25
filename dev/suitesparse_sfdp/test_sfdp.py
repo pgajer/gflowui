@@ -133,3 +133,22 @@ def test_report_preserves_failed_cases_and_rejects_incomplete_matrix(tmp_path):
     atomic_json(tmp_path/'sfdp_results.json',dict(runs=rows[:-1],limits=runner.LIMITS,serial=True))
     with pytest.raises(ValueError):report.build(tmp_path)
     assert (tmp_path/'SFDP_FINDINGS.md').read_text()==original
+
+
+def test_historical_report_does_not_infer_common_causes_or_backend_version(tmp_path):
+    spec=importlib.util.spec_from_file_location('sfdp_report',HERE/'report.py')
+    report=importlib.util.module_from_spec(spec);spec.loader.exec_module(report)
+    current=[dict(graph_id=g,method='sfdp',seed=s,status='completed')
+             for g in runner.GRAPHS for s in runner.SEEDS]
+    prior=[dict(status='failed',reason=reason) for reason in
+           ['SIGABRT: Multilevel.c assertion','SIGSEGV: no location','SIGBUS: no location']]
+    prior.append(dict(status='resource_limited',reason='memory allowance'))
+    atomic_json(tmp_path/'sfdp_results.json',dict(runs=prior))
+    atomic_json(tmp_path/'sfdp_other_results.json',dict(runs=current,limits=runner.LIMITS,serial=True))
+    report.build(tmp_path,'sfdp_other_results.json')
+    content=(tmp_path/'SFDP_FINDINGS.md').read_text()
+    assert '0 completed, 4 unsuccessful of 4 requests' in content
+    assert 'not crash locations or causes' in content
+    assert 'does not establish a common cause' in content
+    assert '17 cohort attempts' not in content and 'aborted in multilevel' not in content
+    assert '15.1.1' not in content and '16.1.0' not in content

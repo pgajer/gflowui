@@ -85,7 +85,9 @@ the other methods, with 30 GiB memory allowance and no elapsed-time cutoff.
 Backend success does not establish convergence.
 
 The settings identify the Graphviz version. The first batch with Graphviz 15.1.1
-encountered a coarsening crash on 17 of 18 attempts; those outcomes are retained.
+encountered backend crashes on 17 of 18 attempts; those outcomes are retained.
+Seven emitted coarsening assertions; the other ten provided no diagnostic crash
+location. A common cause is not established by these logs.
 The separately identified Graphviz 16.1.0 batch uses the release containing the
 upstream SFDP crash fix. Do not pool the two backend versions as identical runs.
 
