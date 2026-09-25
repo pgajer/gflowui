@@ -47,7 +47,8 @@ def build(root, index_name='sfdp_results.json'):
         lines += ['', 'Earlier backend attempts (not replaced):',
             f"- sfdp_results.json: {sum(r['status']=='completed' for r in old)} completed, "+
             f"{sum(r['status']!='completed' for r in old)} unsuccessful of {len(old)} requests. "+
-            'Their requests, failures, logs, and any completed layout remain available in the viewer and bundle.',
+            'Their outcomes, request manifests, and any completed layout remain available in the viewer and bundle. '+
+            'Original process logs and raw Graphviz files remain in the external run directories.',
             '- Graphviz 15.1.1 aborted in multilevel coarsening on 17 cohort attempts. '+
             'Graphviz 16.1.0 documents an SFDP crash fix; the new index is a separately identified '+
             'full-cohort run, not a silent replacement of those failures.']
