@@ -8,6 +8,9 @@ gflowui_ec_sidebar_ui <- function(id) {
     shiny::sliderInput(ns("vertex_size"), "Vertex size", min=1, max=8, value=3, step=.5),
     shiny::selectInput(ns("vertex_color"), "Vertex color", choices=c(Blue="#3575B2",Orange="#C7782A",Charcoal="#39434A",Gold="#B79A20")),
     shiny::checkboxInput(ns("edges"), "Show graph edges", TRUE),
+    shiny::selectInput(ns("edge_coloring"), "Edge colors", choices=c(
+      "Uniform gray"="uniform", "Drawn length: short warm, long cool"="length")),
+    shiny::p(class="gf-hint", "Length colors use the current embedding's Euclidean edge lengths, not graph distances. The color scale resets for each layout."),
     shiny::checkboxInput(ns("labels"), "Label selected vertices", TRUE),
     shiny::actionButton(ns("clear_vertices"), "Clear vertex selection", class="btn-light"),
     shiny::p(class="gf-hint", "Click vertices to select them. Selection and color stay fixed when changing embeddings of the same graph."),
@@ -211,8 +214,9 @@ gflowui_ec_server <- function(id,manifest) {
       if(is.null(input$edges) || isTRUE(input$edges)) {
         e <- g$edge_matrix
         edge_coord <- function(j)as.vector(rbind(z[e[,1],j],z[e[,2],j],NA_real_))
+        line <- gflowui_ec_edge_style(z,e,input$edge_coloring)
         p <- plotly::add_trace(p,x=edge_coord(1),y=edge_coord(2),z=edge_coord(3),type="scatter3d",mode="lines",
-          line=list(color="#AAB1B8",width=1),hoverinfo="skip",showlegend=FALSE)
+          line=line,hoverinfo="skip",showlegend=FALSE)
       }
       p <- plotly::add_trace(p,x=z[,1],y=z[,2],z=z[,3],type="scatter3d",mode="markers",
         marker=list(size=size,color=ifelse(g$ids %in% selected,"#C7782A",color)),
@@ -225,7 +229,9 @@ gflowui_ec_server <- function(id,manifest) {
       scene <- list(xaxis=axis,yaxis=axis,zaxis=axis,aspectmode="data",uirevision=graph_id())
       held_camera <- shiny::isolate(camera())
       if(is.list(held_camera) && identical(shiny::isolate(camera_graph()),graph_id()))scene$camera <- held_camera
-      p <- plotly::layout(p,scene=scene,uirevision=graph_id(),margin=list(l=0,r=0,b=0,t=0))
+      colorbar <- identical(input$edge_coloring,"length") &&
+        (is.null(input$edges) || isTRUE(input$edges)) && nrow(g$edge_matrix)>0L
+      p <- plotly::layout(p,scene=scene,uirevision=graph_id(),margin=list(l=0,r=if(colorbar)110 else 0,b=0,t=0))
       gflowui_ec_plot_events(p,session$ns("vertex_click"),session$ns("camera"))
     })
     metric_key <- gflowui_ec_quality_outputs(input,output,session,index,cohort,current,run_id,active_label,graph_id)
@@ -233,6 +239,8 @@ gflowui_ec_server <- function(id,manifest) {
       settings <- list(graph_id=graph_id(),run_id=run_id(),metric=metric_key(),trade_x=input$trade_x,trade_y=input$trade_y,
         neighborhood=input$neighborhood,vertex_color=input$vertex_color,vertex_size=input$vertex_size,
         edges=is.null(input$edges) || isTRUE(input$edges),
+        edge_coloring=gflowui_ec_text(input$edge_coloring,"uniform"),
+        edge_color_scale="current layout Euclidean edge lengths; short orange, long blue; no coordinate or metric changes",
         labels=is.null(input$labels) || isTRUE(input$labels),
         lgs_fixture=gflowui_ec_text(input$lgs_fixture,"validation_path48"),
         lgs_metric=gflowui_ec_text(input$lgs_metric,"chord_error"),

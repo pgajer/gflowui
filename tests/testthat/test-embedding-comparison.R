@@ -43,6 +43,48 @@ ec_fixture <- function() {
   root
 }
 
+test_that("edge length colors use exact segment lengths without changing geometry",{
+  z<-rbind(c(0,0,0),c(1,0,0),c(1,2,0))
+  e<-rbind(c(1,2),c(2,3))
+  uniform<-gflowui_ec_edge_style(z,e)
+  expect_identical(uniform$color,"#AAB1B8")
+  style<-gflowui_ec_edge_style(z,e,"length")
+  expect_equal(style$color,c(1,1,1,2,2,2))
+  expect_equal(c(style$cmin,style$cmax),c(1,2))
+  expect_true(style$showscale)
+  expect_identical(style$colorscale[[1]][[2]],"#C7782A")
+  expect_identical(style$colorscale[[2]][[2]],"#3575B2")
+  single<-gflowui_ec_edge_style(z,e[1,,drop=FALSE],"length")
+  expect_true(single$cmin<1 && single$cmax>1)
+  expect_identical(gflowui_ec_edge_style(z,matrix(integer(),0,2),"length"),uniform)
+  expect_identical(unname(gflowui_ec_methods()["sfdp"]),"SFDP — Yifan Hu")
+})
+
+test_that("length color changes preserve camera, selection and Inspector data",{
+  root<-ec_fixture();on.exit(unlink(root,recursive=TRUE))
+  manifest<-shiny::reactiveVal(list(metadata=list(embedding_comparison=list(schema_version=1L,data_root=root))))
+  shiny::testServer(gflowui_ec_server,args=list(manifest=manifest),{
+    session$flushReact();session$setInputs(graph="A",run="A1")
+    session$setInputs(vertex_click=list(id="v2",nonce=1),camera=list(eye=list(x=2,y=3,z=4),center=list(x=0,y=0,z=0),up=list(x=0,y=0,z=1)))
+    first<-output$graph_plot;table<-output$quality_table;overview<-output$overview
+    before<-as.list(counts)
+    session$setInputs(edge_coloring="length")
+    colored<-output$graph_plot
+    plot<-jsonlite::fromJSON(colored,simplifyVector=FALSE)
+    line<-Filter(function(t)identical(t$mode,"lines"),plot$x$data)[[1]]
+    expect_true(line$line$showscale)
+    expect_length(unlist(line$line$color),6L)
+    expect_identical(output$quality_table,table);expect_identical(output$overview,overview)
+    expect_equal(counts$index,before$index);expect_equal(counts$layout,before$layout)
+    expect_identical(selected_vertices(),"v2")
+    expect_equal(plot$x$layout$scene$camera$eye,list(x=2,y=3,z=4))
+    after<-as.list(counts)
+    session$setInputs(camera=list(eye=list(x=3,y=4,z=5),center=list(x=0,y=0,z=0),up=list(x=0,y=0,z=1)))
+    expect_identical(as.list(counts),after)
+    expect_identical(output$graph_plot,colored)
+  })
+})
+
 test_that("higher-budget attempts are distinct without relabeling historical runs",{
   root<-ec_fixture();on.exit(unlink(root,recursive=TRUE))
   path<-file.path(root,"viewer_manifest.json");doc<-gflowui_ec_json(path)
@@ -204,10 +246,12 @@ test_that("bundle figure settings record disabled edges and selected-vertex labe
     session$setInputs(edges=FALSE,labels=FALSE,export_dir=root)
     session$setInputs(save_bundle=1L)
     expect_false(saved$edges);expect_false(saved$labels)
+    expect_identical(saved$edge_coloring,"uniform")
     expect_identical(saved$graph_id,"A");expect_identical(saved$run_id,"A1")
-    session$setInputs(edges=TRUE,labels=TRUE)
+    session$setInputs(edges=TRUE,labels=TRUE,edge_coloring="length")
     session$setInputs(save_bundle=2L)
     expect_true(saved$edges);expect_true(saved$labels)
+    expect_identical(saved$edge_coloring,"length")
   })
 })
 test_that("seed ranges separate settings and retain failures without invented scores", {

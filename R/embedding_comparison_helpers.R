@@ -33,7 +33,7 @@ gflowui_ec_methods <- function() c(
   umap = "UMAP", lle = "LLE", pacmap = "PaCMAP", localmap = "LocalMAP",
   trimap = "TriMAP (landmark features)", trimap_graph = "TriMAP (graph distances)",
   phate = "PHATE", largevis = "LargeVis", ncvis = "NCVis", lgs = "LGS",
-  lgs_paper = "LGS (experimental paper-form)"
+  lgs_paper = "LGS (experimental paper-form)", sfdp = "SFDP — Yifan Hu"
 )
 
 gflowui_ec_metrics <- function() c(
@@ -107,6 +107,7 @@ gflowui_ec_load_index <- function(root) {
       settings <- sprintf("%s landmarks; fixed backend settings", gflowui_ec_text(run$parameters,"unknown"))
     }
     if (identical(run$method,"trimap_graph")) settings <- "graph distances; 400 iterations"
+    if (identical(run$method,"sfdp")) settings <- "native 3D; K=1; no overlap removal"
     if (identical(run$method,"lgs_paper")) {
       k <- unlist(run$locality$component_k,use.names=FALSE)
       fractions <- vapply(run$locality$component_fraction,gflowui_ec_number,0.)

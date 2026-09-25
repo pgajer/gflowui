@@ -107,7 +107,7 @@ def build(root,index_names,cohort_file='cohort.json'):
                  'phase03_trimap_scale_diagnosis.json','PHASE04_FINDINGS.md','phase04_lgs_summary.json',
                  'lgs_validation/phase04_validation_results.json',cohort_file,'phase05_admission.json',
                  'phase05_sampling_validation.json','phase05_summary.json','PHASE05_FINDINGS.md',
-                 'MDS_30GIB_FINDINGS.md']:
+                 'MDS_30GIB_FINDINGS.md','SFDP_FINDINGS.md']:
         if (root/name).exists(): extras[name]=asset(root/name)
     for path in sorted((root/'lgs_dependency_documents').glob('*')):
         if path.is_file(): extras[str(path.relative_to(root))]=asset(path)

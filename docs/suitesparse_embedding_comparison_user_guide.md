@@ -76,3 +76,22 @@ Source design: [project specification](suitesparse_embedding_project_design_2026
 Reproducible processing scripts are under `dev/suitesparse_phase1`,
 `dev/suitesparse_phase3`, `dev/suitesparse_phase4`, `dev/suitesparse_phase5`, and
 `dev/suitesparse_project`. Large data and results are stored outside the package.
+# SFDP (Yifan Hu)
+
+SFDP adds the SuiteSparse gallery's multilevel force-directed method in native
+3D. Select **SFDP — Yifan Hu** in the embedding selector. Three recorded seeds
+are provided for each of the six graphs, using the same evaluation rules as
+the other methods, with 30 GiB memory allowance and no elapsed-time cutoff.
+Backend success does not establish convergence.
+
+All components remain present (unlike the gallery's largest-component-only
+drawings); the existing tiny-component placements are labeled separately.
+SFDP coordinates are in native Graphviz layout inches, without fitted rescaling.
+The spring parameter K=1 does not force unit-length edges. Thus identity-scale
+edge/path errors should be read alongside the separately fitted-scale measures.
+
+**Edge colors** defaults to uniform gray. Its optional drawn-length mode colors
+short edges orange and long edges blue, using the active layout's own range and
+a numeric legend. These are Euclidean lengths in that layout, not graph-distance
+values. Changing colors does not recompute an embedding or its scores. Colors
+cannot be compared directly between layouts because their ranges differ.
