@@ -84,6 +84,11 @@ are provided for each of the six graphs, using the same evaluation rules as
 the other methods, with 30 GiB memory allowance and no elapsed-time cutoff.
 Backend success does not establish convergence.
 
+The settings identify the Graphviz version. The first batch with Graphviz 15.1.1
+encountered a coarsening crash on 17 of 18 attempts; those outcomes are retained.
+The separately identified Graphviz 16.1.0 batch uses the release containing the
+upstream SFDP crash fix. Do not pool the two backend versions as identical runs.
+
 All components remain present (unlike the gallery's largest-component-only
 drawings); the existing tiny-component placements are labeled separately.
 SFDP coordinates are in native Graphviz layout inches, without fitted rescaling.

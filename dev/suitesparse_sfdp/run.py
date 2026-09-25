@@ -2,6 +2,7 @@
 import argparse
 from contextlib import contextmanager
 import fcntl
+import re
 from pathlib import Path
 import subprocess
 import sys
@@ -47,15 +48,17 @@ def capture_environment():
     return env
 
 
-def run(root, graphs=GRAPHS):
+def run(root, graphs=GRAPHS, index_name=INDEX):
     root = Path(root).resolve()
+    if not re.fullmatch(r'sfdp(?:_[a-z0-9]+)*_results\.json', index_name):
+        raise ValueError('index must be a plain SFDP result filename')
     if not graphs or len(set(graphs)) != len(graphs) or any(g not in GRAPHS for g in graphs):
         raise ValueError('select distinct graphs from the six-graph cohort')
     with serial_lock(root):
         if subprocess.check_output(['git', 'status', '--porcelain'], cwd=HERE, text=True).strip():
             raise RuntimeError('commit source before experiment')
         commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=HERE, text=True).strip()
-        index = root/INDEX
+        index = root/index_name
         rows = read_json(index)['runs'] if index.exists() else []
         if any(r['graph_id'] in graphs for r in rows):
             raise ValueError('requested graph already recorded; preserve existing attempts')
@@ -123,5 +126,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('root')
     parser.add_argument('--graphs', nargs='+', choices=GRAPHS, default=GRAPHS)
+    parser.add_argument('--index', default=INDEX,
+                        help='separate append-only index for a separately identified backend attempt')
     args = parser.parse_args()
-    run(args.root, args.graphs)
+    run(args.root, args.graphs, args.index)

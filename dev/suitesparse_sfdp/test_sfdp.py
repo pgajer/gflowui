@@ -69,6 +69,17 @@ def test_worker_keeps_forest_ids_and_isolates(tmp_path):
         np.testing.assert_allclose(delta,np.tile(delta[0],(5,1)),atol=1e-14)
 
 
+def test_sparse_multilevel_coarsening_regression(tmp_path):
+    # Graphviz 15.1.1 crashes here although its small complete-graph tests pass.
+    # This deterministic sparse graph exercises the multilevel coarsener.
+    n=256
+    a=np.zeros((n,n));a[np.arange(n),np.roll(np.arange(n),1)]=1
+    i,j=np.random.default_rng(281).integers(n,size=(2,n*2));a[i,j]=1
+    a=np.maximum(a,a.T);np.fill_diagonal(a,0)
+    z,detail=embed('sfdp',csr_matrix(a),list(range(n)),None,None,17,tmp_path)
+    assert z.shape==(n,3) and np.isfinite(z).all() and detail['centered_rank']==3
+
+
 @pytest.mark.parametrize('fail_seed',[None,29])
 def test_serial_runner_preserves_history_and_records_failures(tmp_path,monkeypatch,fail_seed):
     monkeypatch.setattr(runner.subprocess,'check_output',lambda args,**kw:'' if 'status' in args else 'commit')
@@ -100,6 +111,12 @@ def test_serial_runner_preserves_history_and_records_failures(tmp_path,monkeypat
         with pytest.raises(RuntimeError):
             with runner.serial_lock(tmp_path):pass
     with runner.serial_lock(tmp_path):pass
+    snapshot=sha256(tmp_path/'sfdp_results.json')
+    runner.run(tmp_path,graphs=[runner.GRAPHS[0]],index_name='sfdp_graphviz16_results.json')
+    assert sha256(tmp_path/'sfdp_results.json')==snapshot
+    assert len(read_json(tmp_path/'sfdp_graphviz16_results.json')['runs'])==3
+    with pytest.raises(ValueError,match='plain SFDP'):
+        runner.run(tmp_path,index_name='../sfdp_results.json')
 
 
 def test_report_preserves_failed_cases_and_rejects_incomplete_matrix(tmp_path):

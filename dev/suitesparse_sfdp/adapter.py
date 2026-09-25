@@ -18,9 +18,10 @@ def executable():
 def parse_positions(document, n):
     objects = document.get('objects', [])
     by_id = {}
+    expected_ids = {str(i) for i in range(n)}
     for obj in objects:
         name = obj.get('name')
-        if name not in {str(i) for i in range(n)} or name in by_id:
+        if name not in expected_ids or name in by_id:
             raise ValueError('unexpected or duplicate SFDP vertex')
         try:
             xyz = [float(x) for x in obj['pos'].split(',')]

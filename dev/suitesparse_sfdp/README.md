@@ -7,8 +7,12 @@ multilevel force-directed algorithm. `dim=3` and `dimen=3` request three layout
 coordinates; ordinary Graphviz rendering/overlap machinery is primarily 2D.
 We consume node `pos` coordinates, not its drawn edge paths.
 
-Install Graphviz through a trusted package manager (`brew install graphviz` on
-this host). `GFLOWUI_SFDP` can select an explicit binary. The adapter explicitly
+Use Graphviz 16.1.0 (or a separately validated version). Graphviz 15.1.1 has a
+documented SFDP coarsening regression and failed 17 of the first 18 cohort jobs.
+Small complete-graph tests did not expose it; the sparse multilevel regression
+test does. A verified official 16.1.0 source release can be built in a private
+prefix without replacing the system installation. `GFLOWUI_SFDP` selects an
+explicit binary. The adapter explicitly
 passes `-Ksfdp` even when a symlink resolves to `dot`.
 
 From the source checkout, using the project's isolated Python environment:
@@ -25,6 +29,10 @@ the lock prevents competing copies of this runner, not unrelated jobs. Repeated
 graphs are rejected; interrupted directories and prior method results are retained.
 `sfdp_results.json` is a separate append-only result index; include it in the
 existing viewer exporter alongside **all** historical indexes.
+For the corrected backend, use `--index sfdp_graphviz16_results.json` and pass
+that filename as the second argument of `report.py`. Include both SFDP indexes
+in the viewer. Backend versions appear in the settings, separating old failures
+and successes from the new cohort; the original requests are never rewritten.
 
 Frozen backend settings: K=1, overlap=true (disable overlap-removal postprocessing),
 smoothing=none, normalize=false; other backend defaults are version-identified.

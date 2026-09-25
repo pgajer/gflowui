@@ -61,6 +61,9 @@ def build(root,index_names,cohort_file='cohort.json'):
                            reason=manifest.get('reason') or row.get('reason'))
                 if manifest['request'].get('attempt_label'):
                     row['attempt_label']=manifest['request']['attempt_label']
+                if row['method']=='sfdp':
+                    backend=manifest['request'].get('environment',{}).get('graphviz',{}).get('version','Graphviz version unavailable')
+                    row['attempt_label']='; '.join(filter(None,[backend,row.get('attempt_label')]))
                 if row['status']=='completed':
                     if not verified_cached(dest,key): raise ValueError('invalid completed run '+str(dest))
                     result=read_json(dest/'result.json')
