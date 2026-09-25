@@ -129,7 +129,13 @@ gflowui_ec_server <- function(id,manifest) {
     })
     graph <- shiny::reactive({counts$graph <- counts$graph+1L;gflowui_ec_graph(index(),graph_id())})
     cohort <- shiny::reactive({tbl <- index()$table;tbl[tbl$graph_id==graph_id(),,drop=FALSE]})
-    run_label <- function(row) if(!nrow(row))character() else paste(row$method,row$settings,paste0("seed ",row$seed),sep=" | ")
+    run_label <- function(row) {
+      if(!nrow(row))return(character())
+      # Execution budgets remain in the Inspector/export records, but are not
+      # part of the layout name. Keep method parameters and software versions.
+      settings <- gsub("; 30 GiB; no time limit; serial","",row$settings,fixed=TRUE)
+      paste(row$method,settings,paste0("seed ",row$seed),sep=" | ")
+    }
     shiny::observeEvent(cohort(),{
       tbl <- cohort();available <- tbl[tbl$status=="completed",,drop=FALSE];previous <- shiny::isolate(input$run)
       if(is.null(previous) || !previous %in% available$id)previous <- if(nrow(available)) available$id[[1L]] else ""
