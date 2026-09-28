@@ -3,8 +3,8 @@ gflowui_ec_sidebar_ui <- function(id) {
   shiny::tagList(
     shiny::h4("Embedding comparison"),
     shiny::selectInput(ns("graph"), "Graph", choices = character()),
-    shiny::selectInput(ns("run"), "3D embedding / replicate", choices = character()),
-    shiny::p(class = "gf-hint", "Only completed, validated layouts are selectable. All attempts appear in the Inspector."),
+    shiny::selectInput(ns("run"), "3D embedding", choices = character()),
+    shiny::p(class = "gf-hint", "One saved example per layout configuration, preferring seed 17. All replicates and attempts remain available in the Inspector."),
     shiny::sliderInput(ns("vertex_size"), "Vertex size", min=1, max=8, value=3, step=.5),
     shiny::selectInput(ns("vertex_color"), "Vertex color", choices=c(Blue="#3575B2",Orange="#C7782A",Charcoal="#39434A",Gold="#B79A20")),
     shiny::checkboxInput(ns("edges"), "Show graph edges", TRUE),
@@ -129,7 +129,7 @@ gflowui_ec_server <- function(id,manifest) {
     })
     graph <- shiny::reactive({counts$graph <- counts$graph+1L;gflowui_ec_graph(index(),graph_id())})
     cohort <- shiny::reactive({tbl <- index()$table;tbl[tbl$graph_id==graph_id(),,drop=FALSE]})
-    run_label <- function(row) {
+    run_label <- function(row,include_seed=TRUE) {
       if(!nrow(row))return(character())
       # Execution budgets remain in the Inspector/export records, but are not
       # part of the layout name. Keep method parameters and software versions.
@@ -139,18 +139,33 @@ gflowui_ec_server <- function(id,manifest) {
         paste(parts[nzchar(parts) & !parts %in% c("fixed pilot settings","fixed backend settings")],collapse="; ")
       },"")
       vapply(seq_len(nrow(row)),function(i) {
-        parts <- c(row$method[i],settings[i],paste0("seed ",row$seed[i]))
+        parts <- c(row$method[i],settings[i],if(include_seed)paste0("seed ",row$seed[i]))
         paste(parts[nzchar(parts)],collapse=" | ")
       },"")
     }
+    dropdown_runs <- function(tbl,selected=NULL) {
+      available <- tbl[tbl$status=="completed",,drop=FALSE]
+      labels <- run_label(available,include_seed=FALSE)
+      picks <- vapply(unique(labels),function(label) {
+        group <- which(labels==label)
+        # Loading an exact replicate from the Inspector replaces its group's
+        # example; it must not create a second menu entry or change the run.
+        chosen <- group[available$id[group] %in% selected]
+        if(length(chosen))return(chosen[[1L]])
+        preferred <- group[which(available$seed[group]==17)]
+        if(length(preferred))return(preferred[[1L]])
+        group[order(available$seed[group],na.last=TRUE)][[1L]]
+      },1L,USE.NAMES=FALSE)
+      available[picks,,drop=FALSE]
+    }
     shiny::observeEvent(cohort(),{
-      tbl <- cohort();available <- tbl[tbl$status=="completed",,drop=FALSE];previous <- shiny::isolate(input$run)
+      tbl <- cohort();previous <- shiny::isolate(input$run);available <- dropdown_runs(tbl,previous)
       if(is.null(previous) || !previous %in% available$id)previous <- if(nrow(available)) available$id[[1L]] else ""
-      shiny::updateSelectInput(session,"run",choices=stats::setNames(available$id,run_label(available)),selected=previous)
+      shiny::updateSelectInput(session,"run",choices=stats::setNames(available$id,run_label(available,include_seed=FALSE)),selected=previous)
     })
     run_id <- shiny::reactive({
       tbl <- cohort();available <- tbl$id[tbl$status=="completed"];if(!length(available))return("")
-      if(!is.null(input$run) && input$run %in% available)input$run else available[[1L]]
+      if(!is.null(input$run) && input$run %in% available)input$run else dropdown_runs(tbl)$id[[1L]]
     })
     current <- shiny::reactive({counts$layout <- counts$layout+1L;gflowui_ec_load_run(index(),graph(),run_id())})
     active_label <- shiny::reactive({tbl <- cohort();if(!nzchar(run_id()))"No completed layout" else run_label(tbl[tbl$id==run_id(),,drop=FALSE])})
@@ -175,7 +190,10 @@ gflowui_ec_server <- function(id,manifest) {
     shiny::observeEvent(input$clear_vertices,selected_vertices(character()),ignoreInit=TRUE)
     shiny::observeEvent(input$choose_run,{
       candidate <- gflowui_ec_text(input$choose_run$id);tbl <- cohort()
-      if(candidate %in% tbl$id[tbl$status=="completed"])shiny::updateSelectInput(session,"run",selected=candidate)
+      if(candidate %in% tbl$id[tbl$status=="completed"]) {
+        available <- dropdown_runs(tbl,candidate)
+        shiny::updateSelectInput(session,"run",choices=stats::setNames(available$id,run_label(available,include_seed=FALSE)),selected=candidate)
+      }
     },ignoreInit=TRUE)
     output$title <- shiny::renderText(paste(graph_id(),active_label(),sep=" — "))
     output$view_status <- shiny::renderText({

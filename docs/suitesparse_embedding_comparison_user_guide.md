@@ -6,11 +6,15 @@ or changing plot controls does not run an embedding algorithm or recompute score
 
 ## Explore a graph
 
-Choose a graph and then an embedding/replicate in the left sidebar. Only completed
-layouts can be selected. The Overview describes its original matrix, conversion,
+Choose a graph and then a **3D embedding** in the left sidebar. The menu shows one
+completed example per layout configuration, without seed labels: seed 17 when
+available, otherwise the lowest available seed. Parameter configurations and
+software versions remain distinct. The Overview describes its original matrix, conversion,
 unit-edge graph, connected components, isolated vertices, and source links.
 The quality table also lists unsuccessful or excluded methods with their reasons.
-Click **Load** or a comparison point to display that exact replicate. Gray dashed
+All replicates remain in the Inspector and exports. Click **Load** or a comparison
+point to display that exact replicate; it replaces its configuration's example in
+the menu without adding another entry. The graph title retains its seed. Gray dashed
 guides identify its score; vertex selections persist between layouts of one graph.
 
 Disconnected components are embedded separately and positioned along the x-axis

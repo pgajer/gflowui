@@ -153,6 +153,45 @@ test_that("higher-budget attempts are distinct without relabeling historical run
   })
 })
 
+test_that("layout menu chooses one completed seed per configuration without dropping Inspector runs",{
+  root<-ec_fixture();on.exit(unlink(root,recursive=TRUE))
+  manifest<-shiny::reactiveVal(list(metadata=list(embedding_comparison=list(schema_version=1L,data_root=root))))
+  shiny::testServer(gflowui_ec_server,args=list(manifest=manifest),{
+    session$setInputs(graph="A",run="A1")
+    tbl<-cohort()
+    expect_identical(dropdown_runs(tbl)$id,"A1")
+    expect_identical(run_label(dropdown_runs(tbl),include_seed=FALSE),"Metric MDS")
+    expect_equal(nrow(cohort()),3L)
+    expect_match(output$quality_table$html,"A2",fixed=TRUE)
+    rows<-tbl[rep(1L,7),,drop=FALSE]
+    rows$id<-paste0("example",seq_len(7));rows$seed<-c(43,17,29,29,17,43,17)
+    rows$settings<-c(rep("64 landmarks; fixed backend settings",3),
+      "128 landmarks; fixed backend settings","128 landmarks; fixed backend settings",
+      "dot - graphviz version 15","dot - graphviz version 16")
+    rows$status[5]<-"failed"
+    expect_identical(dropdown_runs(rows)$id,c("example2","example4","example6","example7"))
+    expect_identical(dropdown_runs(rows,"example3")$id,c("example3","example4","example6","example7"))
+    expect_equal(nrow(dropdown_runs(rows[FALSE,])),0L)
+    expect_equal(nrow(dropdown_runs(tbl[tbl$status!="completed",])),0L)
+    messages<-list()
+    original_update<-shiny::updateSelectInput
+    testthat::local_mocked_bindings(updateSelectInput=function(session,inputId,...) {
+      messages[[inputId]]<<-list(...)
+      original_update(session,inputId,...)
+    },.package="shiny")
+    session$setInputs(choose_run=list(id="A2",nonce=1))
+    expect_identical(messages$run$selected,"A2")
+    expect_identical(unname(messages$run$choices),"A2")
+    expect_identical(names(messages$run$choices),"Metric MDS")
+    session$setInputs(run="A2") # browser echoes the updated selection
+    expect_identical(run_id(),"A2")
+    expect_identical(current()$run$id,"A2")
+    session$setInputs(graph="B")
+    expect_identical(run_id(),"B1")
+    expect_identical(unname(messages$run$choices),"B1")
+  })
+})
+
 test_that("sampled evaluation and vector exports preserve intervals and selected graph",{
   root<-ec_fixture();on.exit(unlink(root,recursive=TRUE))
   path<-file.path(root,"A1-result.json");r<-gflowui_ec_json(path)
