@@ -251,3 +251,19 @@ gflowui_ec_export <- function(index, settings, output_dir) {
   zip::zipr(zipfile,files=c(paths,"bundle_checksums.json"),root=stage,include_directories=FALSE,mode="mirror")
   normalizePath(zipfile,mustWork=TRUE)
 }
+
+# Keep the method/configuration when graph-specific run IDs change.
+gflowui_ec_choose_run <- function(available, all_runs, previous=NULL) {
+  if (!nrow(available)) return("")
+  if (length(previous) && previous %in% available$id) return(previous)
+  prior <- all_runs[all_runs$id %in% previous,,drop=FALSE]
+  if (nrow(prior)) {
+    same <- which(available$method == prior$method[[1L]])
+    exact <- same[available$settings[same] == prior$settings[[1L]]]
+    if (length(exact)) return(available$id[exact[[1L]]])
+    if (length(same)) return(available$id[same[[1L]]])
+  }
+  preferred <- which(grepl("SGD",available$method,ignore.case=TRUE))
+  if (!length(preferred)) preferred <- which(available$method == "Metric MDS")
+  available$id[if(length(preferred)) preferred[[1L]] else 1L]
+}

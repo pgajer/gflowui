@@ -3,6 +3,9 @@ gflowui_ec_sidebar_ui <- function(id) {
   shiny::tagList(
     shiny::h4("Embedding comparison"),
     shiny::selectInput(ns("graph"), "Graph", choices = character()),
+    shiny::div(class="btn-group", role="group", `aria-label`="Graph navigation",
+      shiny::actionButton(ns("previous_graph"), "Previous"),
+      shiny::actionButton(ns("next_graph"), "Next")),
     shiny::selectInput(ns("run"), "3D embedding", choices = character()),
     shiny::p(class = "gf-hint", "One saved example per layout configuration, preferring seed 17. All replicates and attempts remain available in the Inspector."),
     shiny::sliderInput(ns("vertex_size"), "Vertex size", min=1, max=8, value=3, step=.5),
@@ -127,6 +130,14 @@ gflowui_ec_server <- function(id,manifest) {
       ids <- names(index()$graphs)
       if(!is.null(input$graph) && input$graph %in% ids) input$graph else ids[[1L]]
     })
+    step_graph <- function(delta) {
+      ids <- names(index()$graphs)
+      position <- match(graph_id(),ids)
+      target <- ids[((position-1L+delta) %% length(ids))+1L]
+      shiny::updateSelectInput(session,"graph",selected=target)
+    }
+    shiny::observeEvent(input$previous_graph,step_graph(-1L),ignoreInit=TRUE)
+    shiny::observeEvent(input$next_graph,step_graph(1L),ignoreInit=TRUE)
     graph <- shiny::reactive({counts$graph <- counts$graph+1L;gflowui_ec_graph(index(),graph_id())})
     cohort <- shiny::reactive({tbl <- index()$table;tbl[tbl$graph_id==graph_id(),,drop=FALSE]})
     run_label <- function(row,include_seed=TRUE) {
@@ -160,12 +171,12 @@ gflowui_ec_server <- function(id,manifest) {
     }
     shiny::observeEvent(cohort(),{
       tbl <- cohort();previous <- shiny::isolate(input$run);available <- dropdown_runs(tbl,previous)
-      if(is.null(previous) || !previous %in% available$id)previous <- if(nrow(available)) available$id[[1L]] else ""
+      previous <- gflowui_ec_choose_run(available,index()$table,previous)
       shiny::updateSelectInput(session,"run",choices=stats::setNames(available$id,run_label(available,include_seed=FALSE)),selected=previous)
     })
     run_id <- shiny::reactive({
       tbl <- cohort();available <- tbl$id[tbl$status=="completed"];if(!length(available))return("")
-      if(!is.null(input$run) && input$run %in% available)input$run else dropdown_runs(tbl)$id[[1L]]
+      if(!is.null(input$run) && input$run %in% available)input$run else gflowui_ec_choose_run(dropdown_runs(tbl),index()$table,input$run)
     })
     current <- shiny::reactive({counts$layout <- counts$layout+1L;gflowui_ec_load_run(index(),graph(),run_id())})
     active_label <- shiny::reactive({tbl <- cohort();if(!nzchar(run_id()))"No completed layout" else run_label(tbl[tbl$id==run_id(),,drop=FALSE])})
