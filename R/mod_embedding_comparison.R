@@ -7,6 +7,7 @@ gflowui_ec_sidebar_ui <- function(id) {
       shiny::actionButton(ns("previous_graph"), "Previous"),
       shiny::actionButton(ns("next_graph"), "Next")),
     shiny::selectInput(ns("run"), "3D embedding", choices = character()),
+    shiny::p(class="gf-hint", shiny::textOutput(ns("selected_configuration"))),
     shiny::p(class = "gf-hint", "One saved example per layout configuration, preferring seed 17. All replicates and attempts remain available in the Inspector."),
     shiny::sliderInput(ns("vertex_size"), "Vertex size", min=1, max=8, value=3, step=.5),
     shiny::selectInput(ns("vertex_color"), "Vertex color", choices=c(Blue="#3575B2",Orange="#C7782A",Charcoal="#39434A",Gold="#B79A20")),
@@ -154,6 +155,11 @@ gflowui_ec_server <- function(id,manifest) {
         paste(parts[nzchar(parts)],collapse=" | ")
       },"")
     }
+    menu_labels <- function(rows) {
+      labels <- run_label(rows,include_seed=FALSE)
+      labels[rows$method == "Metric MDS — SGD (README candidates)"] <- "metric-MDS (SGD)"
+      labels
+    }
     dropdown_runs <- function(tbl,selected=NULL) {
       available <- tbl[tbl$status=="completed",,drop=FALSE]
       labels <- run_label(available,include_seed=FALSE)
@@ -172,11 +178,16 @@ gflowui_ec_server <- function(id,manifest) {
     shiny::observeEvent(cohort(),{
       tbl <- cohort();previous <- shiny::isolate(input$run);available <- dropdown_runs(tbl,previous)
       previous <- gflowui_ec_choose_run(available,index()$table,previous)
-      shiny::updateSelectInput(session,"run",choices=stats::setNames(available$id,run_label(available,include_seed=FALSE)),selected=previous)
+      shiny::updateSelectInput(session,"run",choices=stats::setNames(available$id,menu_labels(available)),selected=previous)
     })
     run_id <- shiny::reactive({
       tbl <- cohort();available <- tbl$id[tbl$status=="completed"];if(!length(available))return("")
       if(!is.null(input$run) && input$run %in% available)input$run else gflowui_ec_choose_run(dropdown_runs(tbl),index()$table,input$run)
+    })
+    output$selected_configuration <- shiny::renderText({
+      rows <- cohort(); row <- rows[rows$id==run_id(),,drop=FALSE]
+      if (!nrow(row)) return("No completed layout available.")
+      paste0("Configuration: ",row$settings[[1L]],"; seed ",row$seed[[1L]],".")
     })
     current <- shiny::reactive({counts$layout <- counts$layout+1L;gflowui_ec_load_run(index(),graph(),run_id())})
     active_label <- shiny::reactive({tbl <- cohort();if(!nzchar(run_id()))"No completed layout" else run_label(tbl[tbl$id==run_id(),,drop=FALSE])})
@@ -203,7 +214,7 @@ gflowui_ec_server <- function(id,manifest) {
       candidate <- gflowui_ec_text(input$choose_run$id);tbl <- cohort()
       if(candidate %in% tbl$id[tbl$status=="completed"]) {
         available <- dropdown_runs(tbl,candidate)
-        shiny::updateSelectInput(session,"run",choices=stats::setNames(available$id,run_label(available,include_seed=FALSE)),selected=candidate)
+        shiny::updateSelectInput(session,"run",choices=stats::setNames(available$id,menu_labels(available)),selected=candidate)
       }
     },ignoreInit=TRUE)
     output$title <- shiny::renderText(paste(graph_id(),active_label(),sep=" — "))
