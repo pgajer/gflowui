@@ -28,3 +28,12 @@ gflowui_ec_save_favorites <- function(root, ids, graph_ids) {
   if(!file.rename(temp, file)) stop("Could not save favorites.")
   invisible(file)
 }
+
+gflowui_ec_export_favorites <- function(root, graph_ids, directory=path.expand("~/Downloads")) {
+  directory <- normalizePath(directory, mustWork=TRUE)
+  file <- tempfile(paste0("suitesparse-favorites-", format(Sys.time(), "%Y-%m-%d_%H%M%S"), "-"),
+    tmpdir=directory, fileext=".json")
+  jsonlite::write_json(gflowui_ec_favorites_record(gflowui_ec_read_favorites(root), graph_ids),
+    file, pretty=TRUE, auto_unbox=TRUE)
+  normalizePath(file, mustWork=TRUE)
+}

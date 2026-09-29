@@ -8,7 +8,8 @@ gflowui_ec_sidebar_ui <- function(id) {
       shiny::actionButton(ns("next_graph"), "Next")),
     shiny::actionButton(ns("toggle_favorite"), "Add to favorites"),
     shiny::textOutput(ns("favorites_status")),
-    shiny::downloadButton(ns("download_favorites"), "Export favorites"),
+    shiny::actionButton(ns("export_favorites"), "Export favorites"),
+    shiny::uiOutput(ns("favorites_export_path")),
     shiny::p(class="gf-hint", "Favorites are saved automatically for this project. Export the list when your selection is ready; no graphs are deleted."),
     shiny::selectInput(ns("run"), "3D embedding", choices = character()),
     shiny::p(class="gf-hint", shiny::textOutput(ns("selected_configuration"))),
@@ -171,13 +172,22 @@ gflowui_ec_server <- function(id,manifest) {
         length(index()$graphs), "graphs favorited. Current graph:",
         if(graph_id() %in% favorite_ids()) "favorite." else "not selected.")
     })
-    output$download_favorites <- shiny::downloadHandler(
-      filename=function() paste0("suitesparse-favorites-", Sys.Date(), ".json"),
-      content=function(file) {
-        ids <- gflowui_ec_read_favorites(index()$root)
-        jsonlite::write_json(gflowui_ec_favorites_record(ids, names(index()$graphs)),
-          file, pretty=TRUE, auto_unbox=TRUE)
-      }, contentType="application/json")
+    favorite_export_path <- shiny::reactiveVal("")
+    shiny::observeEvent(input$export_favorites, {
+      tryCatch({
+        path <- gflowui_ec_export_favorites(index()$root, names(index()$graphs))
+        favorite_export_path(path)
+        favorite_error("")
+      }, error=function(e) favorite_error(conditionMessage(e)))
+    }, ignoreInit=TRUE)
+    output$favorites_export_path <- shiny::renderUI({
+      path <- favorite_export_path()
+      if(!nzchar(path)) return(NULL)
+      shiny::tagList(shiny::tags$label(`for`=session$ns("saved_favorites_path"), "Saved favorites — copy full path"),
+        shiny::tags$input(id=session$ns("saved_favorites_path"), type="text",
+          class="form-control", value=path, readonly="readonly",
+          onclick="this.select();"))
+    })
     graph <- shiny::reactive({counts$graph <- counts$graph+1L;gflowui_ec_graph(index(),graph_id())})
     cohort <- shiny::reactive({tbl <- index()$table;tbl[tbl$graph_id==graph_id(),,drop=FALSE]})
     run_label <- function(row,include_seed=TRUE) {
