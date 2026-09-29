@@ -28,6 +28,7 @@ gflowui_ec_asset <- function(root, asset) {
 }
 
 gflowui_ec_methods <- function() c(
+  metric_mds_sgd_readme = "Metric MDS — SGD (README candidates)",
   metric_mds = "Metric MDS", metric_mds_edge_kk = "Metric MDS + edge-KK",
   weighted_grip = "Weighted GRIP", isomap_graph = "Isomap (original graph)",
   umap = "UMAP", lle = "LLE", pacmap = "PaCMAP", localmap = "LocalMAP",
@@ -106,6 +107,7 @@ gflowui_ec_load_index <- function(root) {
     if (run$method %in% c("pacmap","localmap","trimap","phate","largevis","ncvis")) {
       settings <- sprintf("%s landmarks; fixed backend settings", gflowui_ec_text(run$parameters,"unknown"))
     }
+    if (identical(run$method,"metric_mds_sgd_readme")) settings <- "full SGD; uniform weights; random start; 1000 iterations"
     if (identical(run$method,"trimap_graph")) settings <- "graph distances; 400 iterations"
     if (identical(run$method,"sfdp")) settings <- "native 3D; K=1; no overlap removal"
     if (identical(run$method,"lgs_paper")) {
@@ -115,13 +117,17 @@ gflowui_ec_load_index <- function(root) {
       values <- unique(sprintf("%s (%.3g%%)",k[eligible],100*fractions[eligible]))
       settings <- if (length(values)) paste0("k=",paste(values,collapse="; "),"; 60 epochs") else "locality unavailable"
     }
-    if (nzchar(gflowui_ec_text(run$attempt_label))) {
+    if (nzchar(gflowui_ec_text(run$attempt_label)) && !identical(run$method,"metric_mds_sgd_readme")) {
       settings <- paste(settings, gflowui_ec_text(run$attempt_label), sep="; ")
     }
     term <- if (is.null(result)) gflowui_ec_text(run$reason, run$status) else {
       details <- vapply(result$components, function(c) {
         if (isTRUE(c$small_component_placement)) return("")
         detail <- if (is.list(c$details$metadata)) c$details$metadata else c$details
+        if (is.null(detail$termination) && length(detail$starts)) {
+          values <- vapply(detail$starts, function(start) gflowui_ec_text(start$termination), "")
+          return(paste(unique(values[nzchar(values)]), collapse="; "))
+        }
         gflowui_ec_text(detail$termination, "termination not reported")
       }, "")
       paste(unique(details[nzchar(details)]), collapse = "; ")
