@@ -6,6 +6,10 @@ gflowui_ec_sidebar_ui <- function(id) {
     shiny::div(class="btn-group", role="group", `aria-label`="Graph navigation",
       shiny::actionButton(ns("previous_graph"), "Previous"),
       shiny::actionButton(ns("next_graph"), "Next")),
+    shiny::actionButton(ns("toggle_favorite"), "Add to favorites"),
+    shiny::textOutput(ns("favorites_status")),
+    shiny::downloadButton(ns("download_favorites"), "Export favorites"),
+    shiny::p(class="gf-hint", "Favorites are saved automatically for this project. Export the list when your selection is ready; no graphs are deleted."),
     shiny::selectInput(ns("run"), "3D embedding", choices = character()),
     shiny::p(class="gf-hint", shiny::textOutput(ns("selected_configuration"))),
     shiny::p(class = "gf-hint", "One saved example per layout configuration, preferring seed 17. All replicates and attempts remain available in the Inspector."),
@@ -139,6 +143,41 @@ gflowui_ec_server <- function(id,manifest) {
     }
     shiny::observeEvent(input$previous_graph,step_graph(-1L),ignoreInit=TRUE)
     shiny::observeEvent(input$next_graph,step_graph(1L),ignoreInit=TRUE)
+    favorite_ids <- shiny::reactiveVal(character())
+    favorite_error <- shiny::reactiveVal("")
+    shiny::observeEvent(index()$root, {
+      tryCatch({
+        favorite_ids(gflowui_ec_read_favorites(index()$root))
+        favorite_error("")
+      }, error=function(e) favorite_error(conditionMessage(e)))
+    })
+    shiny::observe({
+      shiny::updateActionButton(session, "toggle_favorite",
+        label=if(graph_id() %in% favorite_ids()) "Remove from favorites" else "Add to favorites")
+    })
+    shiny::observeEvent(input$toggle_favorite, {
+      tryCatch({
+        ids <- gflowui_ec_read_favorites(index()$root)
+        selected <- graph_id()
+        ids <- if(selected %in% ids) setdiff(ids, selected) else c(ids, selected)
+        gflowui_ec_save_favorites(index()$root, ids, names(index()$graphs))
+        favorite_ids(ids)
+        favorite_error("")
+      }, error=function(e) favorite_error(conditionMessage(e)))
+    }, ignoreInit=TRUE)
+    output$favorites_status <- shiny::renderText({
+      if(nzchar(favorite_error())) return(paste("Favorites could not be loaded or saved:", favorite_error()))
+      paste(length(intersect(favorite_ids(), names(index()$graphs))), "of",
+        length(index()$graphs), "graphs favorited. Current graph:",
+        if(graph_id() %in% favorite_ids()) "favorite." else "not selected.")
+    })
+    output$download_favorites <- shiny::downloadHandler(
+      filename=function() paste0("suitesparse-favorites-", Sys.Date(), ".json"),
+      content=function(file) {
+        ids <- gflowui_ec_read_favorites(index()$root)
+        jsonlite::write_json(gflowui_ec_favorites_record(ids, names(index()$graphs)),
+          file, pretty=TRUE, auto_unbox=TRUE)
+      }, contentType="application/json")
     graph <- shiny::reactive({counts$graph <- counts$graph+1L;gflowui_ec_graph(index(),graph_id())})
     cohort <- shiny::reactive({tbl <- index()$table;tbl[tbl$graph_id==graph_id(),,drop=FALSE]})
     run_label <- function(row,include_seed=TRUE) {

@@ -448,3 +448,23 @@ test_that("real ZIP observer records resolved default and selected LGS figures",
     expect_equal(mean(vapply(rows,function(r)r$scores[[spec$lgs_metric]],0.)),unlist(plot$x$data[[1]]$y))
   })
 })
+
+test_that("favorites follow graphs across navigation and survive a new session", {
+  root <- ec_fixture(); on.exit(unlink(root, recursive=TRUE))
+  manifest <- shiny::reactiveVal(list(metadata=list(embedding_comparison=list(schema_version=1L,data_root=root))))
+  shiny::testServer(gflowui_ec_server,args=list(manifest=manifest),{
+    session$setInputs(graph="A", toggle_favorite=0)
+    session$setInputs(toggle_favorite=1)
+    expect_identical(gflowui_ec_read_favorites(root), "A")
+    session$setInputs(graph="B")
+    expect_match(output$favorites_status, "not selected")
+    session$setInputs(toggle_favorite=2)
+    expect_setequal(gflowui_ec_read_favorites(root), c("A","B"))
+    session$setInputs(graph="A", toggle_favorite=3)
+    expect_identical(gflowui_ec_read_favorites(root), "B")
+  })
+  shiny::testServer(gflowui_ec_server,args=list(manifest=manifest),{
+    session$setInputs(graph="B")
+    expect_match(output$favorites_status, "Current graph: favorite")
+  })
+})
