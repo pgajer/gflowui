@@ -119,3 +119,8 @@ It contains its bibliography and TikZ figure sources inline. Companion BibTeX
 metadata and citation verification evidence are in the same directory. Open the
 TeX in the desktop editor for live PDF preview. `graph_measures/Makefile` provides
 an optional terminal PDF build and citation audit.
+
+The Inspector’s **Metric definitions and interpretation** section groups LaTeX
+definitions for vertex measures, edge measures and embedding-quality scores,
+with notation, exceptional cases and references. MathJax SVG renders the formulas;
+long formulas scroll within their panel instead of widening the Inspector.
