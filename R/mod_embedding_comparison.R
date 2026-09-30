@@ -15,12 +15,19 @@ gflowui_ec_sidebar_ui <- function(id) {
     shiny::p(class="gf-hint", shiny::textOutput(ns("selected_configuration"))),
     shiny::p(class = "gf-hint", "One saved example per layout configuration, preferring seed 17. All replicates and attempts remain available in the Inspector."),
     shiny::sliderInput(ns("vertex_size"), "Vertex size", min=1, max=8, value=3, step=.5),
-    shiny::selectInput(ns("vertex_color"), "Vertex color", choices=c(Blue="#3575B2",Orange="#C7782A",Charcoal="#39434A",Gold="#B79A20")),
+    shiny::selectInput(ns("vertex_color"), "Vertex color", choices=c(Blue="#3575B2",Orange="#C7782A",Charcoal="#39434A",Gold="#B79A20", stats::setNames(names(gflowui_ec_property_names()),gflowui_ec_property_names()))),
     shiny::checkboxInput(ns("edges"), "Show graph edges", TRUE),
     shiny::selectInput(ns("edge_coloring"), "Edge colors", choices=c(
-      "Uniform gray"="uniform", "Drawn length: short warm, long cool"="length")),
+      "Uniform gray"="uniform", "Drawn length: short warm, long cool"="length",
+      stats::setNames(names(gflowui_ec_property_names("edge")),gflowui_ec_property_names("edge")))),
     shiny::p(class="gf-hint", "Length colors use the current embedding's Euclidean edge lengths, not graph distances. The color scale resets for each layout."),
-    shiny::checkboxInput(ns("labels"), "Label selected vertices", TRUE),
+    shiny::p(class="gf-hint", "Structural colors use the saved unit-length graph and stay fixed across embeddings. Purple to yellow means low to high; red marks infinite detours. Gray marks inapplicable bridge-side sizes. Hover vertices or edge midpoints for values."),
+    shiny::textOutput(ns("property_status")),
+    shiny::checkboxInput(ns("labels"), "Show vertex labels", TRUE),
+    shiny::selectInput(ns("vertex_label"), "Vertex label value", choices=c("Vertex ID"="id", stats::setNames(names(gflowui_ec_property_names()),gflowui_ec_property_names()))),
+    shiny::selectInput(ns("vertex_label_scope"), "Label which vertices", choices=c("Selected vertices"="selected","All vertices"="all")),
+    shiny::selectInput(ns("edge_label"), "Edge label value", choices=c("No edge labels"="none",stats::setNames(names(gflowui_ec_property_names("edge")),gflowui_ec_property_names("edge")))),
+    shiny::selectInput(ns("edge_label_scope"), "Label which edges", choices=c("Touching selected vertices"="selected","All edges"="all")),
     shiny::actionButton(ns("clear_vertices"), "Clear vertex selection", class="btn-light"),
     shiny::p(class="gf-hint", "Click vertices to select them. Selection and color stay fixed when changing embeddings of the same graph."),
     shiny::actionButton(ns("reload"), "Reload saved results", class="btn-light"),
@@ -89,7 +96,7 @@ gflowui_ec_html_table <- function(data) {
 gflowui_ec_plot_events <- function(plot,input_id,camera_id=NULL) {
   htmlwidgets::onRender(plot,"function(el,x,data) {
     if(el.ecClick) el.removeListener('plotly_click',el.ecClick);
-    el.ecClick=function(e){var p=e.points && e.points[0];
+    el.ecClick=function(e){var p=(e.points || []).find(function(q){return q.customdata;});
       if(p && p.customdata && window.Shiny) Shiny.setInputValue(data.input_id,
         {id:p.customdata,nonce:Date.now()+Math.random()},{priority:'event'});};
     el.on('plotly_click',el.ecClick);
@@ -190,6 +197,11 @@ gflowui_ec_server <- function(id,manifest) {
           onclick="this.select();"))
     })
     graph <- shiny::reactive({counts$graph <- counts$graph+1L;gflowui_ec_graph(index(),graph_id())})
+    properties <- shiny::reactive(gflowui_ec_properties(index(),graph()))
+    output$property_status <- shiny::renderText({
+      if(is.null(properties())) "Structural properties are not available for this graph." else
+        "Exact structural measures loaded. Betweenness normalization is within each component; vertex endpoints are excluded. Labels can be restricted to selected vertices and their incident edges."
+    })
     cohort <- shiny::reactive({tbl <- index()$table;tbl[tbl$graph_id==graph_id(),,drop=FALSE]})
     run_label <- function(row,include_seed=TRUE) {
       if(!nrow(row))return(character())
@@ -322,28 +334,22 @@ gflowui_ec_server <- function(id,manifest) {
       g <- graph();z <- current()$display;selected <- selected_vertices()
       size <- input$vertex_size;if(is.null(size))size <- 3
       color <- gflowui_ec_text(input$vertex_color,"#3575B2")
-      p <- plotly::plot_ly()
-      if(is.null(input$edges) || isTRUE(input$edges)) {
-        e <- g$edge_matrix
-        edge_coord <- function(j)as.vector(rbind(z[e[,1],j],z[e[,2],j],NA_real_))
-        line <- gflowui_ec_edge_style(z,e,input$edge_coloring)
-        p <- plotly::add_trace(p,x=edge_coord(1),y=edge_coord(2),z=edge_coord(3),type="scatter3d",mode="lines",
-          line=line,hoverinfo="skip",showlegend=FALSE)
-      }
-      p <- plotly::add_trace(p,x=z[,1],y=z[,2],z=z[,3],type="scatter3d",mode="markers",
-        marker=list(size=size,color=ifelse(g$ids %in% selected,"#C7782A",color)),
-        customdata=g$ids,text=g$ids,hoverinfo="text",showlegend=FALSE)
-      idx <- which(g$ids %in% selected)
-      if(length(idx) && (is.null(input$labels) || isTRUE(input$labels)))p <- plotly::add_trace(p,
-        x=z[idx,1],y=z[idx,2],z=z[idx,3],type="scatter3d",mode="text",text=g$ids[idx],customdata=g$ids[idx],
-        textposition="top center",textfont=list(size=13,color="#39434A"),showlegend=FALSE,hoverinfo="text")
+      p <- gflowui_ec_property_plot(g,z,properties(),vertex_color=color,
+        edge_color=gflowui_ec_text(input$edge_coloring,"uniform"),size=size,
+        show_edges=is.null(input$edges) || isTRUE(input$edges),selected=selected,
+        vertex_label=gflowui_ec_text(input$vertex_label,"id"),vertex_labels=is.null(input$labels) || isTRUE(input$labels),
+        vertex_label_scope=gflowui_ec_text(input$vertex_label_scope,"selected"),
+        edge_label=gflowui_ec_text(input$edge_label,"none"),edge_label_scope=gflowui_ec_text(input$edge_label_scope,"selected"))
       axis <- list(title="",showticklabels=FALSE,showgrid=FALSE,zeroline=FALSE)
-      scene <- list(xaxis=axis,yaxis=axis,zaxis=axis,aspectmode="data",uirevision=graph_id())
+      scene <- list(xaxis=axis,yaxis=axis,zaxis=axis,aspectmode="data",uirevision=graph_id(),
+        camera=list(eye=list(x=1.8,y=1.8,z=1.8)))
       held_camera <- shiny::isolate(camera())
       if(is.list(held_camera) && identical(shiny::isolate(camera_graph()),graph_id()))scene$camera <- held_camera
-      colorbar <- identical(input$edge_coloring,"length") &&
-        (is.null(input$edges) || isTRUE(input$edges)) && nrow(g$edge_matrix)>0L
-      p <- plotly::layout(p,scene=scene,uirevision=graph_id(),margin=list(l=0,r=if(colorbar)110 else 0,b=0,t=0))
+      colorbar <- color %in% names(gflowui_ec_property_names()) ||
+        ((identical(input$edge_coloring,"length") || gflowui_ec_text(input$edge_coloring,"uniform") %in% names(gflowui_ec_property_names("edge"))) &&
+          (is.null(input$edges) || isTRUE(input$edges)) && nrow(g$edge_matrix)>0L)
+      p <- plotly::layout(p,scene=scene,uirevision=graph_id(),clickmode="event",showlegend=TRUE,margin=list(l=0,r=if(colorbar)85 else 0,b=35,t=0),
+        legend=list(orientation="h",x=0,y=-.02,font=list(size=10)))
       gflowui_ec_plot_events(p,session$ns("vertex_click"),session$ns("camera"))
     })
     metric_key <- gflowui_ec_quality_outputs(input,output,session,index,cohort,current,run_id,active_label,graph_id)
@@ -352,7 +358,9 @@ gflowui_ec_server <- function(id,manifest) {
         neighborhood=input$neighborhood,vertex_color=input$vertex_color,vertex_size=input$vertex_size,
         edges=is.null(input$edges) || isTRUE(input$edges),
         edge_coloring=gflowui_ec_text(input$edge_coloring,"uniform"),
-        edge_color_scale="current layout Euclidean edge lengths; short orange, long blue; no coordinate or metric changes",
+        edge_color_scale="length: short orange/long blue; structural: low purple/high yellow; infinite detour red; inapplicable gray",
+        vertex_label=gflowui_ec_text(input$vertex_label,"id"),vertex_label_scope=gflowui_ec_text(input$vertex_label_scope,"selected"),
+        edge_label=gflowui_ec_text(input$edge_label,"none"),edge_label_scope=gflowui_ec_text(input$edge_label_scope,"selected"),
         labels=is.null(input$labels) || isTRUE(input$labels),
         lgs_fixture=gflowui_ec_text(input$lgs_fixture,"validation_path48"),
         lgs_metric=gflowui_ec_text(input$lgs_metric,"chord_error"),

@@ -1,0 +1,274 @@
+\documentclass[11pt]{article}
+\usepackage[margin=0.85in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern,amsmath,amssymb,booktabs,tabularx,tikz,hyperref}
+\usetikzlibrary{positioning,calc}
+\hypersetup{colorlinks=true,linkcolor=blue!50!black,urlcolor=blue!50!black,citecolor=blue!50!black}
+\definecolor{accent}{HTML}{3575B2}
+\definecolor{warm}{HTML}{D1495B}
+\tikzset{v/.style={circle,draw=accent,fill=white,thick,minimum size=6mm,inner sep=1pt},e/.style={thick,draw=gray!80},focus/.style={very thick,draw=warm}}
+\newcommand{\N}{\mathcal N}
+\newcommand{\R}{\mathcal R}
+\newcommand{\eff}{r^{\mathrm{eff}}}
+\newcommand{\plain}[1]{\par\smallskip\noindent\textbf{In simple terms.} #1\par\smallskip}
+\title{Reading a graph through its edges and vertices\\\large Ten structural measures for the SuiteSparse gallery}
+\author{Technical guide for the grip and gflowui gallery}
+\date{30 September 2026}
+\begin{document}
+\maketitle
+\begin{abstract}
+A drawing can suggest a hub, a bottleneck, or a densely connected region, but its appearance depends on the embedding. This guide defines five families of edge properties and five vertex properties that can be computed before drawing the graph. Small examples show what the numbers mean, which assumptions justify their interpretation, and why different measures can disagree. The gallery implementation uses unweighted, simple, undirected graphs and computes every shortest-path contribution, without sampling.
+\end{abstract}
+\section{The graph being measured}
+Let $G=(V,E)$ be a simple undirected graph: there are no loops or repeated edges. Write $n=|V|$, $m=|E|$, and $\N(v)=\{u:\{u,v\}\in E\}$. A connected component is a maximal set of mutually reachable vertices. Let $C(v)$ be the component of $v$, and $n_C=|C(v)|$.
+
+The gallery gives every edge traversal length $\ell_e=1$. Thus $d_G(s,t)$ is the minimum number of edges in an $s$--$t$ path. Unreachable pairs have distance $\infty$ and contribute nothing to betweenness. The original matrix coefficients may be similarities, signed optimization weights, or equation coefficients; they are not used as lengths. All quantities refer to the \emph{saved gallery graph}, including any documented largest-component extraction, not automatically to the full source matrix.
+
+\begin{center}\small
+\begin{tabularx}{\linewidth}{lX}
+\toprule Edge property family & Question answered\\\midrule
+Detour ratio & How much longer is the best alternative if this edge fails?\\
+Edge betweenness & How much equal-demand shortest-path traffic uses it?\\
+Triangle count & How many two-step alternatives connect its endpoints?\\
+Effective resistance & How redundant is the connection when all routes can carry current?\\
+Bridge and separation & Does deletion disconnect the graph, and how large is the split?\\\midrule
+Vertex property & Question answered\\\midrule
+Degree & How many immediate neighbors does it have?\\
+Vertex betweenness & How much shortest-path traffic passes through it?\\
+Core number & How strongly connected is the neighborhood that survives recursive pruning?\\
+Local clustering & How often are pairs of its neighbors also connected?\\
+Articulation point & Does deleting this vertex disconnect its component?\\\bottomrule
+\end{tabularx}\end{center}
+These are structural descriptions, not universal measures of scientific importance. Their interpretation depends on what vertices and edges mean in each dataset.
+
+\clearpage
+\section{Edge detour ratio}
+\plain{Temporarily close one connection. How far must you travel to reach the same endpoint by another route?}
+For an edge $e=\{i,j\}$ with positive traversal length $\ell_e$, define
+\begin{equation}
+ R_e=\frac{d_{G-e}(i,j)}{\ell_e},\qquad G-e=(V,E\setminus\{e\}).
+\end{equation}
+Only the edge is deleted; its vertices remain. If the endpoints become disconnected, set $R_e=\infty$. In the gallery $\ell_e=1$, so $R_e$ is the alternate path's hop count. A finite value is at least 2. In a general positively weighted graph it can be below 1, if the direct edge is longer than an indirect route; that case does not occur here.
+
+For unit lengths, $R_e+1$ is the length of the shortest cycle containing $e$. The proof is constructive: append $e$ to a shortest alternate path to form a cycle; conversely, remove $e$ from a shortest such cycle to obtain an alternate path. Thus triangles give detour 2, squares without a diagonal give detour 3, and bridges give infinity.
+\begin{figure}[h]\centering
+\begin{tikzpicture}[scale=1]
+\begin{scope}
+\node[v] (a) at (0,0) {$i$};\node[v] (b) at (2,0) {$j$};\node[v] (c) at (1,1.4) {$a$};
+\draw[e] (a)--(c)--(b);\draw[focus,dashed] (a)--(b);
+\node at (1,-.65) {$R_e=2,\ t_e=1$};
+\end{scope}
+\begin{scope}[xshift=4cm]
+\node[v] (a) at (0,0) {$i$};\node[v] (b) at (2,0) {$j$};\node[v] (c) at (0,1.4) {$a$};\node[v] (d) at (2,1.4) {$b$};
+\draw[e] (a)--(c)--(d)--(b);\draw[focus,dashed] (a)--(b);
+\node at (1,-.65) {$R_e=3,\ t_e=0$};
+\end{scope}
+\begin{scope}[xshift=8cm]
+\node[v] (a) at (0,0) {$i$};\node[v] (b) at (2,0) {$j$};
+\draw[focus,dashed] (a)--(b);\node at (1,-.65) {$R_e=\infty,\ t_e=0$};
+\end{scope}
+\end{tikzpicture}
+\caption{The dashed red edge is the edge being tested. The solid edges remain after deletion. Detour sees alternatives of any length; triangle count sees only two-step alternatives. These are three different graphs.}
+\end{figure}
+A large detour is useful for detecting a locally irreplaceable connection or a possible shortcut. It does not measure the total effect on all pairs, and an important legitimate long-range connection can have a large value. It also ignores how many equally good replacement routes exist.
+
+\section{Edge triangle count}
+\plain{Count the mutual neighbors that can connect the endpoints in two steps.}
+\begin{equation}
+ t_{ij}=|\N(i)\cap\N(j)|=\sum_{k\in V} A_{ik}A_{kj},\qquad \{i,j\}\in E,
+\end{equation}
+where $A$ is the binary adjacency matrix. Each common neighbor completes exactly one triangle. In a complete graph on $q$ vertices, each edge has $q-2$ triangles, while its detour remains 2. Triangle count therefore distinguishes multiple short alternatives that detour cannot distinguish. Counts also depend on endpoint degree; zero is not by itself evidence of a bottleneck. Every edge in a bipartite graph has count zero, even when many longer cycles exist. The relation to vertex clustering is given in Section~\ref{sec:cluster}.
+
+\clearpage
+\section{Edge betweenness}
+\plain{Imagine one unit of traffic between each reachable pair. Everyone uses shortest routes; tied routes share the traffic equally. Count the amount traversing each edge.}
+Let $\sigma_{st}$ be the number of shortest paths from $s$ to $t$, and $\sigma_{st}(e)$ the number using $e$. With each unordered pair counted once,
+\begin{equation}
+ B_E(e)=\sum_{\substack{s<t\\s,t\in C(e)}}\frac{\sigma_{st}(e)}{\sigma_{st}},
+ \qquad \widehat B_E(e)=\frac{B_E(e)}{\binom{n_C}{2}}.
+\end{equation}
+Here $C(e)$ is the component containing the edge. The endpoint pair $(i,j)$ is included. Raw betweenness has units of pair-demand; the normalized value is the expected share of one uniformly chosen component pair's unit demand using the edge. It lies between 0 and 1. This convention follows the undirected, fractional shortest-path definition, with a deliberate component-specific denominator~\cite{nxedge,brandes}.
+\begin{figure}[h]\centering
+\begin{tikzpicture}
+\node[v] (s) at (0,0) {$s$};\node[v] (a) at (2,1.2) {$a$};\node[v] (t) at (4,0) {$t$};\node[v] (b) at (2,-1.2) {$b$};
+\draw[focus] (s)--node[above left] {$1/2$}(a)--node[above right] {$1/2$}(t);
+\draw[e] (s)--node[below left] {$1/2$}(b)--node[below right] {$1/2$}(t);
+\node[align=left] at (8,0) {For pair $(s,t)$ only:\\two shortest paths, each of length 2.\\Each edge receives $1/2$.\\Each internal vertex receives $1/2$.};
+\end{tikzpicture}
+\caption{Splitting credit avoids arbitrarily choosing one of two tied paths. In this four-cycle, summing all six unordered pairs gives $B_E=2$ for every edge and $B_V=1/2$ for every vertex.}
+\end{figure}
+For one edge of this square, its own endpoint pair contributes 1, and the two opposite-vertex pairs contribute $1/2$ each; all other pairs contribute zero. Hence $\widehat B_E=2/6=1/3$. This is a useful check against implementations that double-count directions.
+
+The routing assumptions matter. Equal pair demand is a modeling choice, not a claim that every organism, equation, or physical junction sends the same traffic. Shortest-path routing is appropriate for some communication or distance models; it does not describe arbitrary diffusion or transport with capacity constraints. The manifold-shortcut paper uses betweenness to guide edge removal in neighborhood graphs~\cite{cukierski}. A high score can identify a candidate shortcut, but cannot establish that the original graph is erroneous.
+
+Raw scores from components of different sizes are not directly comparable. Component normalization compares relative load \emph{within} each component; it does not make a tiny component equally consequential to the whole dataset. Both versions are retained. All gallery scores describe the original saved topology; selecting a different embedding or coloring mode never removes edges or recomputes a divisive sequence.
+
+\clearpage
+\section{Effective resistance of an edge}
+\plain{Replace each edge by a unit resistor. Send one unit of current into one endpoint and remove it at the other. The required voltage difference measures how hard it is to connect the endpoints through all available routes.}
+Let $L=D-A$ be the graph Laplacian, where $D_{ii}=\deg(i)$. For endpoints in the same component, write $b_{ij}=\mathbf e_i-\mathbf e_j$. Then
+\begin{equation}
+ \eff_{ij}=b_{ij}^{\mathsf T} L^{+}b_{ij},
+\end{equation}
+where $L^{+}$ is the Moore--Penrose pseudoinverse. Equivalently solve $Lx=b_{ij}$ after grounding one vertex, and take $x_i-x_j$. The gallery computes this value for existing edges only, so no formula is applied across disconnected components. Effective resistance and its role in spectral sparsification are developed by Spielman and Srivastava~\cite{spielman}.
+\begin{figure}[h]\centering
+\begin{tikzpicture}
+\node[v] (i) at (0,0) {$i$};\node[v] (j) at (3,0) {$j$};\node[v] (a) at (1.5,1.8) {$a$};
+\draw[focus] (i)--node[below] {$1\ \Omega$}(j);
+\draw[e] (i)--node[above left] {$1\ \Omega$}(a)--node[above right] {$1\ \Omega$}(j);
+\node[align=left] at (7.7,.7) {Direct branch: resistance 1.\\Alternative branch: resistance $1+1=2$.\\Parallel combination:\\$\displaystyle \eff_{ij}=\left(1+\frac12\right)^{-1}=\frac23$.};
+\end{tikzpicture}
+\caption{A triangle has detour 2 but effective resistance $2/3$. Current can use the direct edge and the two-edge route simultaneously. These are mathematical unit resistors, not measured electrical properties of the dataset.}
+\end{figure}
+The unit direct edge ensures $0<\eff_e\leq1$. A bridge has value 1 because there is no alternate conducting path between its endpoints. If an alternative exists, current can split and the value is strictly below 1. Thus smaller values indicate greater electrical redundancy; larger values indicate greater dependence on the connection.
+
+For the triangle the value is $2/3$; for an edge of a four-cycle it is $3/4$; for an edge of the complete graph $K_q$ it is $2/q$. All $K_q$ edges have detour 2, so resistance distinguishes global redundancy beyond the shortest replacement path. Unlike betweenness, current is not confined to shortest paths.
+
+For unit conductances, $\eff_e$ also equals the probability that a uniformly random spanning tree of the component contains $e$~\cite{spielman}. Consequently,
+\begin{equation}
+ \sum_{e\in E}\eff_e=n-c,
+\end{equation}
+where $c$ is the number of components, including isolated vertices: take the expected number of edges in one spanning tree per component. This identity is checked during computation.
+
+For weighted electrical networks, conductance $c_e$ gives $L$ its weights, and the spanning-tree inclusion probability is $c_e\eff_e$. Conductance is \emph{not} a shortest-path length. Restoring arbitrary signed source coefficients to this formula would be invalid. The implemented unit-resistor interpretation avoids that ambiguity.
+
+\clearpage
+\section{Bridge status and separation size}
+\plain{A bridge is a single connection whose loss splits its component. Record how large the two resulting pieces are.}
+Let $c(G)$ count connected components, including isolates. Define
+\begin{equation}
+ b_e=\mathbf 1\{c(G-e)>c(G)\}.
+\end{equation}
+This is the standard bridge definition~\cite{nxbridge}. For a bridge in a component of size $n_C$, deletion produces sets of sizes $a$ and $n_C-a$. Store
+\begin{equation}
+ s_e=\min(a,n_C-a),\quad l_e=\max(a,n_C-a),\quad P_e=s_e l_e.
+\end{equation}
+Exactly $P_e$ unordered pairs lose connectivity. Every path between the two sides uses the bridge, so $B_E(e)=P_e$. The gallery checks this identity. For nonbridges, side sizes are \emph{not applicable}, while $P_e=0$ because no previously connected pair becomes disconnected.
+\begin{figure}[h]\centering
+\begin{tikzpicture}
+\foreach \i in {0,1,2,3}{\node[v] (p\i) at (2*\i,0) {$\i$};}
+\draw[e] (p0)--(p1);\draw[focus] (p1)--(p2);\draw[e] (p2)--(p3);
+\node at (1,-.7) {$1\mid3:\ P_e=3$};\node at (3,1) {$2\mid2:\ P_e=4$};\node at (5,-.7) {$3\mid1:\ P_e=3$};
+\end{tikzpicture}
+\caption{All three path edges are bridges and have infinite detour and unit effective resistance. Separation size distinguishes the central bridge, whose deletion separates four pairs, from either end edge, whose deletion separates three.}
+\end{figure}
+This measure assumes a single edge failure. It says nothing directly about capacity, failure probability, or resilience to multiple simultaneous failures. Infinite detour alone should therefore not determine a ranking of bridge importance.
+
+\section{Articulation-point status}
+\plain{Now delete a vertex and all its incident edges. Does the rest of its component break into multiple pieces?}
+\begin{equation}
+ a_v=\mathbf 1\{c(G-v)>c(G)\}.
+\end{equation}
+This is a binary property~\cite{nxarticulation}. An isolated vertex or a leaf is not an articulation point. In the four-vertex path above, vertices 1 and 2 are articulation points. In two triangles sharing one vertex, the shared vertex is an articulation point although there are \emph{no bridges}: every edge still belongs to a cycle.
+\begin{figure}[h]\centering
+\begin{tikzpicture}
+\node[v,fill=warm!20] (o) at (0,0) {$v$};
+\node[v] (a) at (-2,1) {$a$};\node[v] (b) at (-2,-1) {$b$};
+\node[v] (c) at (2,1) {$c$};\node[v] (d) at (2,-1) {$d$};
+\draw[e] (o)--(a)--(b)--(o)--(c)--(d)--(o);
+\end{tikzpicture}
+\caption{Deleting $v$ splits this graph into two edges. Deleting any single edge leaves the graph connected. Vertex failure and edge failure expose different vulnerabilities.}
+\end{figure}
+
+\clearpage
+\section{Vertex degree}
+\plain{Count the immediate neighbors.}
+\begin{equation}
+ d_v=\deg(v)=|\N(v)|=\sum_u A_{vu}.
+\end{equation}
+Degree is a local baseline. Zero identifies an isolate; one identifies a leaf. A high value can mean many direct interactions, many coupled variables, or many nearby observations, depending on graph construction. It is not automatically a measure of influence or centrality in the full network. In particular, the symmetrized $k$-nearest-neighbor graph can have degrees above $k$ because a point can be selected by other points.
+
+\section{Vertex core number}
+\plain{Repeatedly prune vertices that have too few remaining neighbors. How demanding a minimum-degree requirement can this vertex survive?}
+Let $H_k$ be the maximal induced subgraph of $G$ in which every vertex has degree at least $k$ \emph{within that subgraph}. Define
+\begin{equation}
+ \kappa(v)=\max\{k\geq0:v\in V(H_k)\}.
+\end{equation}
+The $k$-core is obtained by repeatedly deleting vertices of current degree less than $k$. This definition and a linear-time implementation are given by Batagelj and Zaver\v{s}nik~\cite{cores}. Core number is at most degree. Isolates have core number zero; every vertex of a nontrivial tree has core number one, including its highest-degree hub. A cycle has core number two everywhere, and $K_q$ has core number $q-1$.
+\begin{figure}[h]\centering
+\begin{tikzpicture}
+\node[v,fill=accent!15] (o) at (0,0) {$v$};
+\foreach \i/\ang in {1/0,2/72,3/144,4/216,5/288}{\node[v] (s\i) at (\ang:1.4) {};\draw[e] (o)--(s\i);}
+\node[align=center] at (0,-2) {Star center:\\degree 5, core 1, clustering 0};
+\begin{scope}[xshift=6cm]
+\node[v] (a) at (0,1.2) {$a$};\node[v] (b) at (-1.3,-.7) {$b$};\node[v] (c) at (1.3,-.7) {$c$};\node[v,fill=accent!15] (d) at (0,0) {$v$};
+\draw[e] (a)--(b)--(c)--(a);\draw[e] (d)--(a) (d)--(b) (d)--(c);
+\node[align=center] at (0,-2) {$K_4$ vertex:\\degree 3, core 3, clustering 1};
+\end{scope}
+\end{tikzpicture}
+\caption{A high-degree star center depends entirely on leaves. Once leaves are removed, it has no support. The lower-degree vertex in $K_4$ belongs to a mutually connected group that survives a minimum-degree threshold of 3.}
+\end{figure}
+Coreness is useful when recursive structural support matters. It neither identifies a unique community nor guarantees short paths between all members. A $k$-core can be disconnected and need not resemble a clique. Regular meshes may give almost constant core values despite visually distinctive geometry.
+
+\clearpage
+\section{Vertex betweenness}
+\plain{Using the same equal-demand routing model as edge betweenness, count traffic passing through a vertex rather than starting or ending there.}
+For $v\in C$, define
+\begin{equation}
+ B_V(v)=\sum_{\substack{s<t;\ s,t\in C\setminus\{v\}}}
+ \frac{\sigma_{st}(v)}{\sigma_{st}},\qquad
+ \widehat B_V(v)=\begin{cases}
+ B_V(v)/\binom{n_C-1}{2},&n_C\geq3,\\0,&n_C<3.
+ \end{cases}
+\end{equation}
+Here $\sigma_{st}(v)$ counts shortest paths on which $v$ is an \emph{internal} vertex. This endpoint convention is explicit in the standard implementation~\cite{nxvertex}. In a star with $q$ leaves, the center has $B_V=\binom q2$ and normalized value 1; all leaves have value zero. In $K_q$, every vertex has betweenness zero because each pair is joined directly. High degree therefore need not imply high betweenness.
+
+For the four-cycle in Figure~2, each vertex gets $1/2$ from the pair of its two neighbors. Its normalized score is $(1/2)/3=1/6$. A vertex can have positive betweenness without being an articulation point: alternative longer paths can preserve connectivity even when shortest traffic prefers that vertex.
+
+\section{Local clustering coefficient}\label{sec:cluster}
+\plain{Among all pairs of a vertex's neighbors, what fraction are themselves neighbors?}
+Let $T_v$ count triangles containing $v$. Then
+\begin{equation}
+ C_v=\begin{cases}\displaystyle\frac{T_v}{\binom{d_v}{2}}
+ =\frac{2T_v}{d_v(d_v-1)},&d_v\geq2,\\0,&d_v<2.
+ \end{cases}
+ \qquad T_v=\frac12\sum_{u\in\N(v)}t_{uv}.
+\end{equation}
+The convention $C_v=0$ for fewer than two neighbors makes the implementation total; it is a convention for an otherwise empty set of possible neighbor pairs~\cite{nxcluster}. Each triangle containing $v$ contributes to two incident edge triangle counts, explaining the factor $1/2$.
+\begin{figure}[h]\centering
+\begin{tikzpicture}
+\node[v,fill=accent!15] (v) at (0,0) {$v$};
+\node[v] (a) at (-1.7,1.4) {$a$};\node[v] (b) at (1.7,1.4) {$b$};\node[v] (c) at (0,-1.5) {$c$};
+\draw[e] (v)--(a) (v)--(b) (v)--(c);\draw[focus] (a)--(b);
+\node[align=left] at (6,0) {$d_v=3$; possible neighbor pairs: 3.\\Only $a$ and $b$ are linked.\\$T_v=1$, so $C_v=1/3$.\\$t_{va}=t_{vb}=1$, $t_{vc}=0$.};
+\end{tikzpicture}
+\caption{Clustering normalizes triangle abundance by the number of opportunities. The leaf $c$ is an example where the assigned clustering value is zero because degree is below two.}
+\end{figure}
+Local clustering quantifies triangular closure; it does not directly measure density at larger distances. All bipartite graphs have $C_v=0$, including dense complete bipartite graphs. Conversely, high local clustering can coexist with a bridge joining two dense regions. This makes clustering complementary to both betweenness and bridge status.
+
+\clearpage
+\section{How the measures are computed and checked}
+The implementation preserves the graph's exact vertex order and edge order. Properties are stored with graph and file checksums. Selecting a different embedding does not change them. Component-normalized betweenness uses the component sizes in the graph actually displayed; an extracted component is analyzed in its own right.
+
+Degree uses adjacency lists. Triangle counts use intersections of neighbor sets. Vertex clustering follows from the incident triangle counts. Bridges and articulation points use graph traversal; core numbers use recursive degree pruning. Betweenness uses all-source shortest-path accumulation, rather than enumerating all shortest paths or sampling source vertices~\cite{brandes}. The detour search skips the tested edge, stops when the other endpoint is reached, and uses known triangle and bridge cases directly.
+
+Effective resistance uses a grounded Laplacian factorization for each component. If vertex $r$ is grounded, invert $L$ with row and column $r$ removed, then pad the inverse by a zero row and column at $r$. Calling this padded matrix $Q$,
+\begin{equation}
+ \eff_{ij}=Q_{ii}+Q_{jj}-2Q_{ij}.
+\end{equation}
+The result is independent of which vertex was grounded. Floating-point linear algebra produces numerical values, not symbolic fractions; no stochastic resistance approximation is used. The implementation checks resistance bounds and the sum identity $\sum_e\eff_e=n-c$.
+
+Small-graph tests independently enumerate all shortest paths and split credit, compare edge-deleted path lengths, and compare resistance with an independent pseudoinverse calculation. Fixtures include paths, cycles, complete graphs, stars, bipartite graphs, shared-vertex triangles, disconnected graphs, and isolates. In particular, the four-cycle tests tied paths rather than just unique routing. Bridge pair counts are checked against edge betweenness for every gallery graph.
+
+\section{Using the gallery controls}
+Vertex color can encode degree, raw or component-normalized betweenness, core number, clustering, or articulation status. Edge color can encode detour ratio, raw or normalized betweenness, triangle count, resistance, bridge status, either bridge-side size, or the number of separated pairs. The extra bridge fields belong to one property family, not additional independent centralities.
+
+Continuous structural colors run from purple (low) through green to yellow (high), using the selected graph's range. The scale therefore stays fixed when the embedding changes; identical colors across different graphs need not mean identical numbers. A red edge indicates an infinite detour, and gray indicates an inapplicable bridge-side size. Neither is silently mapped to a large finite number or to zero. Numeric colorbars and hover values provide the actual scale. The existing drawn-length coloring remains layout-dependent and distinct from these structural measures.
+
+Vertex labels can show IDs or IDs with a chosen property, for selected vertices or all vertices. Edge labels show a chosen property at edge midpoints, either for all edges or for edges touching selected vertices. Dense graphs are more readable with restricted labels; midpoint hover exposes edge values without labeling everything. Selection is indicated separately from the property's color.
+
+These controls support inspection, not automatic pruning. A meaningful next analysis might compare large detours with high betweenness and high resistance, while retaining bridges as a separate category. Agreement identifies edges worth examining in the context of the graph's construction; it does not prove that those edges are spurious.
+
+\clearpage
+\begin{thebibliography}{9}
+\bibitem{cukierski} W.~J. Cukierski and D.~J. Foran. Using Betweenness Centrality to Identify Manifold Shortcuts. \emph{IEEE International Conference on Data Mining Workshops}, 949--958, 2008. \href{https://doi.org/10.1109/ICDMW.2008.39}{doi:10.1109/ICDMW.2008.39}. \href{https://pmc.ncbi.nlm.nih.gov/articles/PMC2895570/}{Open manuscript}.
+\bibitem{brandes} U. Brandes. A Faster Algorithm for Betweenness Centrality. \emph{Journal of Mathematical Sociology}, 25(2):163--177, 2001. \href{https://doi.org/10.1080/0022250X.2001.9990249}{doi:10.1080/0022250X.2001.9990249}.
+\bibitem{spielman} D.~A. Spielman and N. Srivastava. Graph Sparsification by Effective Resistances. \emph{SIAM Journal on Computing}, 40(6):1913--1926, 2011. \href{https://doi.org/10.1137/080734029}{doi:10.1137/080734029}. \href{https://arxiv.org/abs/0803.0929}{Author preprint}.
+\bibitem{cores} V. Batagelj and M. Zaver\v{s}nik. An $O(m)$ Algorithm for Cores Decomposition of Networks. Preprint, 2003. \href{https://arxiv.org/abs/cs/0310049}{arXiv:cs/0310049}.
+\bibitem{nxedge} NetworkX Developers. \emph{Edge betweenness centrality}, documentation, accessed 30 September 2026. \url{https://networkx.org/documentation/stable/reference/algorithms/generated/networkx.algorithms.centrality.edge_betweenness_centrality.html}.
+\bibitem{nxvertex} NetworkX Developers. \emph{Vertex betweenness centrality}, documentation, accessed 30 September 2026. \url{https://networkx.org/documentation/stable/reference/algorithms/generated/networkx.algorithms.centrality.betweenness_centrality.html}.
+\bibitem{nxcluster} NetworkX Developers. \emph{Clustering}, documentation, accessed 30 September 2026. \url{https://networkx.org/documentation/stable/reference/algorithms/generated/networkx.algorithms.cluster.clustering.html}.
+\bibitem{nxbridge} NetworkX Developers. \emph{Bridges}, documentation, accessed 30 September 2026. \url{https://networkx.org/documentation/stable/reference/algorithms/generated/networkx.algorithms.bridges.bridges.html}.
+\bibitem{nxarticulation} NetworkX Developers. \emph{Articulation points}, documentation, accessed 30 September 2026. \url{https://networkx.org/documentation/stable/reference/algorithms/generated/networkx.algorithms.components.articulation_points.html}.
+\end{thebibliography}
+\end{document}

@@ -88,6 +88,7 @@ gflowui_ec_load_index <- function(root) {
   names(index$graphs) <- graph_ids
   names(index$runs) <- run_ids
   index$annotations <- gflowui_ec_load_annotations(index)
+  index$property_index <- gflowui_ec_load_property_index(index)
   index$results <- list()
   rows <- lapply(index$runs, function(run) {
     if (!run$graph_id %in% graph_ids) stop("Unknown graph in embedding run.")

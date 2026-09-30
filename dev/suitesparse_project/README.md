@@ -93,3 +93,29 @@ This preserves current graph selection and all runs, backs up the manifest, and
 registers a hash-checked annotation asset. It does not invoke the general gallery
 exporter. Use **Reload saved results** to load text updates. R UI changes require
 restarting the gallery server. Comparison ZIP exports include the annotation asset.
+
+### Structural edge and vertex properties
+
+`compute_graph_properties.py DATA_ROOT --workers 4` computes the five edge
+families (detour, betweenness, triangles, resistance, bridge/separation) and five
+vertex properties (degree, betweenness, coreness, clustering, articulation) on
+all currently selected graphs. Use the pipeline Python environment with
+NetworkX, NumPy and SciPy. Run `test_graph_properties.py` first. Computation uses
+unit lengths, all-source shortest paths, and a grounded Laplacian solve per
+component. It preserves vertex/edge ordering and publishes hash-addressed assets
+without altering graph selection or saved runs. The active manifest is backed
+up; concurrent manifest changes stop publication. Assets travel with comparison
+ZIP exports. Reload saved results after republishing.
+
+The sidebar provides structural color and label choices for vertices and edges.
+Normalized betweenness uses connected-component denominators. Infinite detours
+are red; inapplicable bridge-side sizes are gray. Edge values are available by
+hovering midpoint hit targets. Labels can be limited to selected vertices and
+incident edges. Numeric scales are tied to the graph, not its embedding.
+
+The illustrated, standalone LaTeX guide is
+[`graph_measures/graph_measures.tex`](graph_measures/graph_measures.tex).
+It contains its bibliography and TikZ figure sources inline. Companion BibTeX
+metadata and citation verification evidence are in the same directory. Open the
+TeX in the desktop editor for live PDF preview. `graph_measures/Makefile` provides
+an optional terminal PDF build and citation audit.
