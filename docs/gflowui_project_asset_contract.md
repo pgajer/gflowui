@@ -26,6 +26,11 @@ each axis. Saved coordinates are unchanged. The default `"axis"` retains the
 legacy per-axis standardization for existing projects. Uniform mode requires
 finite numeric coordinates.
 
+For many or long category names, `layout_assets$presets$legend_position =
+"bottom"` puts the Plotly legend below the scene and wraps labels. This
+changes display text only; category identities and hover annotations remain
+unchanged. Other projects retain the right-hand legend.
+
 Projects may also include an optional grouped-selector schema under
 `metadata$graph_selector_schema` so the UI can resolve many concrete graph
 sets through a small number of project-specific dropdowns.

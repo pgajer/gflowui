@@ -11171,6 +11171,12 @@ app_server <- function(input, output, session) {
 
         for (ii in seq_len(nlev)) {
           lvl <- levels(fac)[ii]
+          legend_name <- lvl
+          if (identical(st$graph_set$layout_assets$presets$legend_position, "bottom")) {
+            legend_name <- paste(htmltools::htmlEscape(strwrap(
+              gsub("/", "/ ", lvl, fixed = TRUE), width = 26L
+            )), collapse = "<br>")
+          }
           sel <- fac == lvl
           trace.opacity <- if (
             identical(src_key, "basin_active") &&
@@ -11211,7 +11217,7 @@ app_server <- function(input, output, session) {
               z = if (nrow(plot_data) > 0L) plot_data$z[[1]] else 0,
               key = NA_integer_,
               customdata = NA_integer_,
-              name = lvl,
+              name = legend_name,
               legendgroup = lvl,
               visible = "legendonly",
               hoverinfo = "skip",
@@ -11786,15 +11792,20 @@ app_server <- function(input, output, session) {
         plotly::layout(
           margin = list(l = 0, r = 0, b = 0, t = 10),
           legend = if (identical(src$type, "categorical")) {
-            list(
-              orientation = "v",
-              x = 1.01,
-              y = 1,
-              xanchor = "left",
-              yanchor = "top",
-              itemsizing = "constant",
-              font = list(size = 13)
-            )
+            if (identical(st$graph_set$layout_assets$presets$legend_position, "bottom")) {
+              list(orientation = "h", x = 0, y = -0.02, xanchor = "left",
+                   yanchor = "top", itemsizing = "constant", font = list(size = 11))
+            } else {
+              list(
+                orientation = "v",
+                x = 1.01,
+                y = 1,
+                xanchor = "left",
+                yanchor = "top",
+                itemsizing = "constant",
+                font = list(size = 13)
+              )
+            }
           } else {
             list(orientation = "h")
           },

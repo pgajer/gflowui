@@ -14,9 +14,11 @@ test_that("uniform display preserves distance ratios and constant axes", {
 
 test_that("layout manifest retains the shape-preserving setting", {
   gs <- gflowui:::gflowui_normalize_graph_sets_manifest(list(list(
-    id = "test", label = "Test", layout_assets = list(coordinate_normalization = "uniform")
+    id = "test", label = "Test", layout_assets = list(coordinate_normalization = "uniform",
+      presets = list(legend_position = "bottom"))
   )))
   expect_identical(gs[[1]]$layout_assets$coordinate_normalization, "uniform")
+  expect_identical(gs[[1]]$layout_assets$presets$legend_position, "bottom")
 })
 
 test_that("compiled display components retain first-vertex labels and isolates", {
