@@ -1,8 +1,10 @@
 # The desktop LaTeX editor also compiles this standalone source directly.
 OUT ?= build
 CITATION_CHECK ?= $(HOME)/.codex/notes/agent_instructions/reports/scripts/check_citation_verification.py
-.PHONY: pdf citation-check
-pdf:
+.PHONY: pdf citation-check build-info
+build-info:
+	python3 write_build_info.py
+pdf: build-info
 	mkdir -p $(OUT)
 	pdflatex -interaction=nonstopmode -halt-on-error -output-directory=$(OUT) graph_measures.tex
 	pdflatex -interaction=nonstopmode -halt-on-error -output-directory=$(OUT) graph_measures.tex
