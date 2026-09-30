@@ -87,6 +87,7 @@ gflowui_ec_load_index <- function(root) {
   index$manifest_sha256 <- digest::digest(file=file.path(root,"viewer_manifest.json"),algo="sha256")
   names(index$graphs) <- graph_ids
   names(index$runs) <- run_ids
+  index$annotations <- gflowui_ec_load_annotations(index)
   index$results <- list()
   rows <- lapply(index$runs, function(run) {
     if (!run$graph_id %in% graph_ids) stop("Unknown graph in embedding run.")

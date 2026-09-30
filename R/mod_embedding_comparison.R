@@ -38,6 +38,7 @@ gflowui_ec_workspace_ui <- function(id) {
       "aria-label"="Resize General Inspector",title="Drag to resize; arrow keys adjust width."),
     shiny::tags$aside(class="ec-inspector","aria-label"="General Inspector",
       shiny::h3("General Inspector"),
+      shiny::uiOutput(ns("about_graph")),
       shiny::tags$details(open=NA,shiny::tags$summary("Overview / Graph Data"),shiny::uiOutput(ns("overview"))),
       shiny::tags$details(open=NA,shiny::tags$summary("Embedding quality table"),
         shiny::p(class="gf-hint","Click a heading to sort. Load selects an exact replicate; the active row is highlighted. Blank scores are unavailable, not zero."),
@@ -274,6 +275,9 @@ gflowui_ec_server <- function(id,manifest) {
       if (identical(s$method,"trimap")) text <- paste(text,
         "Caution: this landmark-feature variant produced repeated feature rows and extreme triplet weights in the pilot. Its large-scale, poor layouts are retained; a separate graph-distance variant is also available.")
       text
+    })
+    output$about_graph <- shiny::renderUI({
+      gflowui_ec_about_ui(index()$annotations[[graph_id()]])
     })
     output$overview <- shiny::renderUI({
       g <- graph()

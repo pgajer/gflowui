@@ -1,0 +1,1406 @@
+{
+  "schema_version": 1,
+  "review_date": "2026-09-30",
+  "graphs": [
+    {
+      "id": "AG-Monien/netz4504_dual",
+      "construction": "Dual graph of a two-dimensional finite-element problem supplied by Diekmann and Preis.",
+      "weights": "Pattern only: stored connections have no physical weight.",
+      "source_url": "https://sparse.tamu.edu/AG-Monien/netz4504_dual",
+      "references": [
+        {
+          "title": "Chen et al. — Accelerating Matrix-Centric Graph Processing on GPU through Bit-Level Optimizations (2023)",
+          "url": "https://www.osti.gov/servlets/purl/1968852",
+          "role": "graph",
+          "scope": "",
+          "description": "Tests GPU graph kernels exploiting distinctive sparsity patterns.",
+          "detail": "Diagonal-pattern benchmark, Tables 10–11."
+        }
+      ],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Retain all source vertices. Store each undirected edge once; use unit traversal lengths."
+    },
+    {
+      "id": "Bai/bfwa782",
+      "construction": "Finite-element Maxwell eigenproblem for a bounded finline dielectric waveguide, supplied by Schultz and Gedney. Unknowns represent discretized electromagnetic fields; connectivity represents equation coupling.",
+      "weights": "Coefficients of the nonsymmetric A matrix in a generalized electromagnetic eigenproblem; not distances or communication strengths.",
+      "source_url": "https://sparse.tamu.edu/Bai/bfwa782",
+      "references": [],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Retain all source vertices. Store each undirected edge once; use unit traversal lengths."
+    },
+    {
+      "id": "Bai/dw256A",
+      "construction": "Dong’s square dielectric waveguide model: finite-difference Helmholtz equations couple transverse magnetic-field components. These are two 512-dimensional parameter variants; the suffix 256 is not the number of graph vertices.",
+      "weights": "Discretized differential-operator and dielectric-model coefficients. Signs and magnitudes matter for modes; they are discarded in the gallery.",
+      "source_url": "https://sparse.tamu.edu/Bai/dw256A",
+      "references": [],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Retain all source vertices. Store each undirected edge once; use unit traversal lengths."
+    },
+    {
+      "id": "Bai/dw256B",
+      "construction": "Dong’s square dielectric waveguide model: finite-difference Helmholtz equations couple transverse magnetic-field components. These are two 512-dimensional parameter variants; the suffix 256 is not the number of graph vertices.",
+      "weights": "Discretized differential-operator and dielectric-model coefficients. Signs and magnitudes matter for modes; they are discarded in the gallery.",
+      "source_url": "https://sparse.tamu.edu/Bai/dw256B",
+      "references": [],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Retain all source vertices. Store each undirected edge once; use unit traversal lengths."
+    },
+    {
+      "id": "Bai/mhda416__LCC_409_of_416",
+      "construction": "Alfvén-wave spectral problem in magnetohydrodynamics, from Booten, Kooper, van der Vorst, Poedts and Goedbloed. Vertices represent discretized model unknowns, not observed plasma particles.",
+      "weights": "Real coefficients of the magnetohydrodynamic spectral model.",
+      "source_url": "https://sparse.tamu.edu/Bai/mhda416",
+      "references": [],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Induce largest component, retaining source vertex order. Store each undirected edge once; use unit traversal lengths.",
+      "component": "The gallery displays the largest connected component: 409 of 416 original vertices."
+    },
+    {
+      "id": "Bai/qh768",
+      "construction": "Hydro-Québec small-signal power-system model supplied by Ndereyimana. The matrix describes linearized system dynamics; its 768 indices should not be interpreted as 768 physical buses. It models real infrastructure, rather than a recorded interaction network.",
+      "weights": "Linearized dynamic-system coefficients used to find modes/eigenvalues. The source notes strong imbalance in coefficient scales.",
+      "source_url": "https://sparse.tamu.edu/Bai/qh768",
+      "references": [],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Retain all source vertices. Store each undirected edge once; use unit traversal lengths."
+    },
+    {
+      "id": "Bai/rdb450",
+      "construction": "Brusselator reaction–diffusion model on a square, discretized by central differences with two concentration variables per grid point. The matrices are Jacobians of the discretized dynamics. They represent a mathematical chemical model rather than measured reaction-network data.",
+      "weights": "Reaction derivatives and diffusion-stencil coefficients. They describe local linearized dynamics, not probabilities or graph distances.",
+      "source_url": "https://sparse.tamu.edu/Bai/rdb450",
+      "references": [],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Retain all source vertices. Store each undirected edge once; use unit traversal lengths."
+    },
+    {
+      "id": "Bai/rdb800l",
+      "construction": "Brusselator reaction–diffusion model on a square, discretized by central differences with two concentration variables per grid point. The matrices are Jacobians of the discretized dynamics. They represent a mathematical chemical model rather than measured reaction-network data.",
+      "weights": "Reaction derivatives and diffusion-stencil coefficients. They describe local linearized dynamics, not probabilities or graph distances.",
+      "source_url": "https://sparse.tamu.edu/Bai/rdb800l",
+      "references": [],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Retain all source vertices. Store each undirected edge once; use unit traversal lengths."
+    },
+    {
+      "id": "Bai/rw496",
+      "construction": "Stewart’s generated random walk on a triangular grid with parameter m=30, giving (m+1)(m+2)/2 = 496 states. Links describe allowed moves. Not empirical mobility data.",
+      "weights": "Markov transition probabilities; orientation determines which stochastic convention applies. Removing direction and setting all lengths to one does not preserve transition probabilities.",
+      "source_url": "https://sparse.tamu.edu/Bai/rw496",
+      "references": [],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Retain all source vertices. Store each undirected edge once; use unit traversal lengths."
+    },
+    {
+      "id": "Boeing/bcsstm34",
+      "construction": "NASTRAN structural buckling problem supplied by Grimes. Vertices index structural degrees of freedom. The source explicitly calls this a differential stiffness matrix.",
+      "weights": "Differential/geometric stiffness coefficients for buckling. Despite the bcsstm name, the source does not call this a mass matrix.",
+      "source_url": "https://sparse.tamu.edu/Boeing/bcsstm34",
+      "references": [],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Retain all source vertices. Store each undirected edge once; use unit traversal lengths."
+    },
+    {
+      "id": "Boeing/msc00726",
+      "construction": "MSC/NASTRAN structural test matrix BC4F8.OUT2 supplied by Grimes.",
+      "weights": "Structural-model coefficients.",
+      "source_url": "https://sparse.tamu.edu/Boeing/msc00726",
+      "references": [],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Retain all source vertices. Store each undirected edge once; use unit traversal lengths."
+    },
+    {
+      "id": "Bomhof/circuit_2",
+      "construction": "Circuit simulation matrix from Bomhof: a differential-algebraic circuit model solved using backward differentiation and Newton iterations. Vertices index circuit-system equations/unknowns, not necessarily one vertex per component.",
+      "weights": "Coefficients of the linearized, time-discretized circuit equations; combinations of device derivatives and time-step terms, not electrical conductance alone.",
+      "source_url": "https://sparse.tamu.edu/Bomhof/circuit_2",
+      "references": [
+        {
+          "title": "Palamadai Natarajan — KLU: A High Performance Sparse Linear Solver for Circuit Simulation Problems (2005 MSc thesis)",
+          "url": "https://ufdcimages.uflib.ufl.edu/UF/E0/01/17/21/00001/palamadai_e.pdf",
+          "role": "graph",
+          "scope": "",
+          "description": "Studies block triangular form and fill-reducing orderings for sparse circuit-oriented factorization.",
+          "detail": "Structural factorization benchmark; thesis evidence."
+        }
+      ],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Retain all source vertices. Store each undirected edge once; use unit traversal lengths."
+    },
+    {
+      "id": "CPM/cz628",
+      "construction": "Closest-point method test for Poisson’s equation on the unit circle. The equation is embedded in a narrow Cartesian band, discretized by finite differences, with interpolation enforcing the boundary treatment and one row fixed to remove singularity. A manufactured numerical test, not observations.",
+      "weights": "Finite-difference and interpolation coefficients plus the fixed-row condition.",
+      "source_url": "https://sparse.tamu.edu/CPM/cz628",
+      "references": [],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Retain all source vertices. Store each undirected edge once; use unit traversal lengths."
+    },
+    {
+      "id": "FEMLAB/problem1",
+      "construction": "Small FEMLAB/COMSOL test problem.",
+      "weights": "Numerical model coefficients.",
+      "source_url": "https://sparse.tamu.edu/FEMLAB/problem1",
+      "references": [
+        {
+          "title": "Palamadai Natarajan — KLU: A High Performance Sparse Linear Solver for Circuit Simulation Problems (2005 MSc thesis)",
+          "url": "https://ufdcimages.uflib.ufl.edu/UF/E0/01/17/21/00001/palamadai_e.pdf",
+          "role": "graph",
+          "scope": "",
+          "description": "Studies block triangular form and fill-reducing orderings for sparse circuit-oriented factorization.",
+          "detail": "Structural factorization benchmark; thesis evidence."
+        }
+      ],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Retain all source vertices. Store each undirected edge once; use unit traversal lengths."
+    },
+    {
+      "id": "FIDAP/ex2",
+      "construction": "Computational-fluid-dynamics test matrix produced by FIDAP, supplied by Baggag and Saad. Connectivity reflects coupled discretized equations.",
+      "weights": "Numerical coefficients in the CFD linear system.",
+      "source_url": "https://sparse.tamu.edu/FIDAP/ex2",
+      "references": [
+        {
+          "title": "Zheng, Pawar & Goodman — Graph Drawing by Stochastic Gradient Descent (2018; arXiv 1710.04626)",
+          "url": "https://arxiv.org/abs/1710.04626",
+          "role": "graph",
+          "scope": "",
+          "description": "Compares stochastic gradient descent with stress majorization for graph drawing.",
+          "detail": "Grid unfolding and local minima, Figure 7."
+        }
+      ],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Retain all source vertices. Store each undirected edge once; use unit traversal lengths."
+    },
+    {
+      "id": "FIDAP/ex21",
+      "construction": "Computational-fluid-dynamics test matrix produced by FIDAP, supplied by Baggag and Saad. Connectivity reflects coupled discretized equations.",
+      "weights": "Numerical coefficients in the CFD linear system.",
+      "source_url": "https://sparse.tamu.edu/FIDAP/ex21",
+      "references": [],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Retain all source vertices. Store each undirected edge once; use unit traversal lengths."
+    },
+    {
+      "id": "Gset/G11",
+      "construction": "Helmberg’s periodic two-dimensional grid (torus), 8 × 100, with randomly assigned signs. All 800 vertices have four neighbors. Generated benchmark, not real-world observations.",
+      "weights": "Independent signed weights +1 or −1 for weighted MAX-CUT. A cut’s value sums the weights of crossing edges; negative edges penalize separation. the gallery removes these signs.",
+      "source_url": "https://sparse.tamu.edu/Gset/G11",
+      "references": [
+        {
+          "title": "Festa, Pardalos, Resende & Ribeiro — Randomized heuristics for the MAX-CUT problem (2002)",
+          "url": "https://optimization-online.org/wp-content/uploads/2002/06/497.pdf",
+          "role": "graph",
+          "scope": "",
+          "description": "Tests randomized MAX-CUT heuristics on these sparse signed torus graphs. The published objective uses the original signed weights.",
+          "detail": "Weighted MAX-CUT; dedicated time-to-target experiment."
+        }
+      ],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Retain all source vertices. Store each undirected edge once; use unit traversal lengths."
+    },
+    {
+      "id": "Gset/G12",
+      "construction": "Helmberg’s periodic two-dimensional grid (torus), 16 × 50, with randomly assigned signs. All 800 vertices have four neighbors. Generated benchmark, not real-world observations.",
+      "weights": "Independent signed weights +1 or −1 for weighted MAX-CUT. A cut’s value sums the weights of crossing edges; negative edges penalize separation. the gallery removes these signs.",
+      "source_url": "https://sparse.tamu.edu/Gset/G12",
+      "references": [
+        {
+          "title": "Festa, Pardalos, Resende & Ribeiro — Randomized heuristics for the MAX-CUT problem (2002)",
+          "url": "https://optimization-online.org/wp-content/uploads/2002/06/497.pdf",
+          "role": "graph",
+          "scope": "",
+          "description": "Tests randomized MAX-CUT heuristics on these sparse signed torus graphs. The published objective uses the original signed weights.",
+          "detail": "Weighted MAX-CUT; dedicated time-to-target experiment."
+        }
+      ],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Retain all source vertices. Store each undirected edge once; use unit traversal lengths."
+    },
+    {
+      "id": "Gset/G13",
+      "construction": "Helmberg’s periodic two-dimensional grid (torus), 32 × 25, with randomly assigned signs. All 800 vertices have four neighbors. Generated benchmark, not real-world observations.",
+      "weights": "Independent signed weights +1 or −1 for weighted MAX-CUT. A cut’s value sums the weights of crossing edges; negative edges penalize separation. the gallery removes these signs.",
+      "source_url": "https://sparse.tamu.edu/Gset/G13",
+      "references": [
+        {
+          "title": "Festa, Pardalos, Resende & Ribeiro — Randomized heuristics for the MAX-CUT problem (2002)",
+          "url": "https://optimization-online.org/wp-content/uploads/2002/06/497.pdf",
+          "role": "graph",
+          "scope": "",
+          "description": "Tests randomized MAX-CUT heuristics on these sparse signed torus graphs. The published objective uses the original signed weights.",
+          "detail": "Weighted MAX-CUT; dedicated time-to-target experiment."
+        }
+      ],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Retain all source vertices. Store each undirected edge once; use unit traversal lengths."
+    },
+    {
+      "id": "HB/1138_bus",
+      "construction": "Power-network admittance matrix supplied by Tylavsky. Indices represent electrical buses and off-diagonal nonzeros represent modeled electrical couplings.",
+      "weights": "Real-valued admittance-system coefficients. Signs, scale and diagonal balance terms matter electrically; these are not line lengths.",
+      "source_url": "https://sparse.tamu.edu/HB/1138_bus",
+      "references": [
+        {
+          "title": "Zheng, Pawar & Goodman — Graph Drawing by Stochastic Gradient Descent (2018; arXiv 1710.04626)",
+          "url": "https://arxiv.org/abs/1710.04626",
+          "role": "graph",
+          "scope": "",
+          "description": "Compares stochastic gradient descent with stress majorization for graph drawing.",
+          "detail": "Variable convergence under random starts, Figure 2."
+        }
+      ],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Retain all source vertices. Store each undirected edge once; use unit traversal lengths."
+    },
+    {
+      "id": "HB/494_bus",
+      "construction": "Power-network admittance matrix supplied by Tylavsky. Indices represent electrical buses and off-diagonal nonzeros represent modeled electrical couplings.",
+      "weights": "Real-valued admittance-system coefficients. Signs, scale and diagonal balance terms matter electrically; these are not line lengths.",
+      "source_url": "https://sparse.tamu.edu/HB/494_bus",
+      "references": [
+        {
+          "title": "Torres-Jimenez et al. — A dual representation simulated annealing algorithm for the bandwidth minimization problem on graphs (2015)",
+          "url": "https://doi.org/10.1016/j.ins.2014.12.041",
+          "role": "graph",
+          "scope": "",
+          "description": "Uses vertex ordering to minimize the largest index difference across an edge.",
+          "detail": "Bandwidth benchmark, Tables 7–8."
+        },
+        {
+          "title": "Zhou, Gao & Hao — Reinforcement learning driven heuristic for two-dimensional bandwidth minimization (2025)",
+          "url": "https://doi.org/10.1016/j.asoc.2025.114327",
+          "role": "graph",
+          "scope": "",
+          "description": "Tests layouts on a square grid that minimize the longest Manhattan edge length.",
+          "detail": "Two-dimensional bandwidth benchmark, Appendix."
+        },
+        {
+          "title": "Zheng, Pawar & Goodman — Graph Drawing by Stochastic Gradient Descent (2018; arXiv 1710.04626)",
+          "url": "https://arxiv.org/abs/1710.04626",
+          "role": "graph",
+          "scope": "",
+          "description": "Compares stochastic gradient descent with stress majorization for graph drawing.",
+          "detail": "Layout symmetry, Figure 7."
+        }
+      ],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Retain all source vertices. Store each undirected edge once; use unit traversal lengths."
+    },
+    {
+      "id": "HB/662_bus",
+      "construction": "Power-network admittance matrix supplied by Tylavsky. Indices represent electrical buses and off-diagonal nonzeros represent modeled electrical couplings.",
+      "weights": "Real-valued admittance-system coefficients. Signs, scale and diagonal balance terms matter electrically; these are not line lengths.",
+      "source_url": "https://sparse.tamu.edu/HB/662_bus",
+      "references": [
+        {
+          "title": "Torres-Jimenez et al. — A dual representation simulated annealing algorithm for the bandwidth minimization problem on graphs (2015)",
+          "url": "https://doi.org/10.1016/j.ins.2014.12.041",
+          "role": "graph",
+          "scope": "",
+          "description": "Uses vertex ordering to minimize the largest index difference across an edge.",
+          "detail": "Bandwidth benchmark, Tables 7–8."
+        },
+        {
+          "title": "Zhou, Gao & Hao — Reinforcement learning driven heuristic for two-dimensional bandwidth minimization (2025)",
+          "url": "https://doi.org/10.1016/j.asoc.2025.114327",
+          "role": "graph",
+          "scope": "",
+          "description": "Tests layouts on a square grid that minimize the longest Manhattan edge length.",
+          "detail": "Two-dimensional bandwidth benchmark, Appendix."
+        }
+      ],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Retain all source vertices. Store each undirected edge once; use unit traversal lengths."
+    },
+    {
+      "id": "HB/685_bus",
+      "construction": "Power-network admittance matrix supplied by Tylavsky. Indices represent electrical buses and off-diagonal nonzeros represent modeled electrical couplings.",
+      "weights": "Real-valued admittance-system coefficients. Signs, scale and diagonal balance terms matter electrically; these are not line lengths.",
+      "source_url": "https://sparse.tamu.edu/HB/685_bus",
+      "references": [
+        {
+          "title": "Torres-Jimenez et al. — A dual representation simulated annealing algorithm for the bandwidth minimization problem on graphs (2015)",
+          "url": "https://doi.org/10.1016/j.ins.2014.12.041",
+          "role": "graph",
+          "scope": "",
+          "description": "Uses vertex ordering to minimize the largest index difference across an edge.",
+          "detail": "Bandwidth benchmark, Tables 7–8."
+        },
+        {
+          "title": "Zhou, Gao & Hao — Reinforcement learning driven heuristic for two-dimensional bandwidth minimization (2025)",
+          "url": "https://doi.org/10.1016/j.asoc.2025.114327",
+          "role": "graph",
+          "scope": "",
+          "description": "Tests layouts on a square grid that minimize the longest Manhattan edge length.",
+          "detail": "Two-dimensional bandwidth benchmark, Appendix."
+        }
+      ],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Retain all source vertices. Store each undirected edge once; use unit traversal lengths."
+    },
+    {
+      "id": "HB/bcspwr05",
+      "construction": "Equivalenced (reduced) representation of the western US power network supplied by Dembart and Lewis. The 443 vertices belong to the reduced network, not necessarily all original physical buses.",
+      "weights": "Pattern-only connectivity: no original admittance or line-flow weights are stored.",
+      "source_url": "https://sparse.tamu.edu/HB/bcspwr05",
+      "references": [
+        {
+          "title": "Torres-Jimenez et al. — A dual representation simulated annealing algorithm for the bandwidth minimization problem on graphs (2015)",
+          "url": "https://doi.org/10.1016/j.ins.2014.12.041",
+          "role": "graph",
+          "scope": "",
+          "description": "Uses vertex ordering to minimize the largest index difference across an edge.",
+          "detail": "Bandwidth benchmark, Tables 7–8."
+        },
+        {
+          "title": "Zhou, Gao & Hao — Reinforcement learning driven heuristic for two-dimensional bandwidth minimization (2025)",
+          "url": "https://doi.org/10.1016/j.asoc.2025.114327",
+          "role": "graph",
+          "scope": "",
+          "description": "Tests layouts on a square grid that minimize the longest Manhattan edge length.",
+          "detail": "Two-dimensional bandwidth benchmark, Appendix."
+        }
+      ],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Retain all source vertices. Store each undirected edge once; use unit traversal lengths."
+    },
+    {
+      "id": "HB/bcsstk06",
+      "construction": "Medium-size structural finite-element test problem with lumped masses, supplied by Lewis. This entry is the stiffness matrix; the companion mass model is separate.",
+      "weights": "Stiffness coefficients relating generalized displacements to restoring forces.",
+      "source_url": "https://sparse.tamu.edu/HB/bcsstk06",
+      "references": [
+        {
+          "title": "Torres-Jimenez et al. — A dual representation simulated annealing algorithm for the bandwidth minimization problem on graphs (2015)",
+          "url": "https://doi.org/10.1016/j.ins.2014.12.041",
+          "role": "graph",
+          "scope": "",
+          "description": "Uses vertex ordering to minimize the largest index difference across an edge.",
+          "detail": "Bandwidth benchmark, Tables 7–8."
+        }
+      ],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Retain all source vertices. Store each undirected edge once; use unit traversal lengths."
+    },
+    {
+      "id": "HB/bcsstk20__LCC_467_of_485",
+      "construction": "Structural finite-element stiffness model of a frame within a suspension bridge. A device/structure model, not sampled interpersonal or spatial adjacency data.",
+      "weights": "Stiffness coefficients in a structural generalized eigenproblem.",
+      "source_url": "https://sparse.tamu.edu/HB/bcsstk20",
+      "references": [
+        {
+          "title": "Torres-Jimenez et al. — A dual representation simulated annealing algorithm for the bandwidth minimization problem on graphs (2015)",
+          "url": "https://doi.org/10.1016/j.ins.2014.12.041",
+          "role": "graph",
+          "scope": "Original full graph; the gallery shows an extracted component",
+          "description": "Uses vertex ordering to minimize the largest index difference across an edge.",
+          "detail": "Bandwidth benchmark, Tables 7–8."
+        },
+        {
+          "title": "Zhou, Gao & Hao — Reinforcement learning driven heuristic for two-dimensional bandwidth minimization (2025)",
+          "url": "https://doi.org/10.1016/j.asoc.2025.114327",
+          "role": "graph",
+          "scope": "Original full graph; the gallery shows an extracted component",
+          "description": "Tests layouts on a square grid that minimize the longest Manhattan edge length.",
+          "detail": "Two-dimensional bandwidth benchmark, Appendix."
+        }
+      ],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Induce largest component, retaining source vertex order. Store each undirected edge once; use unit traversal lengths.",
+      "component": "The gallery displays the largest connected component: 467 of 485 original vertices."
+    },
+    {
+      "id": "HB/bcsstm07",
+      "construction": "Consistent mass matrix for a medium structural test problem supplied by Lewis. Finite-element basis functions couple inertial degrees of freedom.",
+      "weights": "Mass/inertial coefficients, including off-diagonal coupling from consistent mass assembly. They do not encode physical inter-node distances.",
+      "source_url": "https://sparse.tamu.edu/HB/bcsstm07",
+      "references": [
+        {
+          "title": "Torres-Jimenez et al. — A dual representation simulated annealing algorithm for the bandwidth minimization problem on graphs (2015)",
+          "url": "https://doi.org/10.1016/j.ins.2014.12.041",
+          "role": "graph",
+          "scope": "",
+          "description": "Uses vertex ordering to minimize the largest index difference across an edge.",
+          "detail": "Bandwidth benchmark, Tables 7–8."
+        }
+      ],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Retain all source vertices. Store each undirected edge once; use unit traversal lengths."
+    },
+    {
+      "id": "HB/can_445",
+      "construction": "Cannes structural matrix pattern supplied by L. Marro.",
+      "weights": "Connection pattern only. No numerical stiffness, force or distance weights are supplied.",
+      "source_url": "https://sparse.tamu.edu/HB/can_445",
+      "references": [
+        {
+          "title": "Torres-Jimenez et al. — A dual representation simulated annealing algorithm for the bandwidth minimization problem on graphs (2015)",
+          "url": "https://doi.org/10.1016/j.ins.2014.12.041",
+          "role": "graph",
+          "scope": "",
+          "description": "Uses vertex ordering to minimize the largest index difference across an edge.",
+          "detail": "Bandwidth benchmark, Tables 7–8."
+        },
+        {
+          "title": "Zhou, Gao & Hao — Reinforcement learning driven heuristic for two-dimensional bandwidth minimization (2025)",
+          "url": "https://doi.org/10.1016/j.asoc.2025.114327",
+          "role": "graph",
+          "scope": "",
+          "description": "Tests layouts on a square grid that minimize the longest Manhattan edge length.",
+          "detail": "Two-dimensional bandwidth benchmark, Appendix."
+        }
+      ],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Retain all source vertices. Store each undirected edge once; use unit traversal lengths."
+    },
+    {
+      "id": "HB/can_634",
+      "construction": "Cannes structural matrix pattern supplied by L. Marro.",
+      "weights": "Connection pattern only. No numerical stiffness, force or distance weights are supplied.",
+      "source_url": "https://sparse.tamu.edu/HB/can_634",
+      "references": [],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Retain all source vertices. Store each undirected edge once; use unit traversal lengths."
+    },
+    {
+      "id": "HB/can_715",
+      "construction": "Cannes structural matrix pattern supplied by L. Marro.",
+      "weights": "Connection pattern only. No numerical stiffness, force or distance weights are supplied.",
+      "source_url": "https://sparse.tamu.edu/HB/can_715",
+      "references": [
+        {
+          "title": "Torres-Jimenez et al. — A dual representation simulated annealing algorithm for the bandwidth minimization problem on graphs (2015)",
+          "url": "https://doi.org/10.1016/j.ins.2014.12.041",
+          "role": "graph",
+          "scope": "",
+          "description": "Uses vertex ordering to minimize the largest index difference across an edge.",
+          "detail": "Bandwidth benchmark, Tables 7–8."
+        },
+        {
+          "title": "Zhou, Gao & Hao — Reinforcement learning driven heuristic for two-dimensional bandwidth minimization (2025)",
+          "url": "https://doi.org/10.1016/j.asoc.2025.114327",
+          "role": "graph",
+          "scope": "",
+          "description": "Tests layouts on a square grid that minimize the longest Manhattan edge length.",
+          "detail": "Two-dimensional bandwidth benchmark, Appendix."
+        }
+      ],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Retain all source vertices. Store each undirected edge once; use unit traversal lengths."
+    },
+    {
+      "id": "HB/dwt_1005",
+      "construction": "Structural connection table from the David Taylor Naval Ship Research and Development Center, supplied by Everstine and Taylor. It records connectivity of structural-model indices.",
+      "weights": "Pattern-only connections. The stored file does not contain physical stiffness values or geometric lengths.",
+      "source_url": "https://sparse.tamu.edu/HB/dwt_1005",
+      "references": [
+        {
+          "title": "Zheng, Pawar & Goodman — Graph Drawing by Stochastic Gradient Descent (2018; arXiv 1710.04626)",
+          "url": "https://arxiv.org/abs/1710.04626",
+          "role": "graph",
+          "scope": "",
+          "description": "Compares stochastic gradient descent with stress majorization for graph drawing.",
+          "detail": "Mesh-like structure and local minima, Figures 2–3."
+        }
+      ],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Retain all source vertices. Store each undirected edge once; use unit traversal lengths."
+    },
+    {
+      "id": "HB/dwt_307",
+      "construction": "Structural connection table from the David Taylor Naval Ship Research and Development Center, supplied by Everstine and Taylor. It records connectivity of structural-model indices.",
+      "weights": "Pattern-only connections. The stored file does not contain physical stiffness values or geometric lengths.",
+      "source_url": "https://sparse.tamu.edu/HB/dwt_307",
+      "references": [
+        {
+          "title": "Zhou, Gao & Hao — Reinforcement learning driven heuristic for two-dimensional bandwidth minimization (2025)",
+          "url": "https://doi.org/10.1016/j.asoc.2025.114327",
+          "role": "graph",
+          "scope": "",
+          "description": "Tests layouts on a square grid that minimize the longest Manhattan edge length.",
+          "detail": "Two-dimensional bandwidth benchmark, Appendix."
+        },
+        {
+          "title": "Zheng, Pawar & Goodman — Graph Drawing by Stochastic Gradient Descent (2018; arXiv 1710.04626)",
+          "url": "https://arxiv.org/abs/1710.04626",
+          "role": "graph",
+          "scope": "",
+          "description": "Compares stochastic gradient descent with stress majorization for graph drawing.",
+          "detail": "Counterexample: majorization beats modified SGD, Figure 9."
+        }
+      ],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Retain all source vertices. Store each undirected edge once; use unit traversal lengths."
+    },
+    {
+      "id": "HB/dwt_419",
+      "construction": "Structural connection table from the David Taylor Naval Ship Research and Development Center, supplied by Everstine and Taylor. It records connectivity of structural-model indices.",
+      "weights": "Pattern-only connections. The stored file does not contain physical stiffness values or geometric lengths.",
+      "source_url": "https://sparse.tamu.edu/HB/dwt_419",
+      "references": [
+        {
+          "title": "Torres-Jimenez et al. — A dual representation simulated annealing algorithm for the bandwidth minimization problem on graphs (2015)",
+          "url": "https://doi.org/10.1016/j.ins.2014.12.041",
+          "role": "graph",
+          "scope": "",
+          "description": "Uses vertex ordering to minimize the largest index difference across an edge.",
+          "detail": "Bandwidth benchmark, Tables 7–8."
+        }
+      ],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Retain all source vertices. Store each undirected edge once; use unit traversal lengths."
+    },
+    {
+      "id": "HB/dwt_503",
+      "construction": "Structural connection table from the David Taylor Naval Ship Research and Development Center, supplied by Everstine and Taylor. It records connectivity of structural-model indices.",
+      "weights": "Pattern-only connections. The stored file does not contain physical stiffness values or geometric lengths.",
+      "source_url": "https://sparse.tamu.edu/HB/dwt_503",
+      "references": [
+        {
+          "title": "Torres-Jimenez et al. — A dual representation simulated annealing algorithm for the bandwidth minimization problem on graphs (2015)",
+          "url": "https://doi.org/10.1016/j.ins.2014.12.041",
+          "role": "graph",
+          "scope": "",
+          "description": "Uses vertex ordering to minimize the largest index difference across an edge.",
+          "detail": "Bandwidth benchmark, Tables 7–8."
+        },
+        {
+          "title": "Zhou, Gao & Hao — Reinforcement learning driven heuristic for two-dimensional bandwidth minimization (2025)",
+          "url": "https://doi.org/10.1016/j.asoc.2025.114327",
+          "role": "graph",
+          "scope": "",
+          "description": "Tests layouts on a square grid that minimize the longest Manhattan edge length.",
+          "detail": "Two-dimensional bandwidth benchmark, Appendix."
+        }
+      ],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Retain all source vertices. Store each undirected edge once; use unit traversal lengths."
+    },
+    {
+      "id": "HB/dwt_592",
+      "construction": "Structural connection table from the David Taylor Naval Ship Research and Development Center, supplied by Everstine and Taylor. It records connectivity of structural-model indices.",
+      "weights": "Pattern-only connections. The stored file does not contain physical stiffness values or geometric lengths.",
+      "source_url": "https://sparse.tamu.edu/HB/dwt_592",
+      "references": [
+        {
+          "title": "Torres-Jimenez et al. — A dual representation simulated annealing algorithm for the bandwidth minimization problem on graphs (2015)",
+          "url": "https://doi.org/10.1016/j.ins.2014.12.041",
+          "role": "graph",
+          "scope": "",
+          "description": "Uses vertex ordering to minimize the largest index difference across an edge.",
+          "detail": "Bandwidth benchmark, Tables 7–8."
+        }
+      ],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Retain all source vertices. Store each undirected edge once; use unit traversal lengths."
+    },
+    {
+      "id": "HB/dwt_66",
+      "construction": "Structural connection table from the David Taylor Naval Ship Research and Development Center, supplied by Everstine and Taylor. It records connectivity of structural-model indices.",
+      "weights": "Pattern-only connections. The stored file does not contain physical stiffness values or geometric lengths.",
+      "source_url": "https://sparse.tamu.edu/HB/dwt_66",
+      "references": [
+        {
+          "title": "Zhou, Gao & Hao — Reinforcement learning driven heuristic for two-dimensional bandwidth minimization (2025)",
+          "url": "https://doi.org/10.1016/j.asoc.2025.114327",
+          "role": "graph",
+          "scope": "",
+          "description": "Tests layouts on a square grid that minimize the longest Manhattan edge length.",
+          "detail": "Two-dimensional bandwidth benchmark, Appendix."
+        },
+        {
+          "title": "Zheng, Pawar & Goodman — Graph Drawing by Stochastic Gradient Descent (2018; arXiv 1710.04626)",
+          "url": "https://arxiv.org/abs/1710.04626",
+          "role": "graph",
+          "scope": "",
+          "description": "Compares stochastic gradient descent with stress majorization for graph drawing.",
+          "detail": "Long, twisted layouts difficult to unravel, Figure 7."
+        }
+      ],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Retain all source vertices. Store each undirected edge once; use unit traversal lengths."
+    },
+    {
+      "id": "HB/dwt_758",
+      "construction": "Structural connection table from the David Taylor Naval Ship Research and Development Center, supplied by Everstine and Taylor. It records connectivity of structural-model indices.",
+      "weights": "Pattern-only connections. The stored file does not contain physical stiffness values or geometric lengths.",
+      "source_url": "https://sparse.tamu.edu/HB/dwt_758",
+      "references": [
+        {
+          "title": "Zhou, Gao & Hao — Reinforcement learning driven heuristic for two-dimensional bandwidth minimization (2025)",
+          "url": "https://doi.org/10.1016/j.asoc.2025.114327",
+          "role": "graph",
+          "scope": "",
+          "description": "Tests layouts on a square grid that minimize the longest Manhattan edge length.",
+          "detail": "Two-dimensional bandwidth benchmark, Appendix."
+        }
+      ],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Retain all source vertices. Store each undirected edge once; use unit traversal lengths."
+    },
+    {
+      "id": "HB/fs_760_3__LCC_745_of_760",
+      "construction": "Third output time step of the STRAT stratospheric ionization study, generated by the FACSIMILE stiff ordinary-differential-equation solver. Couples kinetics and diffusion for 38 chemical species. The 760 variables are not 760 species.",
+      "weights": "Linear-solver/convergence coefficients combining chemical kinetics and diffusion; they are not direct reaction-rate weights.",
+      "source_url": "https://sparse.tamu.edu/HB/fs_760_3",
+      "references": [],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Induce largest component, retaining source vertex order. Store each undirected edge once; use unit traversal lengths.",
+      "component": "The gallery displays the largest connected component: 745 of 760 original vertices."
+    },
+    {
+      "id": "HB/gre_512",
+      "construction": "Cachard’s computer-system simulation problem from Grenoble.",
+      "weights": "Real nonsymmetric simulation coefficients.",
+      "source_url": "https://sparse.tamu.edu/HB/gre_512",
+      "references": [
+        {
+          "title": "Torres-Jimenez et al. — A dual representation simulated annealing algorithm for the bandwidth minimization problem on graphs (2015)",
+          "url": "https://doi.org/10.1016/j.ins.2014.12.041",
+          "role": "graph",
+          "scope": "",
+          "description": "Uses vertex ordering to minimize the largest index difference across an edge.",
+          "detail": "Bandwidth benchmark, Tables 7–8."
+        }
+      ],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Retain all source vertices. Store each undirected edge once; use unit traversal lengths."
+    },
+    {
+      "id": "HB/hor_131",
+      "construction": "Hornby/National Nuclear Corporation turbulent-flow network calculation. Equations conserve nodal energy and require zero net pressure drop around closed flow loops; Newton–Raphson linearization yields a 434-variable system.",
+      "weights": "Derivatives/couplings in the linearized energy and pressure equations. Vertices are system indices, not a verified one-to-one list of physical junctions.",
+      "source_url": "https://sparse.tamu.edu/HB/hor_131",
+      "references": [
+        {
+          "title": "Torres-Jimenez et al. — A dual representation simulated annealing algorithm for the bandwidth minimization problem on graphs (2015)",
+          "url": "https://doi.org/10.1016/j.ins.2014.12.041",
+          "role": "graph",
+          "scope": "",
+          "description": "Uses vertex ordering to minimize the largest index difference across an edge.",
+          "detail": "Bandwidth benchmark, Tables 7–8."
+        }
+      ],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Retain all source vertices. Store each undirected edge once; use unit traversal lengths."
+    },
+    {
+      "id": "HB/illc1033",
+      "construction": "Rectangular least-squares system from surveying, supplied by Saunders; ill-conditioned variant paired with well1033. The bundle uses a bipartite graph with 1,033 equation vertices and 320 unknown vertices, connected where the coefficient is nonzero.",
+      "weights": "Design/equation coefficients. The ill-conditioned variant’s numerical values influence least-squares behavior; unweighted support cannot retain conditioning.",
+      "source_url": "https://sparse.tamu.edu/HB/illc1033",
+      "references": [
+        {
+          "title": "Paige & Saunders — LSQR: An Algorithm for Sparse Linear Equations and Sparse Least Squares (1982)",
+          "url": "https://web.stanford.edu/group/SOL/software/lsqr/lsqr-toms82a.pdf",
+          "role": "numerical",
+          "scope": "Related surveying matrix collection",
+          "description": "The NIST surveying collection is linked to LSQR testing. The paper’s gravity-meter example has different dimensions from illc1033; this is a collection-level connection.",
+          "detail": ""
+        }
+      ],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Rows and columns form separate vertex sets. Retain all source vertices. Store each undirected edge once; use unit traversal lengths."
+    },
+    {
+      "id": "HB/impcol_d",
+      "construction": "Bogle’s nitric-acid-plant chemical-engineering model. Equations encode a process simulation rather than direct observed pairwise interactions.",
+      "weights": "Numerical equation coefficients.",
+      "source_url": "https://sparse.tamu.edu/HB/impcol_d",
+      "references": [
+        {
+          "title": "Torres-Jimenez et al. — A dual representation simulated annealing algorithm for the bandwidth minimization problem on graphs (2015)",
+          "url": "https://doi.org/10.1016/j.ins.2014.12.041",
+          "role": "graph",
+          "scope": "",
+          "description": "Uses vertex ordering to minimize the largest index difference across an edge.",
+          "detail": "Bandwidth benchmark, Tables 7–8."
+        }
+      ],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Retain all source vertices. Store each undirected edge once; use unit traversal lengths."
+    },
+    {
+      "id": "HB/lns_511__LCC_503_of_511",
+      "construction": "Jones’s linearized compressible Navier–Stokes fluid-flow problem. Vertices index discretized equation unknowns. Both selected source matrices have order 511.",
+      "weights": "Coefficients of linearized compressible-flow equations; original nonsymmetry is discarded.",
+      "source_url": "https://sparse.tamu.edu/HB/lns_511",
+      "references": [
+        {
+          "title": "Torres-Jimenez et al. — A dual representation simulated annealing algorithm for the bandwidth minimization problem on graphs (2015)",
+          "url": "https://doi.org/10.1016/j.ins.2014.12.041",
+          "role": "graph",
+          "scope": "Original full graph; the gallery shows an extracted component",
+          "description": "Uses vertex ordering to minimize the largest index difference across an edge.",
+          "detail": "Bandwidth benchmark, Tables 7–8."
+        }
+      ],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Induce largest component, retaining source vertex order. Store each undirected edge once; use unit traversal lengths.",
+      "component": "The gallery displays the largest connected component: 503 of 511 original vertices."
+    },
+    {
+      "id": "HB/lnsp_511__LCC_503_of_511",
+      "construction": "Jones’s linearized compressible Navier–Stokes fluid-flow problem. Vertices index discretized equation unknowns. Both selected source matrices have order 511.",
+      "weights": "Coefficients of linearized compressible-flow equations; original nonsymmetry is discarded.",
+      "source_url": "https://sparse.tamu.edu/HB/lnsp_511",
+      "references": [],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Induce largest component, retaining source vertex order. Store each undirected edge once; use unit traversal lengths.",
+      "component": "The gallery displays the largest connected component: 503 of 511 original vertices."
+    },
+    {
+      "id": "HB/lock1074",
+      "construction": "Lockheed gyro finite-element connection pattern supplied by Loden. Retains the source’s isolated vertices.",
+      "weights": "Pattern only; no physical coefficients stored.",
+      "source_url": "https://sparse.tamu.edu/HB/lock1074",
+      "references": [],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Retain all source vertices. Store each undirected edge once; use unit traversal lengths."
+    },
+    {
+      "id": "HB/lock_700__LCC_691_of_700",
+      "construction": "Lockheed porch finite-element connection pattern supplied by Loden.",
+      "weights": "Pattern only; no physical stiffness values or lengths stored.",
+      "source_url": "https://sparse.tamu.edu/HB/lock_700",
+      "references": [],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Induce largest component, retaining source vertex order. Store each undirected edge once; use unit traversal lengths.",
+      "component": "The gallery displays the largest connected component: 691 of 700 original vertices."
+    },
+    {
+      "id": "HB/lshp_406",
+      "construction": "Alan George’s L-shaped-domain finite-element thermal model problems. Different sizes describe numerical mesh instances, not different observed social or biological networks.",
+      "weights": "Pattern-only finite-element couplings; original stored entries do not supply thermal-conductivity values.",
+      "source_url": "https://sparse.tamu.edu/HB/lshp_406",
+      "references": [],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Retain all source vertices. Store each undirected edge once; use unit traversal lengths."
+    },
+    {
+      "id": "HB/lshp_577",
+      "construction": "Alan George’s L-shaped-domain finite-element thermal model problems. Different sizes describe numerical mesh instances, not different observed social or biological networks.",
+      "weights": "Pattern-only finite-element couplings; original stored entries do not supply thermal-conductivity values.",
+      "source_url": "https://sparse.tamu.edu/HB/lshp_577",
+      "references": [
+        {
+          "title": "Zhou, Gao & Hao — Reinforcement learning driven heuristic for two-dimensional bandwidth minimization (2025)",
+          "url": "https://doi.org/10.1016/j.asoc.2025.114327",
+          "role": "graph",
+          "scope": "",
+          "description": "Tests layouts on a square grid that minimize the longest Manhattan edge length.",
+          "detail": "Two-dimensional bandwidth benchmark, Appendix."
+        }
+      ],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Retain all source vertices. Store each undirected edge once; use unit traversal lengths."
+    },
+    {
+      "id": "HB/lshp_778",
+      "construction": "Alan George’s L-shaped-domain finite-element thermal model problems. Different sizes describe numerical mesh instances, not different observed social or biological networks.",
+      "weights": "Pattern-only finite-element couplings; original stored entries do not supply thermal-conductivity values.",
+      "source_url": "https://sparse.tamu.edu/HB/lshp_778",
+      "references": [
+        {
+          "title": "Zhou, Gao & Hao — Reinforcement learning driven heuristic for two-dimensional bandwidth minimization (2025)",
+          "url": "https://doi.org/10.1016/j.asoc.2025.114327",
+          "role": "graph",
+          "scope": "",
+          "description": "Tests layouts on a square grid that minimize the longest Manhattan edge length.",
+          "detail": "Two-dimensional bandwidth benchmark, Appendix."
+        }
+      ],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Retain all source vertices. Store each undirected edge once; use unit traversal lengths."
+    },
+    {
+      "id": "HB/mcfe__LCC_731_of_765",
+      "construction": "Carlsson’s iron-atom non-local-thermodynamic-equilibrium model-atmosphere calculation, M65GXM. Nonlinear radiative-transfer and statistical-equilibrium equations give a sparse linear system. Vertices are numerical unknowns, not galaxies or atom-to-atom spatial contacts.",
+      "weights": "Linear-system coefficients in the coupled radiation/atomic-population calculation.",
+      "source_url": "https://sparse.tamu.edu/HB/mcfe",
+      "references": [
+        {
+          "title": "Torres-Jimenez et al. — A dual representation simulated annealing algorithm for the bandwidth minimization problem on graphs (2015)",
+          "url": "https://doi.org/10.1016/j.ins.2014.12.041",
+          "role": "graph",
+          "scope": "Original full graph; the gallery shows an extracted component",
+          "description": "Uses vertex ordering to minimize the largest index difference across an edge.",
+          "detail": "Bandwidth benchmark, Tables 7–8."
+        },
+        {
+          "title": "Zhou, Gao & Hao — Reinforcement learning driven heuristic for two-dimensional bandwidth minimization (2025)",
+          "url": "https://doi.org/10.1016/j.asoc.2025.114327",
+          "role": "graph",
+          "scope": "Original full graph; the gallery shows an extracted component",
+          "description": "Tests layouts on a square grid that minimize the longest Manhattan edge length.",
+          "detail": "Two-dimensional bandwidth benchmark, Appendix."
+        }
+      ],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Induce largest component, retaining source vertex order. Store each undirected edge once; use unit traversal lengths.",
+      "component": "The gallery displays the largest connected component: 731 of 765 original vertices."
+    },
+    {
+      "id": "HB/nnc666",
+      "construction": "National Nuclear Corporation fission-reactor seismic study. The graph represents structural-model equation coupling, not a neutron-interaction network.",
+      "weights": "Real seismic/structural system coefficients.",
+      "source_url": "https://sparse.tamu.edu/HB/nnc666",
+      "references": [
+        {
+          "title": "Torres-Jimenez et al. — A dual representation simulated annealing algorithm for the bandwidth minimization problem on graphs (2015)",
+          "url": "https://doi.org/10.1016/j.ins.2014.12.041",
+          "role": "graph",
+          "scope": "",
+          "description": "Uses vertex ordering to minimize the largest index difference across an edge.",
+          "detail": "Bandwidth benchmark, Tables 7–8."
+        }
+      ],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Retain all source vertices. Store each undirected edge once; use unit traversal lengths."
+    },
+    {
+      "id": "HB/nos5",
+      "construction": "Finite-element three-story building with a tower, 80 elements and three degrees of freedom per node. Beam equations involve a biharmonic operator with free/fixed conditions; the 468 graph vertices are degrees of freedom.",
+      "weights": "Structural operator coefficients, not lengths between building joints.",
+      "source_url": "https://sparse.tamu.edu/HB/nos5",
+      "references": [
+        {
+          "title": "Torres-Jimenez et al. — A dual representation simulated annealing algorithm for the bandwidth minimization problem on graphs (2015)",
+          "url": "https://doi.org/10.1016/j.ins.2014.12.041",
+          "role": "graph",
+          "scope": "",
+          "description": "Uses vertex ordering to minimize the largest index difference across an edge.",
+          "detail": "Bandwidth benchmark, Tables 7–8."
+        }
+      ],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Retain all source vertices. Store each undirected edge once; use unit traversal lengths."
+    },
+    {
+      "id": "HB/nos6",
+      "construction": "Poisson problem on an L-shaped region with mixed boundary conditions, supplied by Simon. Numerical test rather than measured-network data.",
+      "weights": "Discretized Poisson-operator coefficients.",
+      "source_url": "https://sparse.tamu.edu/HB/nos6",
+      "references": [
+        {
+          "title": "Torres-Jimenez et al. — A dual representation simulated annealing algorithm for the bandwidth minimization problem on graphs (2015)",
+          "url": "https://doi.org/10.1016/j.ins.2014.12.041",
+          "role": "graph",
+          "scope": "",
+          "description": "Uses vertex ordering to minimize the largest index difference across an edge.",
+          "detail": "Bandwidth benchmark, Tables 7–8."
+        },
+        {
+          "title": "Zhou, Gao & Hao — Reinforcement learning driven heuristic for two-dimensional bandwidth minimization (2025)",
+          "url": "https://doi.org/10.1016/j.asoc.2025.114327",
+          "role": "graph",
+          "scope": "",
+          "description": "Tests layouts on a square grid that minimize the longest Manhattan edge length.",
+          "detail": "Two-dimensional bandwidth benchmark, Appendix."
+        }
+      ],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Retain all source vertices. Store each undirected edge once; use unit traversal lengths."
+    },
+    {
+      "id": "HB/nos7",
+      "construction": "Finite-difference diffusion problem on a three-dimensional unit cube with variable diffusivity and Dirichlet conditions. The 729 vertices index grid unknowns.",
+      "weights": "Diffusion-operator coefficients depending on stencil and diffusivity.",
+      "source_url": "https://sparse.tamu.edu/HB/nos7",
+      "references": [
+        {
+          "title": "Torres-Jimenez et al. — A dual representation simulated annealing algorithm for the bandwidth minimization problem on graphs (2015)",
+          "url": "https://doi.org/10.1016/j.ins.2014.12.041",
+          "role": "graph",
+          "scope": "",
+          "description": "Uses vertex ordering to minimize the largest index difference across an edge.",
+          "detail": "Bandwidth benchmark, Tables 7–8."
+        },
+        {
+          "title": "Zhou, Gao & Hao — Reinforcement learning driven heuristic for two-dimensional bandwidth minimization (2025)",
+          "url": "https://doi.org/10.1016/j.asoc.2025.114327",
+          "role": "graph",
+          "scope": "",
+          "description": "Tests layouts on a square grid that minimize the longest Manhattan edge length.",
+          "detail": "Two-dimensional bandwidth benchmark, Appendix."
+        }
+      ],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Retain all source vertices. Store each undirected edge once; use unit traversal lengths."
+    },
+    {
+      "id": "HB/shl_0",
+      "construction": "Basis matrices from Saunders’s SHELL linear-programming problem. The numbered files are distinct archived basis instances. Square-matrix graph conversion identifies row and column indices by number even though equations and variables have different meanings.",
+      "weights": "Linear-programming constraint/basis coefficients, not physical interaction strengths.",
+      "source_url": "https://sparse.tamu.edu/HB/shl_0",
+      "references": [
+        {
+          "title": "Torres-Jimenez et al. — A dual representation simulated annealing algorithm for the bandwidth minimization problem on graphs (2015)",
+          "url": "https://doi.org/10.1016/j.ins.2014.12.041",
+          "role": "graph",
+          "scope": "",
+          "description": "Uses vertex ordering to minimize the largest index difference across an edge.",
+          "detail": "Bandwidth benchmark, Tables 7–8."
+        }
+      ],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Retain all source vertices. Store each undirected edge once; use unit traversal lengths."
+    },
+    {
+      "id": "HB/shl_200",
+      "construction": "Basis matrices from Saunders’s SHELL linear-programming problem. The numbered files are distinct archived basis instances. Square-matrix graph conversion identifies row and column indices by number even though equations and variables have different meanings.",
+      "weights": "Linear-programming constraint/basis coefficients, not physical interaction strengths.",
+      "source_url": "https://sparse.tamu.edu/HB/shl_200",
+      "references": [
+        {
+          "title": "Torres-Jimenez et al. — A dual representation simulated annealing algorithm for the bandwidth minimization problem on graphs (2015)",
+          "url": "https://doi.org/10.1016/j.ins.2014.12.041",
+          "role": "graph",
+          "scope": "",
+          "description": "Uses vertex ordering to minimize the largest index difference across an edge.",
+          "detail": "Bandwidth benchmark, Tables 7–8."
+        }
+      ],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Retain all source vertices. Store each undirected edge once; use unit traversal lengths."
+    },
+    {
+      "id": "HB/shl_400",
+      "construction": "Basis matrices from Saunders’s SHELL linear-programming problem. The numbered files are distinct archived basis instances. Square-matrix graph conversion identifies row and column indices by number even though equations and variables have different meanings.",
+      "weights": "Linear-programming constraint/basis coefficients, not physical interaction strengths.",
+      "source_url": "https://sparse.tamu.edu/HB/shl_400",
+      "references": [
+        {
+          "title": "Torres-Jimenez et al. — A dual representation simulated annealing algorithm for the bandwidth minimization problem on graphs (2015)",
+          "url": "https://doi.org/10.1016/j.ins.2014.12.041",
+          "role": "graph",
+          "scope": "",
+          "description": "Uses vertex ordering to minimize the largest index difference across an edge.",
+          "detail": "Bandwidth benchmark, Tables 7–8."
+        }
+      ],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Retain all source vertices. Store each undirected edge once; use unit traversal lengths."
+    },
+    {
+      "id": "HB/steam2",
+      "construction": "Steam-and-oil reservoir simulation supplied by Grimes: a 5 × 5 × 6 spatial grid with four degrees of freedom per cell gives 600 unknowns.",
+      "weights": "Coefficients coupling reservoir-model variables within and across cells. No direct conversion to geographic edge lengths is justified.",
+      "source_url": "https://sparse.tamu.edu/HB/steam2",
+      "references": [
+        {
+          "title": "Torres-Jimenez et al. — A dual representation simulated annealing algorithm for the bandwidth minimization problem on graphs (2015)",
+          "url": "https://doi.org/10.1016/j.ins.2014.12.041",
+          "role": "graph",
+          "scope": "",
+          "description": "Uses vertex ordering to minimize the largest index difference across an edge.",
+          "detail": "Bandwidth benchmark, Tables 7–8."
+        }
+      ],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Retain all source vertices. Store each undirected edge once; use unit traversal lengths."
+    },
+    {
+      "id": "HB/west0497",
+      "construction": "Westerberg chemical-process simulation: rigorous flash unit with recycling. Graph edges arise from equation-variable couplings, not a measured material-transfer network.",
+      "weights": "Process-simulation equation coefficients; units depend on the variables and equations.",
+      "source_url": "https://sparse.tamu.edu/HB/west0497",
+      "references": [
+        {
+          "title": "Torres-Jimenez et al. — A dual representation simulated annealing algorithm for the bandwidth minimization problem on graphs (2015)",
+          "url": "https://doi.org/10.1016/j.ins.2014.12.041",
+          "role": "graph",
+          "scope": "",
+          "description": "Uses vertex ordering to minimize the largest index difference across an edge.",
+          "detail": "Bandwidth benchmark, Tables 7–8."
+        }
+      ],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Retain all source vertices. Store each undirected edge once; use unit traversal lengths."
+    },
+    {
+      "id": "HB/west0655",
+      "construction": "Westerberg chemical-process simulation: 16-stage column section, with some stages simplified. Graph vertices index the 655-dimensional numerical system, not 655 physical stages.",
+      "weights": "Process-simulation equation coefficients; numerical zero entries are excluded from the gallery connectivity.",
+      "source_url": "https://sparse.tamu.edu/HB/west0655",
+      "references": [
+        {
+          "title": "Torres-Jimenez et al. — A dual representation simulated annealing algorithm for the bandwidth minimization problem on graphs (2015)",
+          "url": "https://doi.org/10.1016/j.ins.2014.12.041",
+          "role": "graph",
+          "scope": "",
+          "description": "Uses vertex ordering to minimize the largest index difference across an edge.",
+          "detail": "Bandwidth benchmark, Tables 7–8."
+        }
+      ],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Retain all source vertices. Store each undirected edge once; use unit traversal lengths."
+    },
+    {
+      "id": "JGD_Trefethen/Trefethen_500",
+      "construction": "An order-500 member of Trefethen’s numerical challenge family: successive primes on the diagonal, ones at off-diagonal offsets that are powers of two. The original challenge used order 20,000. No empirical data.",
+      "weights": "Prime diagonal entries and unit off-diagonal coefficients. the gallery discards the diagonal, leaving only powers-of-two connectivity.",
+      "source_url": "https://sparse.tamu.edu/JGD_Trefethen/Trefethen_500",
+      "references": [
+        {
+          "title": "Zhu, Gleich & Grama — Erasure Coding for Fault-Oblivious Linear System Solvers (2017)",
+          "url": "https://www.cs.purdue.edu/homes/dgleich/publications/Zhu%202017%20-%20Erasure%20Coded.pdf",
+          "role": "numerical",
+          "scope": "",
+          "description": "Uses the numerical matrices in conditioning experiments for fault-tolerant linear solves, including their prime-valued diagonals.",
+          "detail": "Numerical conditioning experiment, Figure 5."
+        }
+      ],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Retain all source vertices. Store each undirected edge once; use unit traversal lengths."
+    },
+    {
+      "id": "JGD_Trefethen/Trefethen_700",
+      "construction": "An order-700 member of Trefethen’s numerical challenge family: successive primes on the diagonal, ones at off-diagonal offsets that are powers of two. The original challenge used order 20,000. No empirical data.",
+      "weights": "Prime diagonal entries and unit off-diagonal coefficients. the gallery discards the diagonal, leaving only powers-of-two connectivity.",
+      "source_url": "https://sparse.tamu.edu/JGD_Trefethen/Trefethen_700",
+      "references": [
+        {
+          "title": "Zhu, Gleich & Grama — Erasure Coding for Fault-Oblivious Linear System Solvers (2017)",
+          "url": "https://www.cs.purdue.edu/homes/dgleich/publications/Zhu%202017%20-%20Erasure%20Coded.pdf",
+          "role": "numerical",
+          "scope": "",
+          "description": "Uses the numerical matrices in conditioning experiments for fault-tolerant linear solves, including their prime-valued diagonals.",
+          "detail": "Numerical conditioning experiment, Figure 5."
+        }
+      ],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Retain all source vertices. Store each undirected edge once; use unit traversal lengths."
+    },
+    {
+      "id": "ML_Graph/Spectro_10NN",
+      "construction": "Pasadakis and colleagues construct a symmetrized 10-nearest-neighbor graph from 531 infrared spectra from part of the IRAS low-resolution spectrometer database, with 48 class labels. A vertex is an observation; an edge means proximity in feature space, not a direct physical interaction.",
+      "weights": "Locally scaled Gaussian similarities in feature space. Larger weights indicate more similar observations. The gallery replaces these similarities with unit edge lengths.",
+      "source_url": "https://sparse.tamu.edu/ML_Graph/Spectro_10NN",
+      "references": [
+        {
+          "title": "Pasadakis et al. — K-way p-spectral clustering on Grassmann manifolds (2020 preprint, version 1)",
+          "url": "https://arxiv.org/abs/2008.13210v1",
+          "role": "application",
+          "scope": "",
+          "description": "Uses weighted graph cuts to cluster observations and assess agreement with known class labels.",
+          "detail": "Appendix A, Tables 2–4."
+        }
+      ],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Retain all source vertices. Store each undirected edge once; use unit traversal lengths."
+    },
+    {
+      "id": "ML_Graph/micromass_10NN",
+      "construction": "Pasadakis and colleagues construct a symmetrized 10-nearest-neighbor graph from 571 microorganism mass-spectrometry observations, with 20 class labels. A vertex is an observation; an edge means proximity in feature space, not a direct physical interaction.",
+      "weights": "Locally scaled Gaussian similarities in feature space. Larger weights indicate more similar observations. The gallery replaces these similarities with unit edge lengths.",
+      "source_url": "https://sparse.tamu.edu/ML_Graph/micromass_10NN",
+      "references": [
+        {
+          "title": "Pasadakis et al. — K-way p-spectral clustering on Grassmann manifolds (2020 preprint, version 1)",
+          "url": "https://arxiv.org/abs/2008.13210v1",
+          "role": "application",
+          "scope": "",
+          "description": "Uses weighted graph cuts to cluster observations and assess agreement with known class labels.",
+          "detail": "Appendix A, Tables 2–4."
+        }
+      ],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Retain all source vertices. Store each undirected edge once; use unit traversal lengths."
+    },
+    {
+      "id": "ML_Graph/umistfacesnorm_10NN",
+      "construction": "Pasadakis and colleagues construct a symmetrized 10-nearest-neighbor graph from 575 facial images of 20 people from UMIST, normalized to values in [0,1]. A vertex is an observation; an edge means proximity in feature space, not a direct physical interaction.",
+      "weights": "Locally scaled Gaussian similarities in feature space. Larger weights indicate more similar observations. The gallery replaces these similarities with unit edge lengths.",
+      "source_url": "https://sparse.tamu.edu/ML_Graph/umistfacesnorm_10NN",
+      "references": [
+        {
+          "title": "Pasadakis et al. — K-way p-spectral clustering on Grassmann manifolds (2020 preprint, version 1)",
+          "url": "https://arxiv.org/abs/2008.13210v1",
+          "role": "application",
+          "scope": "",
+          "description": "Uses weighted graph cuts to cluster observations and assess agreement with known class labels.",
+          "detail": "Appendix A, Tables 2–4."
+        }
+      ],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Retain all source vertices. Store each undirected edge once; use unit traversal lengths."
+    },
+    {
+      "id": "MathWorks/Harvard500",
+      "construction": "Moler’s 500-page Web crawl used to illustrate PageRank. Vertices are URLs and directed edges record hyperlinks; it is observed Web structure from an archived crawl, not the present Harvard website.",
+      "weights": "Pattern-only directed adjacency: link presence rather than frequency. PageRank subsequently normalizes outgoing links and adds teleportation; those transition weights are not original stored edge values.",
+      "source_url": "https://sparse.tamu.edu/MathWorks/Harvard500",
+      "references": [
+        {
+          "title": "Gleich, Gray, Greif & Lau — An Inner-Outer Iteration for Computing PageRank (2010)",
+          "url": "https://www.cs.purdue.edu/homes/dgleich/publications/gleich%202010%20-%20inner-outer%20pagerank.pdf",
+          "role": "graph",
+          "scope": "",
+          "description": "Uses Harvard500 to study PageRank iteration and spectral behavior. The calculation uses directed links and transition normalization.",
+          "detail": "PageRank and spectral behavior, Figure 6.4."
+        }
+      ],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Retain all source vertices. Store each undirected edge once; use unit traversal lengths."
+    },
+    {
+      "id": "Morandini/rotor2__LCC_785_of_791",
+      "construction": "Morandini’s large helicopter-rotor model. A structural simulation matrix, with vertices indexing model variables rather than rotor components.",
+      "weights": "Real nonsymmetric structural-model coefficients.",
+      "source_url": "https://sparse.tamu.edu/Morandini/rotor2",
+      "references": [],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Induce largest component, retaining source vertex order. Store each undirected edge once; use unit traversal lengths.",
+      "component": "The gallery displays the largest connected component: 785 of 791 original vertices."
+    },
+    {
+      "id": "Mycielski/mycielskian10",
+      "construction": "Tenth Mycielski graph. The recursive construction adds a shadow copy of each vertex, connects shadows to original neighbors, and adds one vertex adjacent to all shadows. Starting from K2 produces M10 with 767 vertices, chromatic number 10 and no triangles.",
+      "weights": "Unweighted pattern adjacency.",
+      "source_url": "https://sparse.tamu.edu/Mycielski/mycielskian10",
+      "references": [
+        {
+          "title": "Mycielski — Sur le coloriage des graphes (1955)",
+          "url": "https://sparse.tamu.edu/Mycielski/mycielskian10",
+          "role": "background",
+          "scope": "Theoretical graph family",
+          "description": "Introduces the recursive construction of triangle-free graphs with arbitrarily high chromatic number.",
+          "detail": "Construction source."
+        },
+        {
+          "title": "Chen et al. — Accelerating Matrix-Centric Graph Processing on GPU through Bit-Level Optimizations (2023)",
+          "url": "https://www.osti.gov/servlets/purl/1968852",
+          "role": "graph",
+          "scope": "",
+          "description": "Tests GPU graph kernels exploiting distinctive sparsity patterns.",
+          "detail": "Block-pattern graph-kernel benchmark, Tables 10–11."
+        }
+      ],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Retain all source vertices. Store each undirected edge once; use unit traversal lengths."
+    },
+    {
+      "id": "Negre/dendrimer",
+      "construction": "Phenyl dendrimer with 22 covalently bonded phenyl groups. A thresholded electronic density matrix gives connections among 730 orbitals; the paper describes 262 atoms. This comes from a molecular calculation, not 730 measured atoms or a direct bond graph.",
+      "weights": "Electronic density-matrix elements in an orbital basis. The graph encodes entries surviving a threshold; values describe electronic occupations/coherences, not bond lengths. The threshold and basis are needed for reconstruction from the molecule.",
+      "source_url": "https://sparse.tamu.edu/Negre/dendrimer",
+      "references": [
+        {
+          "title": "Ushijima-Mwesigwa, Negre & Mniszewski — Graph Partitioning using Quantum Annealing on the D-Wave System (2017 preprint, later revision)",
+          "url": "https://arxiv.org/abs/1705.03082",
+          "role": "application",
+          "scope": "",
+          "description": "Uses the dendrimer’s fractal-like structure to test balanced partitioning for electronic-structure calculations.",
+          "detail": "Fractal-like topology and balanced partitioning."
+        }
+      ],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Retain all source vertices. Store each undirected edge once; use unit traversal lengths."
+    },
+    {
+      "id": "Newman/lesmis",
+      "construction": "Knuth’s coding of character coappearances in Hugo’s Les Misérables, distributed by Newman. The 77 vertices are named characters; two are linked when they coappear in a chapter. Data are extracted from a real text about fictional characters, not observed human relationships.",
+      "weights": "Integer counts of coappearances. A larger value indicates stronger textual association, not a longer travel distance.",
+      "source_url": "https://sparse.tamu.edu/Newman/lesmis",
+      "references": [
+        {
+          "title": "Newman & Girvan — Finding and evaluating community structure in networks (2004)",
+          "url": "https://doi.org/10.1103/PhysRevE.69.026113",
+          "role": "application",
+          "scope": "",
+          "description": "Uses edge betweenness and modularity to identify character communities and interpret them in relation to the narrative.",
+          "detail": "Community structure, Figure 12."
+        },
+        {
+          "title": "Zheng, Pawar & Goodman — Graph Drawing by Stochastic Gradient Descent (2018; arXiv 1710.04626)",
+          "url": "https://arxiv.org/abs/1710.04626",
+          "role": "graph",
+          "scope": "",
+          "description": "Compares stochastic gradient descent with stress majorization for graph drawing.",
+          "detail": "Small-network stress/annealing example, Figure 3."
+        }
+      ],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Retain all source vertices. Store each undirected edge once; use unit traversal lengths."
+    },
+    {
+      "id": "PARSEC/Si2",
+      "construction": "Kohn–Sham Hamiltonian from PARSEC density-functional calculations using real-space pseudopotentials and high-order finite differences for the Laplacian. The 769 indices represent discretized electronic degrees of freedom, not 769 silicon atoms.",
+      "weights": "Hamiltonian coefficients containing kinetic and potential terms. Signs, diagonal terms and scaling govern electronic eigenstates; unit-length support loses them.",
+      "source_url": "https://sparse.tamu.edu/PARSEC/Si2",
+      "references": [],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Retain all source vertices. Store each undirected edge once; use unit traversal lengths."
+    },
+    {
+      "id": "Rommes/M10PI_n",
+      "construction": "CEPEL/Freitas ten-section multiconductor transmission-line model in index-2 differential-algebraic form. Cascaded RLC π-circuits approximate the line; the two files are alternative representations of the same system.",
+      "weights": "Entries of A in E dx/dt = Ax + Bu, with output y=Cx. Couplings reflect resistance, inductance, capacitance and algebraic constraints after formulation/scaling; not simply line admittances.",
+      "source_url": "https://sparse.tamu.edu/Rommes/M10PI_n",
+      "references": [],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Retain all source vertices. Store each undirected edge once; use unit traversal lengths."
+    },
+    {
+      "id": "Rommes/M10PI_n1__LCC_526_of_528",
+      "construction": "CEPEL/Freitas ten-section multiconductor transmission-line model in index-1 differential-algebraic form. Cascaded RLC π-circuits approximate the line; the two files are alternative representations of the same system.",
+      "weights": "Entries of A in E dx/dt = Ax + Bu, with output y=Cx. Couplings reflect resistance, inductance, capacitance and algebraic constraints after formulation/scaling; not simply line admittances.",
+      "source_url": "https://sparse.tamu.edu/Rommes/M10PI_n1",
+      "references": [],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Induce largest component, retaining source vertex order. Store each undirected edge once; use unit traversal lengths.",
+      "component": "The gallery displays the largest connected component: 526 of 528 original vertices."
+    },
+    {
+      "id": "Sandia/oscil_dcop_01__LCC_426_of_430",
+      "construction": "Sandia oscillator circuit matrix at a direct-current operating point, supplied by Hoekstra. Model indices represent circuit-equation variables.",
+      "weights": "Coefficients of the circuit operating-point linear system.",
+      "source_url": "https://sparse.tamu.edu/Sandia/oscil_dcop_01",
+      "references": [
+        {
+          "title": "Palamadai Natarajan — KLU: A High Performance Sparse Linear Solver for Circuit Simulation Problems (2005 MSc thesis)",
+          "url": "https://ufdcimages.uflib.ufl.edu/UF/E0/01/17/21/00001/palamadai_e.pdf",
+          "role": "graph",
+          "scope": "Original full graph; the gallery shows an extracted component",
+          "description": "Studies block triangular form and fill-reducing orderings for sparse circuit-oriented factorization.",
+          "detail": "Fill-reducing orderings; full 430-order matrices."
+        }
+      ],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Induce largest component, retaining source vertex order. Store each undirected edge once; use unit traversal lengths.",
+      "component": "The gallery displays the largest connected component: 426 of 430 original vertices."
+    },
+    {
+      "id": "Sandia/oscil_trans_01",
+      "construction": "Sandia oscillator circuit matrix from transient simulation, supplied by Hoekstra. It differs from the direct-current operating-point matrix because the simulated system includes time-dependent terms.",
+      "weights": "Coefficients of the transient circuit linear system; values should not be treated as physical distances or generic conductance alone.",
+      "source_url": "https://sparse.tamu.edu/Sandia/oscil_trans_01",
+      "references": [
+        {
+          "title": "Palamadai Natarajan — KLU: A High Performance Sparse Linear Solver for Circuit Simulation Problems (2005 MSc thesis)",
+          "url": "https://ufdcimages.uflib.ufl.edu/UF/E0/01/17/21/00001/palamadai_e.pdf",
+          "role": "graph",
+          "scope": "",
+          "description": "Studies block triangular form and fill-reducing orderings for sparse circuit-oriented factorization.",
+          "detail": "Fill-reducing orderings; full 430-order matrices."
+        }
+      ],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Retain all source vertices. Store each undirected edge once; use unit traversal lengths."
+    },
+    {
+      "id": "VDOL/dynamicSoaringProblem_1",
+      "construction": "Glider dynamic soaring: minimize the wind-gradient slope supporting unpowered flight, using a point-mass model with flat Earth and stationary winds. GPOPS discretization and optimization produce a symmetric indefinite Karush–Kuhn–Tucker (KKT) system. Graph vertices index optimization variables and constraints.",
+      "weights": "KKT blocks contain second derivatives of the Lagrangian and first derivatives of constraints, with signs/scales depending on the model and optimization iterate. They are not physical distances.",
+      "source_url": "https://sparse.tamu.edu/VDOL/dynamicSoaringProblem_1",
+      "references": [
+        {
+          "title": "Şenses, Rao & Davis — Graph Coarsening Method for KKT Matrices Arising in Orthogonal Collocation Methods for Optimal Control Problems (2015)",
+          "url": "https://people.engr.tamu.edu/davis/publications_files/SensesRaoGraphCoarseningGNC15_shorterVersion.pdf",
+          "role": "graph",
+          "scope": "Related matrix family",
+          "description": "Pairs state variables with defect constraints before sparse ordering to reduce delayed pivots and factorization work.",
+          "detail": "State–defect pairing; source supplies a coarsening map."
+        }
+      ],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Retain all source vertices. Store each undirected edge once; use unit traversal lengths."
+    },
+    {
+      "id": "VDOL/freeFlyingRobot_1__LCC_796_of_798",
+      "construction": "Free-flying robot: minimize thrust use during a maneuver; states include position, velocity, thrust direction and angular velocity, with two engine thrusts as controls. GPOPS discretization and optimization produce a symmetric indefinite Karush–Kuhn–Tucker (KKT) system. Graph vertices index optimization variables and constraints.",
+      "weights": "KKT blocks contain second derivatives of the Lagrangian and first derivatives of constraints, with signs/scales depending on the model and optimization iterate. They are not physical distances.",
+      "source_url": "https://sparse.tamu.edu/VDOL/freeFlyingRobot_1",
+      "references": [
+        {
+          "title": "Şenses, Rao & Davis — Graph Coarsening Method for KKT Matrices Arising in Orthogonal Collocation Methods for Optimal Control Problems (2015)",
+          "url": "https://people.engr.tamu.edu/davis/publications_files/SensesRaoGraphCoarseningGNC15_shorterVersion.pdf",
+          "role": "graph",
+          "scope": "Related matrix family",
+          "description": "Pairs state variables with defect constraints before sparse ordering to reduce delayed pivots and factorization work.",
+          "detail": "State–defect pairing; source supplies a coarsening map."
+        }
+      ],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Induce largest component, retaining source vertex order. Store each undirected edge once; use unit traversal lengths.",
+      "component": "The gallery displays the largest connected component: 796 of 798 original vertices."
+    },
+    {
+      "id": "VDOL/lowThrust_1__LCC_558_of_584",
+      "construction": "Low-thrust transfer from low Earth orbit to geostationary orbit: minimize fuel use. Small thrust-to-mass ratio and long duration make the optimization poorly scaled. GPOPS discretization and optimization produce a symmetric indefinite Karush–Kuhn–Tucker (KKT) system. Graph vertices index optimization variables and constraints.",
+      "weights": "KKT blocks contain second derivatives of the Lagrangian and first derivatives of constraints, with signs/scales depending on the model and optimization iterate. They are not physical distances.",
+      "source_url": "https://sparse.tamu.edu/VDOL/lowThrust_1",
+      "references": [
+        {
+          "title": "Şenses, Rao & Davis — Graph Coarsening Method for KKT Matrices Arising in Orthogonal Collocation Methods for Optimal Control Problems (2015)",
+          "url": "https://people.engr.tamu.edu/davis/publications_files/SensesRaoGraphCoarseningGNC15_shorterVersion.pdf",
+          "role": "graph",
+          "scope": "Related matrix family",
+          "description": "Pairs state variables with defect constraints before sparse ordering to reduce delayed pivots and factorization work.",
+          "detail": "State–defect pairing; source supplies a coarsening map."
+        }
+      ],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Induce largest component, retaining source vertex order. Store each undirected edge once; use unit traversal lengths.",
+      "component": "The gallery displays the largest connected component: 558 of 584 original vertices."
+    },
+    {
+      "id": "VDOL/orbitRaising_1__LCC_440_of_442",
+      "construction": "Orbit raising: maximize final orbital radius in a fixed time through thrust-direction control. GPOPS discretization and optimization produce a symmetric indefinite Karush–Kuhn–Tucker (KKT) system. Graph vertices index optimization variables and constraints.",
+      "weights": "KKT blocks contain second derivatives of the Lagrangian and first derivatives of constraints, with signs/scales depending on the model and optimization iterate. They are not physical distances.",
+      "source_url": "https://sparse.tamu.edu/VDOL/orbitRaising_1",
+      "references": [
+        {
+          "title": "Şenses, Rao & Davis — Graph Coarsening Method for KKT Matrices Arising in Orthogonal Collocation Methods for Optimal Control Problems (2015)",
+          "url": "https://people.engr.tamu.edu/davis/publications_files/SensesRaoGraphCoarseningGNC15_shorterVersion.pdf",
+          "role": "graph",
+          "scope": "Related matrix family",
+          "description": "Pairs state variables with defect constraints before sparse ordering to reduce delayed pivots and factorization work.",
+          "detail": "State–defect pairing; source supplies a coarsening map."
+        }
+      ],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Induce largest component, retaining source vertex order. Store each undirected edge once; use unit traversal lengths.",
+      "component": "The gallery displays the largest connected component: 440 of 442 original vertices."
+    },
+    {
+      "id": "VDOL/orbitRaising_2__LCC_737_of_739",
+      "construction": "Orbit raising: a later matrix in the same sequence of increasing discretization sizes. Maximize final orbital radius in fixed time. GPOPS discretization and optimization produce a symmetric indefinite Karush–Kuhn–Tucker (KKT) system. Graph vertices index optimization variables and constraints.",
+      "weights": "KKT blocks contain second derivatives of the Lagrangian and first derivatives of constraints, with signs/scales depending on the model and optimization iterate. They are not physical distances.",
+      "source_url": "https://sparse.tamu.edu/VDOL/orbitRaising_2",
+      "references": [
+        {
+          "title": "Şenses, Rao & Davis — Graph Coarsening Method for KKT Matrices Arising in Orthogonal Collocation Methods for Optimal Control Problems (2015)",
+          "url": "https://people.engr.tamu.edu/davis/publications_files/SensesRaoGraphCoarseningGNC15_shorterVersion.pdf",
+          "role": "graph",
+          "scope": "Related matrix family",
+          "description": "Pairs state variables with defect constraints before sparse ordering to reduce delayed pivots and factorization work.",
+          "detail": "State–defect pairing; source supplies a coarsening map."
+        },
+        {
+          "title": "Zheng, Pawar & Goodman — Graph Drawing by Stochastic Gradient Descent (2018; arXiv 1710.04626)",
+          "url": "https://arxiv.org/abs/1710.04626",
+          "role": "graph",
+          "scope": "Original full graph; the gallery shows an extracted component",
+          "description": "Compares stochastic gradient descent with stress majorization for graph drawing.",
+          "detail": "Twisted layouts and majorization failure, Figure 7."
+        }
+      ],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Induce largest component, retaining source vertex order. Store each undirected edge once; use unit traversal lengths.",
+      "component": "The gallery displays the largest connected component: 737 of 739 original vertices."
+    },
+    {
+      "id": "VDOL/orbitRaising_3__LCC_759_of_761",
+      "construction": "Orbit raising: third archived matrix in the refinement sequence, again maximizing final orbital radius in fixed time. GPOPS discretization and optimization produce a symmetric indefinite Karush–Kuhn–Tucker (KKT) system. Graph vertices index optimization variables and constraints.",
+      "weights": "KKT blocks contain second derivatives of the Lagrangian and first derivatives of constraints, with signs/scales depending on the model and optimization iterate. They are not physical distances.",
+      "source_url": "https://sparse.tamu.edu/VDOL/orbitRaising_3",
+      "references": [
+        {
+          "title": "Şenses, Rao & Davis — Graph Coarsening Method for KKT Matrices Arising in Orthogonal Collocation Methods for Optimal Control Problems (2015)",
+          "url": "https://people.engr.tamu.edu/davis/publications_files/SensesRaoGraphCoarseningGNC15_shorterVersion.pdf",
+          "role": "graph",
+          "scope": "Related matrix family",
+          "description": "Pairs state variables with defect constraints before sparse ordering to reduce delayed pivots and factorization work.",
+          "detail": "State–defect pairing; source supplies a coarsening map."
+        }
+      ],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Induce largest component, retaining source vertex order. Store each undirected edge once; use unit traversal lengths.",
+      "component": "The gallery displays the largest connected component: 759 of 761 original vertices."
+    },
+    {
+      "id": "VDOL/reorientation_1__LCC_675_of_677",
+      "construction": "Minimum-time reorientation of an asymmetric rigid body, modeled on NASA’s X-ray Timing Explorer spacecraft. States use quaternions and angular velocities; controls are torques. GPOPS discretization and optimization produce a symmetric indefinite Karush–Kuhn–Tucker (KKT) system. Graph vertices index optimization variables and constraints.",
+      "weights": "KKT blocks contain second derivatives of the Lagrangian and first derivatives of constraints, with signs/scales depending on the model and optimization iterate. They are not physical distances.",
+      "source_url": "https://sparse.tamu.edu/VDOL/reorientation_1",
+      "references": [
+        {
+          "title": "Şenses, Rao & Davis — Graph Coarsening Method for KKT Matrices Arising in Orthogonal Collocation Methods for Optimal Control Problems (2015)",
+          "url": "https://people.engr.tamu.edu/davis/publications_files/SensesRaoGraphCoarseningGNC15_shorterVersion.pdf",
+          "role": "graph",
+          "scope": "Related matrix family",
+          "description": "Pairs state variables with defect constraints before sparse ordering to reduce delayed pivots and factorization work.",
+          "detail": "State–defect pairing; source supplies a coarsening map."
+        }
+      ],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Induce largest component, retaining source vertex order. Store each undirected edge once; use unit traversal lengths.",
+      "component": "The gallery displays the largest connected component: 675 of 677 original vertices."
+    },
+    {
+      "id": "VDOL/spaceShuttleEntry_1",
+      "construction": "Space-shuttle atmospheric reentry: maximize crossrange/final latitude using angle of attack and bank angle as controls. GPOPS discretization and optimization produce a symmetric indefinite Karush–Kuhn–Tucker (KKT) system. Graph vertices index optimization variables and constraints.",
+      "weights": "KKT blocks contain second derivatives of the Lagrangian and first derivatives of constraints, with signs/scales depending on the model and optimization iterate. They are not physical distances.",
+      "source_url": "https://sparse.tamu.edu/VDOL/spaceShuttleEntry_1",
+      "references": [
+        {
+          "title": "Şenses, Rao & Davis — Graph Coarsening Method for KKT Matrices Arising in Orthogonal Collocation Methods for Optimal Control Problems (2015)",
+          "url": "https://people.engr.tamu.edu/davis/publications_files/SensesRaoGraphCoarseningGNC15_shorterVersion.pdf",
+          "role": "graph",
+          "scope": "Related matrix family",
+          "description": "Pairs state variables with defect constraints before sparse ordering to reduce delayed pivots and factorization work.",
+          "detail": "State–defect pairing; source supplies a coarsening map."
+        }
+      ],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Retain all source vertices. Store each undirected edge once; use unit traversal lengths."
+    },
+    {
+      "id": "VDOL/spaceStation_3__LCC_463_of_467",
+      "construction": "Space-station attitude maneuver: minimize final momentum while reaching an orientation sustainable without further control torque. GPOPS discretization and optimization produce a symmetric indefinite Karush–Kuhn–Tucker (KKT) system. Graph vertices index optimization variables and constraints.",
+      "weights": "KKT blocks contain second derivatives of the Lagrangian and first derivatives of constraints, with signs/scales depending on the model and optimization iterate. They are not physical distances.",
+      "source_url": "https://sparse.tamu.edu/VDOL/spaceStation_3",
+      "references": [
+        {
+          "title": "Şenses, Rao & Davis — Graph Coarsening Method for KKT Matrices Arising in Orthogonal Collocation Methods for Optimal Control Problems (2015)",
+          "url": "https://people.engr.tamu.edu/davis/publications_files/SensesRaoGraphCoarseningGNC15_shorterVersion.pdf",
+          "role": "graph",
+          "scope": "Related matrix family",
+          "description": "Pairs state variables with defect constraints before sparse ordering to reduce delayed pivots and factorization work.",
+          "detail": "State–defect pairing; source supplies a coarsening map."
+        }
+      ],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Induce largest component, retaining source vertex order. Store each undirected edge once; use unit traversal lengths.",
+      "component": "The gallery displays the largest connected component: 463 of 467 original vertices."
+    },
+    {
+      "id": "VDOL/tumorAntiAngiogenesis_3",
+      "construction": "Tumor anti-angiogenesis treatment model: choose dose rate to minimize final tumor volume, with volume, carrying capacity and cumulative treatment as state variables. This is not a graph of blood vessels or patient interactions. GPOPS discretization and optimization produce a symmetric indefinite Karush–Kuhn–Tucker (KKT) system. Graph vertices index optimization variables and constraints.",
+      "weights": "KKT blocks contain second derivatives of the Lagrangian and first derivatives of constraints, with signs/scales depending on the model and optimization iterate. They are not physical distances.",
+      "source_url": "https://sparse.tamu.edu/VDOL/tumorAntiAngiogenesis_3",
+      "references": [
+        {
+          "title": "Şenses, Rao & Davis — Graph Coarsening Method for KKT Matrices Arising in Orthogonal Collocation Methods for Optimal Control Problems (2015)",
+          "url": "https://people.engr.tamu.edu/davis/publications_files/SensesRaoGraphCoarseningGNC15_shorterVersion.pdf",
+          "role": "graph",
+          "scope": "Related matrix family",
+          "description": "Pairs state variables with defect constraints before sparse ordering to reduce delayed pivots and factorization work.",
+          "detail": "State–defect pairing; source supplies a coarsening map."
+        }
+      ],
+      "conversion": "Sum duplicate entries; discard numerical zeros. Remove diagonal; take union of off-diagonal support with its transpose. Retain all source vertices. Store each undirected edge once; use unit traversal lengths."
+    }
+  ]
+}

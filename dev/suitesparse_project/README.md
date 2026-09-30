@@ -73,3 +73,23 @@ availability gaps; they are not empty successful layouts.
 Tests: python -m pytest dev/suitesparse_project/test_export_viewer.py and
 testthat::test_file("tests/testthat/test-embedding-comparison.R") after loading
 gflowui source.
+
+### Graph background in the inspector
+
+`graph_annotations.json` contains curated construction, original weight meanings,
+and linked research references for the bundled catalogue. Empty research sections
+are omitted. Source-matrix and graph-family references are distinguished from uses
+of the exact displayed graph, especially for extracted components. The underlying
+research catalogue and primary-source evidence remain in the data root's
+`graph_research_30_sept_2026/` directory.
+
+After editing the curated text, publish to the current gallery with:
+
+```sh
+python3 dev/suitesparse_project/publish_graph_annotations.py /path/to/data_root
+```
+
+This preserves current graph selection and all runs, backs up the manifest, and
+registers a hash-checked annotation asset. It does not invoke the general gallery
+exporter. Use **Reload saved results** to load text updates. R UI changes require
+restarting the gallery server. Comparison ZIP exports include the annotation asset.
