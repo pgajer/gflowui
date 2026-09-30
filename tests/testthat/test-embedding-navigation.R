@@ -12,3 +12,9 @@ test_that("graph navigation preserves method and configuration with SGD default"
   expect_match(ui,"Previous")
   expect_match(ui,"Next")
 })
+
+test_that("recovered component labels explain retained and original vertex counts", {
+  expect_identical(gflowui_ec_graph_labels("HB/lock_700__LCC_691_of_700"),
+    "HB/lock_700 — largest component (691 of 700 vertices)")
+  expect_identical(gflowui_ec_graph_labels("HB/494_bus"), "HB/494_bus")
+})

@@ -267,3 +267,8 @@ gflowui_ec_choose_run <- function(available, all_runs, previous=NULL) {
   if (!length(preferred)) preferred <- which(available$method == "Metric MDS")
   available$id[if(length(preferred)) preferred[[1L]] else 1L]
 }
+
+# Keep stable graph IDs in manifests/favorites, but explain component extraction in the UI.
+gflowui_ec_graph_labels <- function(ids) {
+  sub("__LCC_([0-9]+)_of_([0-9]+)$", " — largest component (\\1 of \\2 vertices)", ids)
+}

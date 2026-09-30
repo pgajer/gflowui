@@ -129,7 +129,7 @@ gflowui_ec_server <- function(id,manifest) {
     shiny::observeEvent(index(),{
       idx <- index();ids <- names(idx$graphs);previous <- shiny::isolate(input$graph)
       if(is.null(previous) || !previous %in% ids)previous <- ids[[1L]]
-      shiny::updateSelectInput(session,"graph",choices=stats::setNames(ids,ids),selected=previous)
+      shiny::updateSelectInput(session,"graph",choices=stats::setNames(ids,gflowui_ec_graph_labels(ids)),selected=previous)
       if(!nzchar(shiny::isolate(gflowui_ec_text(input$export_dir)))) shiny::updateTextInput(session,"export_dir",value=file.path(idx$root,"exports"))
     })
     graph_id <- shiny::reactive({
@@ -266,7 +266,7 @@ gflowui_ec_server <- function(id,manifest) {
         shiny::updateSelectInput(session,"run",choices=stats::setNames(available$id,menu_labels(available)),selected=candidate)
       }
     },ignoreInit=TRUE)
-    output$title <- shiny::renderText(paste(graph_id(),active_label(),sep=" — "))
+    output$title <- shiny::renderText(paste(gflowui_ec_graph_labels(graph_id()),active_label(),sep=" — "))
     output$view_status <- shiny::renderText({
       g <- graph();s <- current()$result
       text <- sprintf("%s vertices; %s edges; %s components (%s isolates). Components are packed only for display; %s cross-component pairs excluded. %s vertices selected.",
