@@ -8140,7 +8140,7 @@ app_server <- function(input, output, session) {
 
     component_ids <- rep.int(1L, n_vertices)
     comp_res <- tryCatch(
-      dgraphs::graph.connected.components(adj_list),
+      gflowui_display_component_ids(adj_list),
       error = function(e) NULL
     )
     comp_int <- suppressWarnings(as.integer(comp_res))
@@ -8206,7 +8206,10 @@ app_server <- function(input, output, session) {
       n_vertices
     )
     coords <- if (is.matrix(manifest_layout_coords)) {
-      normalize_coord_matrix(manifest_layout_coords)
+      normalize_coord_matrix(
+        manifest_layout_coords,
+        mode = spec$graph_set$layout_assets$coordinate_normalization %||% "axis"
+      )
     } else {
       compute_reference_layout(
         adj_list = adj_list,
@@ -11798,6 +11801,9 @@ app_server <- function(input, output, session) {
           scene = {
             sc <- list(
               uirevision = "reference-scene",
+              aspectmode = if (identical(
+                st$graph_set$layout_assets$coordinate_normalization, "uniform"
+              )) "data" else "auto",
               xaxis = list(title = "", showgrid = FALSE, zeroline = FALSE, visible = FALSE),
               yaxis = list(title = "", showgrid = FALSE, zeroline = FALSE, visible = FALSE),
               zaxis = list(title = "", showgrid = FALSE, zeroline = FALSE, visible = FALSE)

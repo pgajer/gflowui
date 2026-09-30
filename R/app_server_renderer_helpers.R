@@ -1,3 +1,17 @@
+gflowui_display_component_ids <- function(adj_list) {
+  if (requireNamespace("igraph", quietly = TRUE)) {
+    membership <- tryCatch({
+      graph <- igraph::graph_from_adj_list(adj_list, mode = "all", duplicate = TRUE)
+      igraph::components(graph)$membership
+    }, error = function(e) NULL)
+    if (length(membership) == length(adj_list)) {
+      # Match the existing convention: each component is named by its first vertex.
+      return(as.integer(match(membership, membership)))
+    }
+  }
+  dgraphs::graph.connected.components(adj_list)
+}
+
 gflowui_make_server_renderer_helpers <- function(rv, current_reference_info) {
   if (!is.function(current_reference_info)) {
     stop("current_reference_info must be a function.", call. = FALSE)
@@ -48,7 +62,8 @@ gflowui_make_server_renderer_helpers <- function(rv, current_reference_info) {
     }
     id
   }
-  normalize_coord_matrix <- function(coords) {
+  normalize_coord_matrix <- function(coords, mode = c("axis", "uniform")) {
+    mode <- match.arg(mode)
     mat <- as.matrix(coords)
     if (nrow(mat) < 1L) {
       return(matrix(numeric(0), ncol = 3L))
@@ -57,6 +72,16 @@ gflowui_make_server_renderer_helpers <- function(rv, current_reference_info) {
       mat <- cbind(mat, matrix(0, nrow = nrow(mat), ncol = 3L - ncol(mat)))
     }
     mat <- mat[, seq_len(3L), drop = FALSE]
+
+    if (identical(mode, "uniform")) {
+      if (!is.numeric(mat) || any(!is.finite(mat))) {
+        stop("Shape-preserving display requires finite numeric coordinates.")
+      }
+      mat <- sweep(mat, 2L, colMeans(mat), "-")
+      radius <- max(abs(mat))
+      if (radius > 0) mat <- mat / radius
+      return(mat)
+    }
 
     for (jj in seq_len(3L)) {
       v <- suppressWarnings(as.numeric(mat[, jj]))

@@ -18,6 +18,14 @@ For robust startup and UI population, each graph set should include explicit met
 - `layout_assets` with `grip_layouts`
 - `color_assets` for metadata-driven color options (for example `CST`, `subCST`)
 
+For fitted metric embeddings, set
+`layout_assets$coordinate_normalization = "uniform"`. The live viewer then
+centers coordinates and applies one common scale to all three axes, preserving
+shape and pairwise distance ratios. Plotly also uses equal spatial units on
+each axis. Saved coordinates are unchanged. The default `"axis"` retains the
+legacy per-axis standardization for existing projects. Uniform mode requires
+finite numeric coordinates.
+
 Projects may also include an optional grouped-selector schema under
 `metadata$graph_selector_schema` so the UI can resolve many concrete graph
 sets through a small number of project-specific dropdowns.
