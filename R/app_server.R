@@ -13116,27 +13116,7 @@ app_server <- function(input, output, session) {
       return(NULL)
     }
 
-    reg <- project_registry()
-    choices <- c("Choose a project..." = "")
-    if (nrow(reg) > 0L) {
-      choices <- c(choices, stats::setNames(reg$id, reg$label))
-    }
-
-    shiny::div(
-      class = "gf-sidebar-panel",
-      shiny::h5("Projects"),
-      shiny::selectInput(
-        "project_select",
-        label = NULL,
-        choices = choices,
-        selected = ""
-      ),
-      shiny::actionButton(
-        "project_new",
-        "New",
-        class = "btn-secondary gf-btn-wide"
-      )
-    )
+    gflowui_project_controls_ui(project_registry())
   })
 
   build_endpoint_metrics_table <- function(metrics_tbl) {

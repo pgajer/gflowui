@@ -1,3 +1,25 @@
+gflowui_project_controls_ui <- function(registry, ready = TRUE) {
+  choices <- c("Choose a project..." = "")
+  if (nrow(registry) > 0L) {
+    choices <- c(choices, stats::setNames(registry$id, registry$label))
+  }
+
+  selector <- shiny::selectInput("project_select", label = NULL, choices = choices, selected = "")
+  if (!ready) {
+    selector <- htmltools::tagQuery(selector)$find("select")$addAttrs(disabled = "disabled")$allTags()
+  }
+
+  shiny::div(
+    class = "gf-sidebar-panel",
+    shiny::h5("Projects"),
+    selector,
+    shiny::actionButton(
+      "project_new", "New", class = "btn-secondary gf-btn-wide",
+      disabled = if (!ready) "disabled" else NULL
+    )
+  )
+}
+
 app_ui <- function() {
   css.path <- system.file("app/www/styles.css", package = "gflowui")
   embedding.css.path <- system.file("app/www/embedding-comparison.css", package = "gflowui")
@@ -47,7 +69,14 @@ app_ui <- function() {
     sidebar = bslib::sidebar(
       class = "gf-sidebar",
       width = 470,
-      shiny::uiOutput("project_controls"),
+      htmltools::tagAppendChild(
+        shiny::uiOutput("project_controls"),
+        # Render per page request so new sessions see the current registry immediately.
+        htmltools::tagFunction(function() {
+          # The first server update enables input once the session can accept it.
+          gflowui_project_controls_ui(gflowui_load_registry(), ready = FALSE)
+        })
+      ),
       shiny::uiOutput("workflow_controls"),
       shiny::uiOutput("project_middle_actions"),
       shiny::uiOutput("workspace_actions"),
