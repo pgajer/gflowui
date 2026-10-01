@@ -186,6 +186,45 @@ body {
   margin-bottom: 0;
 }
 
+/* Shared columns keep project-defined selectors aligned as fields appear/hide. */
+.gf-graph-selector-row {
+  display: grid;
+  grid-template-columns: 108px minmax(0, 1fr);
+  gap: 0.45rem;
+  width: 100%;
+}
+
+.gf-graph-selector-row > .gf-graph-row-label {
+  min-width: 0;
+}
+
+.gf-graph-selector-row > .form-group {
+  min-width: 0;
+  max-width: none;
+}
+
+.gf-graph-selector-row .selectize-control {
+  width: 100%;
+  min-width: 0;
+}
+
+.gf-graph-selector-row .selectize-control.single .selectize-input {
+  padding-right: 32px;
+  white-space: nowrap;
+}
+
+.gf-graph-selector-row .selectize-input .item {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+}
+
+.gf-graph-selector-row > .gf-btn-inline {
+  grid-column: 2;
+  justify-self: start;
+}
+
 .gf-graph-layout-row {
   flex-wrap: nowrap;
 }

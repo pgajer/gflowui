@@ -14386,7 +14386,7 @@ app_server <- function(input, output, session) {
           rows <- lapply(graph_ui$selector_fields, function(spec) {
             is_method <- identical(spec$field, "graph_method")
             shiny::div(
-              class = if (is_method) "gf-graph-row gf-graph-method-row" else "gf-graph-row gf-graph-row-tight",
+              class = if (is_method) "gf-graph-row gf-graph-selector-row gf-graph-method-row" else "gf-graph-row gf-graph-selector-row",
               style = if (identical(spec$visible, FALSE)) "display: none;" else NULL,
               `aria-hidden` = if (identical(spec$visible, FALSE)) "true" else NULL,
               shiny::span(class = "gf-graph-row-label", paste0(as.character(spec$label %||% "Selector"), ":")),
@@ -14395,7 +14395,7 @@ app_server <- function(input, output, session) {
                 label = NULL,
                 choices = spec$choices %||% c(),
                 selected = as.character(spec$selected %||% ""),
-                width = "205px"
+                width = "100%"
               ),
               if (is_method) shiny::actionButton(
                 "graph_method_edit_names", "Edit names\u2026",
