@@ -5,9 +5,12 @@ gflowui_dcst_options <- function(sources, level = "dcst_level1", group = "") {
   if (length(level) != 1L || !level %in% keys) level <- keys[[1L]]
   values <- as.character(sources[[level]]$values)
   groups <- sort(unique(values[!is.na(values) & nzchar(values)]))
+  counts <- vapply(groups, function(x) sum(values == x, na.rm = TRUE), integer(1))
+  rank <- order(-counts, groups)
+  groups <- groups[rank]
+  counts <- counts[rank]
   # Encode the level in each choice so a level change resets the selection.
   ids <- paste(level, groups, sep = ":")
-  counts <- vapply(groups, function(x) sum(values == x, na.rm = TRUE), integer(1))
   choices <- c("All dCSTs" = "__all__", stats::setNames(ids,
     sprintf("%s (%s vertices)", groups, format(counts, big.mark = ",", trim = TRUE))))
   if (length(group) != 1L || !group %in% ids) group <- "__all__"
