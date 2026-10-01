@@ -10555,6 +10555,9 @@ app_server <- function(input, output, session) {
         st$default_key %||%
         ""
     )
+    dcst <- gflowui_dcst_options(st$sources,
+      input$graph_dcst_level %||% "dcst_level1", input$graph_dcst_group %||% "")
+    if (!is.null(dcst)) src_key_raw <- dcst$level
     use_solid_color <- identical(src_key_raw, graph_solid_color_key)
     src_key <- src_key_raw
     if (!isTRUE(use_solid_color) && !(src_key %in% names(st$sources %||% list()))) {
@@ -10648,6 +10651,14 @@ app_server <- function(input, output, session) {
           format(max(1L, n_vertices), big.mark = ",")
         )
       }
+    }
+
+    if (!is.null(dcst)) {
+      focused <- gflowui_dcst_focus(st, keep_idx, dcst$level, dcst$group,
+        input$graph_dcst_mode %||% "gray", input$graph_dcst_background %||% "#b3b3b3")
+      st <- focused$st
+      keep_idx <- focused$keep_idx
+      component_note <- trimws(paste(component_note, focused$note))
     }
 
     plotly_ready <- requireNamespace("plotly", quietly = TRUE)
@@ -11047,9 +11058,7 @@ app_server <- function(input, output, session) {
       idx_all <- seq_len(nn)
       keep_idx <- suppressWarnings(as.integer(rr$keep_idx %||% idx_all))
       keep_idx <- keep_idx[is.finite(keep_idx) & keep_idx >= 1L & keep_idx <= nn]
-      if (length(keep_idx) < 1L) {
-        keep_idx <- idx_all
-      }
+
       size_mult <- suppressWarnings(as.numeric(rr$size_mult %||% 1))
       if (!is.finite(size_mult) || size_mult <= 0) {
         size_mult <- 1
@@ -11886,15 +11895,13 @@ app_server <- function(input, output, session) {
 
       keep_idx <- suppressWarnings(as.integer(rr$keep_idx %||% seq_len(nn)))
       keep_idx <- keep_idx[is.finite(keep_idx) & keep_idx >= 1L & keep_idx <= nn]
-      if (length(keep_idx) < 1L) {
-        keep_idx <- seq_len(nn)
-      }
+
       keep_idx <- unique(keep_idx)
 
       coords_view <- coords[keep_idx, , drop = FALSE]
       values_view <- src$values[keep_idx]
       nn_view <- nrow(coords_view)
-      req(nn_view > 0L)
+      shiny::validate(shiny::need(nn_view > 0L, "No vertices in the selected dCST and component."))
 
       span <- apply(coords_view, 2, function(vv) diff(range(vv, na.rm = TRUE)))
       span[!is.finite(span)] <- 0
@@ -12903,6 +12910,8 @@ app_server <- function(input, output, session) {
       component_selected = component_selected,
       component_hint = component_hint,
       metadata_tbl = graph_metadata_tbl,
+      dcst = gflowui_dcst_options(st_use$sources,
+        input$graph_dcst_level %||% "dcst_level1", input$graph_dcst_group %||% ""),
       color_choices = color_choices,
       color_selected = color_selected,
       vertex_color_choices = solid_vertex_color_choices,
@@ -14702,7 +14711,26 @@ app_server <- function(input, output, session) {
               width = "180px"
             )
           ),
-          shiny::div(
+          if (!is.null(graph_ui$dcst)) {
+            dcst_row <- function(label, control) shiny::div(
+              class = "gf-graph-row gf-graph-layout-row",
+              shiny::span(class = "gf-graph-row-label", label), control)
+            shiny::tagList(
+              dcst_row("dCST level:", shiny::selectInput("graph_dcst_level", NULL,
+                choices = c("Level 1" = "dcst_level1", "Level 2" = "dcst_level2"),
+                selected = graph_ui$dcst$level, width = "205px")),
+              dcst_row("Select dCST:", shiny::selectInput("graph_dcst_group", NULL,
+                choices = graph_ui$dcst$choices, selected = graph_ui$dcst$group, width = "205px")),
+              dcst_row("Other vertices:", shiny::selectInput("graph_dcst_mode", NULL,
+                choices = c("Recolor" = "gray", "Hide" = "hide"),
+                selected = input$graph_dcst_mode %||% "gray", width = "205px")),
+              dcst_row("Other color:", shiny::selectInput("graph_dcst_background", NULL,
+                choices = c("Gray" = "#b3b3b3", "Light gray" = "#e5e5e5",
+                  "Dark gray" = "#555555", "White" = "#ffffff", "Black" = "#000000",
+                  "Blue" = "#4477aa", "Gold" = "#ddaa33"),
+                selected = input$graph_dcst_background %||% "#b3b3b3", width = "205px"))
+            )
+          } else shiny::div(
             class = "gf-graph-row gf-graph-layout-row",
             shiny::span(class = "gf-graph-row-label", "Color by:"),
             shiny::selectInput(
@@ -14713,7 +14741,7 @@ app_server <- function(input, output, session) {
               width = "205px"
             )
           ),
-          if (identical(
+          if (is.null(graph_ui$dcst) && identical(
             as.character(input$graph_layout_color_by %||% graph_ui$color_selected %||% ""),
             graph_solid_color_key
           )) {
@@ -15792,9 +15820,7 @@ app_server <- function(input, output, session) {
       nn <- suppressWarnings(as.integer(st_state$n_vertices %||% length(src$values)))
       keep_idx <- suppressWarnings(as.integer(rr_state$keep_idx %||% seq_len(max(0L, nn))))
       keep_idx <- keep_idx[is.finite(keep_idx) & keep_idx >= 1L & keep_idx <= nn]
-      if (length(keep_idx) < 1L) {
-        keep_idx <- seq_len(max(0L, nn))
-      }
+
       values_view <- src$values[keep_idx]
       src_type <- as.character(src$type %||% "")
       col_tbl <- character(0)

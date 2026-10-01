@@ -152,3 +152,13 @@ After registration:
 1. `list_projects(include_manifests = TRUE)` shows non-empty `graph_sets`.
 2. `Graphs -> Color by` includes `CST`/`subCST` (when available), conditional expectations, and falls back to `Vertex Degree`.
 3. Renderer switch (`Plotly`, `RGL`) keeps graph structure synchronized because both use the same `grip.layout()` coordinates.
+
+### Dominant CST focus controls
+
+When color sources include both `dcst_level1` and `dcst_level2`, Graph Layout
+provides dedicated dCST level and group selectors. Each group lists its vertex
+count in the current layout. Selecting one group preserves its supplied palette
+color; other vertices can be recolored (gray by default) or hidden. Hiding
+intersects the connected-component selection and preserves embedding coordinates.
+Changing levels resets the group to All dCSTs. These are session display controls;
+they do not modify registered assets or recompute embeddings.
