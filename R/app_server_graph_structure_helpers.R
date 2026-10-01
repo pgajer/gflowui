@@ -711,40 +711,8 @@ gflowui_make_server_graph_structure_helpers <- function(rv) {
       return(explicit)
     }
 
-    set_id <- tolower(trimws(as.character(graph_set$id %||% "")))
-    label <- trimws(as.character(graph_set$label %||% ""))
-
-    if (grepl("^top[0-9]+$", set_id, perl = TRUE)) {
-      return(sprintf("ASV-top%s", sub("^top", "", set_id)))
-    }
-    if (grepl("^asv[-_]?top[0-9]+$", set_id, perl = TRUE)) {
-      dig <- sub("^asv[-_]?top", "", set_id)
-      return(sprintf("ASV-top%s", dig))
-    }
-    if (set_id %in% c("all", "asv", "shared_all_asv")) {
-      return("ASV")
-    }
-
-    lbl_low <- tolower(label)
-    hv_match <- regexec("hv\\s*([0-9]+)", lbl_low, perl = TRUE)
-    hv_caps <- regmatches(lbl_low, hv_match)[[1]]
-    if (length(hv_caps) >= 2L) {
-      return(sprintf("ASV-top%s", hv_caps[2]))
-    }
-    if (grepl("full", lbl_low, fixed = TRUE) || grepl("all", lbl_low, fixed = TRUE)) {
-      return("ASV")
-    }
-    if (grepl("asv", lbl_low, fixed = TRUE)) {
-      return(toupper(gsub("\\s+", "-", label)))
-    }
-
-    if (nzchar(label)) {
-      return(label)
-    }
-    if (nzchar(set_id)) {
-      return(toupper(set_id))
-    }
-    "Graph"
+    label <- trimws(as.character(graph_set$label %||% graph_set$id %||% "Graph"))
+    label
   }
 
   infer_feature_count <- function(graph_set) {
@@ -756,21 +724,6 @@ gflowui_make_server_graph_structure_helpers <- function(rv) {
     direct <- direct[is.finite(direct) & direct > 0L]
     if (length(direct) > 0L) {
       return(as.integer(direct[1]))
-    }
-
-    tokens <- c(
-      tolower(as.character(graph_set$id %||% "")),
-      tolower(as.character(graph_set$label %||% ""))
-    )
-    for (tok in tokens) {
-      mm <- regexec("(top|hv)\\s*([0-9]+)", tok, perl = TRUE)
-      rr <- regmatches(tok, mm)[[1]]
-      if (length(rr) >= 3L) {
-        vv <- suppressWarnings(as.integer(rr[3]))
-        if (is.finite(vv) && vv > 0L) {
-          return(vv)
-        }
-      }
     }
 
     NA_integer_
@@ -794,81 +747,7 @@ gflowui_make_server_graph_structure_helpers <- function(rv) {
   }
 
   infer_graph_dims_from_project_metadata <- function(project_root, set_id = "", graph_set = NULL) {
-    root <- as.character(project_root %||% "")
-    if (!nzchar(root) || identical(root, "NA")) {
-      return(list(n_samples = NA_integer_, n_features = NA_integer_))
-    }
-
-    root <- tryCatch(normalizePath(path.expand(root), mustWork = TRUE), error = function(e) "")
-    if (!nzchar(root)) {
-      return(list(n_samples = NA_integer_, n_features = NA_integer_))
-    }
-
-    sid <- tolower(trimws(as.character(set_id %||% graph_set$id %||% "")))
-    out <- list(n_samples = NA_integer_, n_features = NA_integer_)
-
-    read_csv <- function(path) {
-      if (!file.exists(path)) {
-        return(NULL)
-      }
-      tryCatch(utils::read.csv(path, stringsAsFactors = FALSE), error = function(e) NULL)
-    }
-    first_pos_int <- function(x) {
-      vals <- suppressWarnings(as.integer(x))
-      vals <- vals[is.finite(vals) & vals > 0L]
-      if (length(vals) < 1L) {
-        return(NA_integer_)
-      }
-      vals[[1]]
-    }
-
-    hv_summary <- read_csv(file.path(root, "results", "asv_hv_k_gcv_sweep", "summary.across.feature.sets.csv"))
-    if (is.data.frame(hv_summary) && nrow(hv_summary) > 0L && sid %in% tolower(as.character(hv_summary$set.tag %||% character(0)))) {
-      row <- hv_summary[tolower(as.character(hv_summary$set.tag)) == sid, , drop = FALSE]
-      out$n_samples <- first_pos_int(row$n.samples)
-      out$n_features <- first_pos_int(row$n.features)
-      return(out)
-    }
-
-    hv_run_meta_path <- file.path(root, "results", "asv_hv_k_gcv_sweep", "run.metadata.rds")
-    hv_run_meta <- if (file.exists(hv_run_meta_path)) {
-      suppressWarnings(tryCatch(readRDS(hv_run_meta_path), error = function(e) NULL))
-    } else {
-      NULL
-    }
-    if (is.list(hv_run_meta)) {
-      out$n_samples <- if (is.finite(out$n_samples)) out$n_samples else {
-        first_pos_int(hv_run_meta$asv.samples %||% hv_run_meta$sample_set.count)
-      }
-      out$n_features <- if (is.finite(out$n_features)) out$n_features else {
-        first_pos_int(hv_run_meta$asv.features)
-      }
-      if (is.finite(out$n_samples) || is.finite(out$n_features)) {
-        return(out)
-      }
-    }
-
-    full_summary <- read_csv(file.path(root, "results", "asv_full_graph_hv_criteria_k_selection", "summary.across.criteria.csv"))
-    if (is.data.frame(full_summary) && nrow(full_summary) > 0L && sid %in% c("all", "asv", "shared_all_asv")) {
-      out$n_samples <- first_pos_int(full_summary$n.samples)
-      out$n_features <- first_pos_int(full_summary$graph.features %||% full_summary$n.features.in.criterion)
-      if (is.finite(out$n_samples) || is.finite(out$n_features)) {
-        return(out)
-      }
-    }
-
-    run_meta_path <- file.path(root, "results", "asv_full_graph_hv_criteria_k_selection", "run.metadata.rds")
-    run_meta <- if (file.exists(run_meta_path)) {
-      suppressWarnings(tryCatch(readRDS(run_meta_path), error = function(e) NULL))
-    } else {
-      NULL
-    }
-    if (is.list(run_meta)) {
-      out$n_samples <- if (is.finite(out$n_samples)) out$n_samples else first_pos_int(run_meta$asv.samples)
-      out$n_features <- if (is.finite(out$n_features)) out$n_features else first_pos_int(run_meta$asv.features)
-    }
-
-    out
+    list(n_samples = infer_sample_count(graph_set), n_features = infer_feature_count(graph_set))
   }
 
   graph_data_type_choices <- function(graph_sets) {
@@ -885,19 +764,9 @@ gflowui_make_server_graph_structure_helpers <- function(rv) {
     stats::setNames(ids, display)
   }
 
-  graph_alias_tokens <- function(set_id = "", set_label = "") {
-    out <- unique(tolower(c(
-      as.character(set_id %||% ""),
-      as.character(set_label %||% "")
-    )))
-    sid <- tolower(as.character(set_id %||% ""))
-    if (grepl("^top[0-9]+$", sid, perl = TRUE)) {
-      out <- c(out, sub("^top", "hv", sid))
-    }
-    if (identical(sid, "all")) {
-      out <- c(out, "full", "shared_all_asv")
-    }
-    out[nzchar(out)]
+  graph_alias_tokens <- function(set_id = "", set_label = "", aliases = character(0)) {
+    out <- unique(tolower(c(set_id, set_label, aliases)))
+    out[!is.na(out) & nzchar(out)]
   }
 
   infer_optimal_method_id <- function(path) {
@@ -1000,64 +869,7 @@ gflowui_make_server_graph_structure_helpers <- function(rv) {
       add_one(infer_optimal_method_id(pp), pp, source = "graph_set")
     }
 
-    project_root <- as.character(manifest$project_root %||% "")
-    if (nzchar(project_root) && !identical(project_root, "NA") && dir.exists(project_root)) {
-      root <- tryCatch(normalizePath(project_root, mustWork = TRUE), error = function(e) "")
-      if (nzchar(root)) {
-        sid <- tolower(as.character(spec$set_id %||% ""))
-        if (sid %in% c("top20", "top30", "top50")) {
-          fam <- sub("^top", "hv", sid)
-          add_one(
-            "median_norm_gcv",
-            file.path(root, "results", "asv_hv_k_gcv_sweep", "figures", sprintf("%s_mean_median_vs_k.pdf", sid)),
-            source = "project_root.figures"
-          )
-          add_one(
-            "median_norm_gcv_summary",
-            file.path(root, "results", "asv_hv_k_gcv_sweep", sid, "k.distribution.summary.csv"),
-            source = "project_root.summary"
-          )
-          add_one(
-            "response_gcv",
-            file.path(root, "results", "vag_odor_asv_graph_gcv_sweep", "figures", sprintf("%s_vag_odor_gcv_vs_k.pdf", fam)),
-            source = "project_root.figures"
-          )
-        } else if (identical(sid, "all")) {
-          add_one(
-            "median_norm_gcv",
-            file.path(root, "results", "asv_full_graph_hv_criteria_k_selection", "figures", "criterion_hv20_hv30_hv50_mean_median_vs_k.pdf"),
-            source = "project_root.figures"
-          )
-          add_one(
-            "median_norm_gcv_summary",
-            file.path(root, "results", "asv_full_graph_hv_criteria_k_selection", "summary.across.criteria.csv"),
-            source = "project_root.summary"
-          )
-          add_one(
-            "median_norm_gcv_hv20",
-            file.path(root, "results", "asv_full_graph_hv_criteria_k_selection", "figures", "criterion.hv20_mean_median_vs_k.pdf"),
-            source = "project_root.figures"
-          )
-          add_one(
-            "median_norm_gcv_hv30",
-            file.path(root, "results", "asv_full_graph_hv_criteria_k_selection", "figures", "criterion.hv30_mean_median_vs_k.pdf"),
-            source = "project_root.figures"
-          )
-          add_one(
-            "median_norm_gcv_hv50",
-            file.path(root, "results", "asv_full_graph_hv_criteria_k_selection", "figures", "criterion.hv50_mean_median_vs_k.pdf"),
-            source = "project_root.figures"
-          )
-          add_one(
-            "response_gcv",
-            file.path(root, "results", "vag_odor_asv_graph_gcv_sweep", "figures", "all_vag_odor_gcv_vs_k.pdf"),
-            source = "project_root.figures"
-          )
-        }
-      }
-    }
-
-    tokens <- graph_alias_tokens(spec$set_id, spec$set_label)
+    tokens <- graph_alias_tokens(spec$set_id, spec$set_label, gs$aliases)
     path_matches <- function(path) {
       low <- tolower(as.character(path %||% ""))
       if (!nzchar(low)) {

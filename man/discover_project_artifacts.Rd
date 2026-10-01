@@ -6,16 +6,16 @@
 \usage{
 discover_project_artifacts(
   project_root,
-  profile = c("auto", "symptoms_restart", "agp_restart", "quadform_benchmark",
-    "iknn_3x3", "custom")
+  profile = c("auto", "quadform_benchmark", "iknn_3x3", "custom")
 )
 }
 \arguments{
 \item{project_root}{Path to the external analysis project root.}
 
-\item{profile}{Discovery profile. Use \code{"auto"} to infer from project folder
-name (\code{symptoms}, \code{AGP}), or set one of \code{"symptoms_restart"},
-\code{"agp_restart"}, \code{"quadform_benchmark"}, \code{"iknn_3x3"}, or \code{"custom"}.}
+\item{profile}{Discovery profile. Use \code{"auto"} to recognize the quadratic-surface
+benchmark asset format, otherwise defaulting to \code{"custom"}. Project folder
+names have no effect. Explicit profiles are \code{"quadform_benchmark"},
+\code{"iknn_3x3"}, and \code{"custom"}.}
 }
 \value{
 A list with \code{graph_sets}, \code{condexp_sets}, \code{endpoint_runs},
@@ -28,6 +28,6 @@ expectation, and endpoint artifacts that can be registered in \code{gflowui}.
 }
 \examples{
 \dontrun{
-discover_project_artifacts("~/current_projects/symptoms", profile = "symptoms_restart")
+discover_project_artifacts("~/my_project", profile = "custom")
 }
 }

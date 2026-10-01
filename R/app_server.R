@@ -520,19 +520,7 @@ app_server <- function(input, output, session) {
   })
 
   project_open_selection_defaults <- function(project_id, manifest = NULL, graph_sets = list()) {
-    pid <- tolower(trimws(as.character(project_id %||% "")))
-    if (identical(pid, "agp")) {
-      return(list(
-        set_id = "shared_all_asv",
-        k = 6L,
-        open_panels = c("workflow_endpoint_structure")
-      ))
-    }
-    list(
-      set_id = "",
-      k = NA_integer_,
-      open_panels = NULL
-    )
+    gflowui_project_open_defaults(manifest)
   }
 
   current_graph_selection <- shiny::reactive({
@@ -2956,31 +2944,6 @@ app_server <- function(input, output, session) {
     empty_endpoint_label_profile_suggestion(vertex_id)
   }
 
-  load_symptoms_taxonomy_map_for_ui <- function(project_root) {
-    candidates <- c(
-      file.path(dirname(project_root), "Pdata", "data", "asv_Sys.rda"),
-      file.path(path.expand("~/current_projects/Pdata"), "data", "asv_Sys.rda"),
-      file.path("/Users/pgajer/current_projects/Pdata", "data", "asv_Sys.rda")
-    )
-    candidates <- unique(normalizePath(path.expand(candidates), mustWork = FALSE))
-    candidates <- candidates[file.exists(candidates)]
-    if (length(candidates) < 1L) {
-      return(NULL)
-    }
-    env <- new.env(parent = emptyenv())
-    load(candidates[[1]], envir = env)
-    if (!exists("asv_Sys", envir = env, inherits = FALSE)) {
-      return(NULL)
-    }
-    asv.sys <- get("asv_Sys", envir = env, inherits = FALSE)
-    tx <- as.character(asv.sys$asv.tx %||% NULL)
-    if (length(tx) < 1L) {
-      return(NULL)
-    }
-    names(tx) <- names(asv.sys$asv.tx)
-    tx
-  }
-
   coerce_endpoint_feature_matrix <- function(x, feature_cols = NULL) {
     if (is.data.frame(x)) {
       rn <- rownames(x)
@@ -3231,92 +3194,14 @@ app_server <- function(input, output, session) {
       matrix_file = matrix_file,
       X_by_graph_set = X_by_graph_set,
       sample_ids_by_graph_set = sample_ids_by_graph_set,
-      taxonomy_map = NULL,
+      taxonomy_map = gflowui_manifest_taxonomy_map(provider_spec, project_root),
       label_style = as.character(provider_spec$label_style %||% "taxonomy_profile"),
       source_detail = as.character(provider_spec$source_detail %||% "Manifest feature profile")
     )
   }
 
   build_live_endpoint_label_provider <- function(project_id, manifest) {
-    pid <- tolower(trimws(as.character(project_id %||% "")))
-    project_root <- as.character(manifest$project_root %||% "")
-    if (!nzchar(project_root) || identical(project_root, "NA") || !dir.exists(project_root)) {
-      return(NULL)
-    }
-
-    generic_provider <- build_manifest_endpoint_label_provider(project_id = pid, manifest = manifest)
-    if (is.list(generic_provider) && is.list(generic_provider$X_by_graph_set)) {
-      return(generic_provider)
-    }
-
-    if (identical(pid, "symptoms")) {
-      data_file <- file.path(project_root, "data", "S_asv.rda")
-      if (!file.exists(data_file)) {
-        return(NULL)
-      }
-      env <- new.env(parent = emptyenv())
-      load(data_file, envir = env)
-      S.asv <- env$S.asv %||% NULL
-      S.asv.3d <- env$S.asv.3d %||% NULL
-      if (is.null(S.asv) || is.null(S.asv.3d)) {
-        return(NULL)
-      }
-      sample_ids <- rownames(S.asv.3d)
-      if (length(sample_ids) < 1L) {
-        return(NULL)
-      }
-      X <- as.matrix(S.asv[sample_ids, , drop = FALSE])
-      if (!is.numeric(X) || nrow(X) < 1L || ncol(X) < 1L) {
-        return(NULL)
-      }
-      taxonomy_map <- load_symptoms_taxonomy_map_for_ui(project_root)
-      list(
-        project_id = pid,
-        project_root = project_root,
-        mode = "symptoms",
-        sample_ids = as.character(sample_ids),
-        X = X,
-        taxonomy_map = taxonomy_map
-      )
-    } else if (identical(pid, "agp")) {
-      data_file <- file.path(project_root, "data", "AGP_gg2_tx_relAb_tbl.rda")
-      sample_set_file <- file.path(project_root, "results", "frozen_inputs", "sample_sets.rds")
-      if (!file.exists(data_file)) {
-        return(NULL)
-      }
-      env <- new.env(parent = emptyenv())
-      load(data_file, envir = env)
-      S.agp <- env$S.agp %||% NULL
-      if (is.null(S.agp)) {
-        return(NULL)
-      }
-      sample_ids <- rownames(S.agp)
-      if (file.exists(sample_set_file)) {
-        ss <- tryCatch(readRDS(sample_set_file), error = function(e) NULL)
-        use_ids <- as.character(ss$asv_mt %||% character(0))
-        use_ids <- intersect(use_ids, rownames(S.agp))
-        if (length(use_ids) > 0L) {
-          sample_ids <- use_ids
-        }
-      }
-      if (length(sample_ids) < 1L) {
-        return(NULL)
-      }
-      X <- as.matrix(S.agp[sample_ids, , drop = FALSE])
-      if (!is.numeric(X) || nrow(X) < 1L || ncol(X) < 1L) {
-        return(NULL)
-      }
-      list(
-        project_id = pid,
-        project_root = project_root,
-        mode = "agp",
-        sample_ids = as.character(sample_ids),
-        X = X,
-        taxonomy_map = NULL
-      )
-    } else {
-      NULL
-    }
+    build_manifest_endpoint_label_provider(project_id, manifest)
   }
 
   resolve_live_endpoint_label_provider <- function(project_id, manifest) {
@@ -3466,80 +3351,7 @@ app_server <- function(input, output, session) {
   }
 
   build_live_subject_provider <- function(project_id, manifest) {
-    pid <- tolower(trimws(as.character(project_id %||% "")))
-    project_root <- as.character(manifest$project_root %||% "")
-    if (!nzchar(project_root) || identical(project_root, "NA") || !dir.exists(project_root)) {
-      return(NULL)
-    }
-
-    generic_provider <- build_manifest_subject_provider(project_id = pid, manifest = manifest)
-    if (is.list(generic_provider) && is.data.frame(generic_provider$rows)) {
-      return(generic_provider)
-    }
-
-    if (!identical(pid, "symptoms")) {
-      return(NULL)
-    }
-
-    data_file <- file.path(project_root, "data", "S_asv.rda")
-    if (!file.exists(data_file)) {
-      return(NULL)
-    }
-
-    env <- new.env(parent = emptyenv())
-    load(data_file, envir = env)
-    S.asv.3d <- env$S.asv.3d %||% NULL
-    mt.asv <- env$mt.asv %||% NULL
-    if (is.null(S.asv.3d) || !is.data.frame(mt.asv)) {
-      return(NULL)
-    }
-
-    sample_ids <- rownames(S.asv.3d)
-    if (length(sample_ids) < 1L || !all(sample_ids %in% rownames(mt.asv))) {
-      return(NULL)
-    }
-
-    meta <- mt.asv[sample_ids, , drop = FALSE]
-    subject_id <- trimws(as.character(meta$subjID %||% rep("", nrow(meta))))
-    subject_id[is.na(subject_id)] <- ""
-    keep <- nzchar(subject_id)
-    if (!any(keep)) {
-      return(NULL)
-    }
-
-    week <- suppressWarnings(as.integer(meta$WEEK %||% rep(NA_integer_, nrow(meta))))
-    day <- suppressWarnings(as.integer(meta$DAY %||% rep(NA_integer_, nrow(meta))))
-    visit_label <- rep("", length(sample_ids))
-    have_visit <- is.finite(week) | is.finite(day)
-    visit_label[have_visit] <- sprintf(
-      "W%sD%s",
-      ifelse(is.finite(week[have_visit]), as.character(week[have_visit]), "?"),
-      ifelse(is.finite(day[have_visit]), as.character(day[have_visit]), "?")
-    )
-
-    rows <- data.frame(
-      vertex = seq_along(sample_ids),
-      subject_id = subject_id,
-      sample_id = as.character(sample_ids),
-      week = week,
-      day = day,
-      time_order = seq_along(sample_ids),
-      visit_label = visit_label,
-      graph_set_id = "",
-      representation_id = "",
-      stringsAsFactors = FALSE
-    )
-    rows <- rows[keep, , drop = FALSE]
-    if (nrow(rows) < 1L) {
-      return(NULL)
-    }
-
-    list(
-      project_id = pid,
-      project_root = project_root,
-      mode = "symptoms",
-      rows = rows
-    )
+    build_manifest_subject_provider(project_id, manifest)
   }
 
   resolve_live_subject_provider <- function(project_id, manifest) {
@@ -3638,27 +3450,6 @@ app_server <- function(input, output, session) {
 
     feature_ids <- as.character(colnames(X_use)[keep_idx])
     abund <- x[keep_idx]
-    if (identical(provider$mode, "symptoms")) {
-      taxonomy <- as.character(provider$taxonomy_map[feature_ids] %||% feature_ids)
-      taxonomy[is.na(taxonomy) | !nzchar(taxonomy)] <- feature_ids[is.na(taxonomy) | !nzchar(taxonomy)]
-      taxonomy <- vapply(taxonomy, clean_taxonomy_label_for_ui, FUN.VALUE = character(1))
-      label_val <- label_from_taxonomy_profile(taxonomy, abund, separator = " / ")
-      profile_tbl <- normalize_endpoint_feature_profile(data.frame(
-        rank = seq_along(feature_ids),
-        feature = feature_ids,
-        taxonomy = taxonomy,
-        abundance = abund,
-        stringsAsFactors = FALSE
-      ))
-      return(list(
-        vertex = as.integer(vid),
-        label = as.character(label_val %||% NA_character_),
-        sample_id = as.character(sample_ids_use[[as.integer(vid)]] %||% NA_character_),
-        profile = profile_tbl,
-        source_kind = "live",
-        source_detail = "Symptoms project ASV profile"
-      ))
-    }
 
     taxonomy <- as.character(provider$taxonomy_map[feature_ids] %||% feature_ids)
     taxonomy[is.na(taxonomy) | !nzchar(taxonomy)] <- feature_ids[is.na(taxonomy) | !nzchar(taxonomy)]
@@ -4974,181 +4765,6 @@ app_server <- function(input, output, session) {
     x
   }
 
-  load_external_endpoint_candidates <- function(manifest, ctx) {
-    if (!is.list(manifest) || !is.list(ctx)) {
-      return(data.frame())
-    }
-    project_root <- as.character(manifest$project_root %||% "")
-    if (!nzchar(project_root) || identical(project_root, "NA")) {
-      return(data.frame())
-    }
-    if (!identical(as.character(ctx$graph_set_id %||% ""), "shared_all_asv")) {
-      return(data.frame())
-    }
-
-    results_root <- file.path(project_root, "results", "asv_hv_k_gcv_sweep")
-    sweep_dirs <- Sys.glob(file.path(results_root, "embedding_geometry_k*_threshold_sweep_focus*"))
-    sweep_dirs <- sweep_dirs[dir.exists(sweep_dirs)]
-    if (length(sweep_dirs) < 1L) {
-      return(data.frame())
-    }
-
-    quantile_token <- function(x) {
-      gsub("\\.", "p", sprintf("%0.2f", as.numeric(x)))
-    }
-
-    build_row <- function(one_row, base_detect_dir, bundle_file, created_at, current_k) {
-      source_k <- suppressWarnings(as.integer(one_row$k[[1]]))
-      qv <- as.numeric(one_row$min.score.quantile[[1]])
-      rds_pattern <- sprintf(
-        "^k%02d_msq%s_.*dmr2p00_.*dmns02_.*ssr1p00_.*metricscore_.*smooth1\\.rds$",
-        as.integer(source_k),
-        quantile_token(qv)
-      )
-      rds_files <- list.files(base_detect_dir, pattern = rds_pattern, full.names = TRUE)
-      if (length(rds_files) < 1L) {
-        return(NULL)
-      }
-      rds_path <- rds_files[[1]]
-      q_label <- format(qv, nsmall = 2, trim = TRUE)
-      key <- sanitize_token_id(
-        sprintf("embedding_geometry_k%02d_msq%s_mss1_ssr1", as.integer(source_k), quantile_token(qv)),
-        fallback = sprintf("embedding_geometry_k%02d_%s", as.integer(source_k), quantile_token(qv))
-      )
-      data.frame(
-        dataset_id = key,
-        key = key,
-        input_id = sprintf("endpoint_dataset_%s", key),
-        load_input_id = sprintf("endpoint_load_%s", key),
-        rename_input_id = sprintf("endpoint_rename_%s", key),
-        delete_input_id = sprintf("endpoint_delete_%s", key),
-        default_input_id = sprintf("endpoint_default_%s", key),
-        source_type = "external_rds",
-        origin = "sweep",
-        label = sprintf("Embedding Geometry (%s / 1 / ssr=1)", q_label),
-        method = "embedding_geometry",
-        k = as.integer(source_k),
-        k_display = as.character(source_k),
-        n_endpoints = suppressWarnings(as.integer(one_row$n.endpoints[[1]])),
-        parameter_summary = sprintf("embedding_geometry | %s / 1 / ssr=1", q_label),
-        run_id = sprintf("embedding_geometry_k%02d_threshold_sweep_focus", as.integer(source_k)),
-        labels_csv = "",
-        bundle_file = bundle_file,
-        per_k_file = "",
-        workspace_file = "",
-        external_rds_file = rds_path,
-        filter_min_scale_stability = 1,
-        created_at = as.character(created_at %||% ""),
-        autoselect = identical(qv, 0.98) && is.finite(current_k) && identical(as.integer(source_k), as.integer(current_k)),
-        sort_quantile = qv,
-        can_load = TRUE,
-        can_rename = FALSE,
-        can_delete = FALSE,
-        can_set_default = TRUE,
-        is_default = FALSE,
-        stringsAsFactors = FALSE
-      )
-    }
-
-    dir_k <- suppressWarnings(as.integer(vapply(sweep_dirs, function(dd) parse_k_from_token(basename(dd)), integer(1))))
-    keep_dirs <- is.finite(dir_k) & dir_k > 0L
-    sweep_dirs <- sweep_dirs[keep_dirs]
-    dir_k <- dir_k[keep_dirs]
-    if (length(sweep_dirs) < 1L) {
-      return(data.frame())
-    }
-
-    dir_info <- file.info(sweep_dirs)
-    best_idx <- tapply(
-      seq_along(sweep_dirs),
-      dir_k,
-      function(ii) ii[[order(dir_info$mtime[ii], decreasing = TRUE)[[1]]]]
-    )
-    sweep_dirs <- sweep_dirs[unlist(best_idx, use.names = FALSE)]
-    dir_k <- suppressWarnings(as.integer(vapply(sweep_dirs, function(dd) parse_k_from_token(basename(dd)), integer(1))))
-
-    current_k <- suppressWarnings(as.integer(ctx$k %||% NA_integer_))
-    all_rows <- list()
-    idx_out <- 1L
-    preferred_quantiles <- c(0.97, 0.98, 0.99)
-
-    for (jj in seq_along(sweep_dirs)) {
-      sweep_dir <- sweep_dirs[[jj]]
-      k_val <- dir_k[[jj]]
-      bundle_file <- file.path(sweep_dir, sprintf("k%02d_threshold_sweep_bundle.rds", as.integer(k_val)))
-      summary_file <- file.path(sweep_dir, sprintf("k%02d_threshold_sweep_summary.csv", as.integer(k_val)))
-      if (!file.exists(bundle_file) || !file.exists(summary_file)) {
-        next
-      }
-      bundle <- tryCatch(readRDS(bundle_file), error = function(e) NULL)
-      summary_tbl <- read_csv_safely(summary_file)
-      if (!is.list(bundle) || !is.data.frame(summary_tbl) || nrow(summary_tbl) < 1L) {
-        next
-      }
-      cache_dir <- as.character(bundle$options$cache.dir %||% "")
-      if (!nzchar(cache_dir) || !dir.exists(cache_dir)) {
-        next
-      }
-      base_detect_dir <- file.path(cache_dir, "base_detect")
-      if (!dir.exists(base_detect_dir)) {
-        next
-      }
-
-      summary_tbl$k <- suppressWarnings(as.integer(summary_tbl$k))
-      summary_tbl$min.score.quantile <- suppressWarnings(as.numeric(summary_tbl$min.score.quantile))
-      summary_tbl$min.scale.stability <- suppressWarnings(as.numeric(summary_tbl$min.scale.stability))
-      summary_tbl$scale.stability.radius <- suppressWarnings(as.numeric(summary_tbl$scale.stability.radius))
-      summary_tbl$detect.max.radius <- suppressWarnings(as.numeric(summary_tbl$detect.max.radius))
-      summary_tbl$detect.min.neighborhood.size <- suppressWarnings(as.integer(summary_tbl$detect.min.neighborhood.size))
-
-      summary_tbl <- summary_tbl[
-        is.finite(summary_tbl$k) &
-          summary_tbl$k == as.integer(k_val) &
-          is.finite(summary_tbl$min.score.quantile) &
-          summary_tbl$min.score.quantile %in% preferred_quantiles &
-          is.finite(summary_tbl$min.scale.stability) &
-          summary_tbl$min.scale.stability >= 1 &
-          is.finite(summary_tbl$scale.stability.radius) &
-          summary_tbl$scale.stability.radius == 1 &
-          is.finite(summary_tbl$detect.max.radius) &
-          summary_tbl$detect.max.radius == 2 &
-          is.finite(summary_tbl$detect.min.neighborhood.size) &
-          summary_tbl$detect.min.neighborhood.size == 2,
-        ,
-        drop = FALSE
-      ]
-      if (nrow(summary_tbl) < 1L) {
-        next
-      }
-      rows_one <- lapply(
-        seq_len(nrow(summary_tbl)),
-        function(ii) build_row(
-          summary_tbl[ii, , drop = FALSE],
-          base_detect_dir = base_detect_dir,
-          bundle_file = bundle_file,
-          created_at = as.character(bundle$generated.at %||% ""),
-          current_k = current_k
-        )
-      )
-      rows_one <- rows_one[!vapply(rows_one, is.null, logical(1))]
-      if (length(rows_one) < 1L) {
-        next
-      }
-      for (rr in rows_one) {
-        all_rows[[idx_out]] <- rr
-        idx_out <- idx_out + 1L
-      }
-    }
-
-    if (length(all_rows) < 1L) {
-      return(data.frame())
-    }
-    out <- do.call(rbind, all_rows)
-    out <- out[order(out$k, out$sort_quantile, decreasing = FALSE), , drop = FALSE]
-    rownames(out) <- NULL
-    out
-  }
-
   manifest_endpoint_dataset_rows <- function(manifest, ctx) {
     if (!is.list(manifest) || !is.list(manifest$endpoint_runs) || length(manifest$endpoint_runs) < 1L) {
       return(data.frame())
@@ -5540,17 +5156,12 @@ app_server <- function(input, output, session) {
       ))
     }
 
-    focused_rows <- load_external_endpoint_candidates(manifest = manifest, ctx = ctx)
-    manifest_rows <- if (is.data.frame(focused_rows) && nrow(focused_rows) > 0L) {
-      data.frame()
-    } else {
-      manifest_endpoint_dataset_rows(manifest = manifest, ctx = ctx)
-    }
+    manifest_rows <- manifest_endpoint_dataset_rows(manifest = manifest, ctx = ctx)
     workspace_rows <- load_workspace_endpoint_candidates(ctx = ctx)
     row_parts <- Filter(
       f = function(x) is.data.frame(x) && nrow(x) > 0L,
       x = lapply(
-        list(focused_rows, manifest_rows, workspace_rows),
+        list(manifest_rows, workspace_rows),
         normalize_endpoint_candidate_rows
       )
     )
@@ -15541,8 +15152,8 @@ app_server <- function(input, output, session) {
 
     profile_choices <- c(
       "workspace" = "workspace",
-      "symptoms_restart" = "symptoms_restart",
-      "agp_restart" = "agp_restart",
+      "quadform_benchmark" = "quadform_benchmark",
+      "iknn_3x3" = "iknn_3x3",
       "custom" = "custom"
     )
 
@@ -15717,7 +15328,7 @@ app_server <- function(input, output, session) {
     payload$manifest <- manifest
     payload$reg$label[[payload$idx]] <- project_name
     payload$reg$project_root[[payload$idx]] <- if (nzchar(project_root)) project_root else NA_character_
-    if (profile %in% c("symptoms_restart", "agp_restart", "custom")) {
+    if (profile %in% c("quadform_benchmark", "iknn_3x3", "custom")) {
       payload$reg$origin[[payload$idx]] <- sprintf("registered:%s", profile)
     }
 

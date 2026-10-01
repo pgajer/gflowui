@@ -444,20 +444,8 @@ compute_arm_variant <- function(adj.list,
       getExportedValue("gflow", "compute.tube.lens.corridor"),
       error = function(e) NULL
     )
-    if (!is.function(tube_lens_corridor) &&
-        requireNamespace("pkgload", quietly = TRUE) &&
-        dir.exists("/Users/pgajer/current_projects/gflow")) {
-      try(
-        pkgload::load_all("/Users/pgajer/current_projects/gflow", export_all = FALSE, helpers = FALSE, quiet = TRUE),
-        silent = TRUE
-      )
-      tube_lens_corridor <- tryCatch(
-        getExportedValue("gflow", "compute.tube.lens.corridor"),
-        error = function(e) NULL
-      )
-    }
     if (!is.function(tube_lens_corridor)) {
-      stop("Installed gflow does not expose compute.tube.lens.corridor(); reinstall the local gflow package first.")
+      stop("Installed gflow does not expose compute.tube.lens.corridor(); install a gflow version that provides this function.")
     }
     corridor_mode <- if (identical(thickening_method, "tube_lens_excess_corridor")) "excess" else "base"
     corridor_res <- tube_lens_corridor(

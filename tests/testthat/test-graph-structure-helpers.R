@@ -20,7 +20,7 @@ test_that("optimal-k display resolver prefers set-specific PDFs from figures dir
 
   rv <- new.env(parent = emptyenv())
   helpers <- gflowui:::gflowui_make_server_graph_structure_helpers(rv = rv)
-  tokens <- helpers$graph_alias_tokens("top20", "ASV HV20")
+  tokens <- helpers$graph_alias_tokens("top20", "ASV HV20", aliases = "hv20")
 
   picked <- helpers$resolve_optimal_k_display_path(
     path = csv_path,
@@ -84,50 +84,15 @@ test_that("large graphs default to point vertex layout", {
 })
 
 
-test_that("project metadata inference is silent when optional AGP metadata is missing", {
-  root <- tempfile("graph-dims-agp-")
-  dir.create(file.path(root, "results", "asv_full_graph_hv_criteria_k_selection"), recursive = TRUE, showWarnings = FALSE)
-  on.exit(unlink(root, recursive = TRUE, force = TRUE), add = TRUE)
-
-  utils::write.csv(
-    data.frame(n.samples = 24378L, graph.features = 999L),
-    file.path(root, "results", "asv_full_graph_hv_criteria_k_selection", "summary.across.criteria.csv"),
-    row.names = FALSE
-  )
-
-  rv <- new.env(parent = emptyenv())
-  helpers <- gflowui:::gflowui_make_server_graph_structure_helpers(rv = rv)
-
-  expect_silent({
-    dims <- helpers$infer_graph_dims_from_project_metadata(
-      project_root = root,
-      set_id = "shared_all_asv"
-    )
-  })
-  expect_equal(dims$n_samples, 24378L)
-  expect_equal(dims$n_features, 999L)
-})
-
-test_that("project metadata inference reads AGP shared-graph run metadata", {
-  root <- tempfile("graph-dims-agp-shared-")
-  dir.create(file.path(root, "results", "asv_hv_k_gcv_sweep"), recursive = TRUE, showWarnings = FALSE)
-  on.exit(unlink(root, recursive = TRUE, force = TRUE), add = TRUE)
-
-  saveRDS(
-    list(asv.samples = 24378L, asv.features = 955L, sample_set.count = 24378L),
-    file.path(root, "results", "asv_hv_k_gcv_sweep", "run.metadata.rds")
-  )
-
-  rv <- new.env(parent = emptyenv())
-  helpers <- gflowui:::gflowui_make_server_graph_structure_helpers(rv = rv)
-
-  dims <- helpers$infer_graph_dims_from_project_metadata(
-    project_root = root,
-    set_id = "shared_all_asv"
-  )
-
-  expect_equal(dims$n_samples, 24378L)
-  expect_equal(dims$n_features, 955L)
+test_that("dimensions require explicit values, not dataset filenames or names", {
+  helpers <- gflowui:::gflowui_make_server_graph_structure_helpers(new.env())
+  expect_identical(helpers$infer_graph_dims_from_project_metadata(tempdir(),
+    graph_set = list(n_samples = 12L, n_features = 7L)),
+    list(n_samples = 12L, n_features = 7L))
+  expect_true(is.na(helpers$infer_feature_count(list(id = "top20"))))
+  expect_identical(helpers$infer_data_type_label(list(id = "all", label = "All observations")),
+    "All observations")
+  expect_identical(helpers$graph_alias_tokens("top20", aliases = "hv20"), c("top20", "hv20"))
 })
 
 test_that("graph selection resolver prefers sticky k over reference fallback", {

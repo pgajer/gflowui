@@ -322,7 +322,7 @@ gflowui_make_server_renderer_helpers <- function(rv, current_reference_info) {
     }
 
     color_assets <- if (is.list(graph_set$color_assets)) graph_set$color_assets else list()
-    preferred <- c("CST", "subCST")
+    preferred <- character(0)
     preferred <- c(preferred, as.character(color_assets$preferred_order %||% character(0)))
     cols_hint <- as.character(color_assets$vector_columns %||% character(0))
     cols_hint <- cols_hint[nzchar(cols_hint)]
@@ -342,13 +342,10 @@ gflowui_make_server_renderer_helpers <- function(rv, current_reference_info) {
       names(labels_map) <- tolower(as.character(names(labels_raw)[keep]))
     }
 
-    metadata_object <- scalar_chr(color_assets$metadata_object %||% "mt.asv", default = "mt.asv")
+    metadata_object <- scalar_chr(color_assets$metadata_object %||% "", default = "")
 
     root <- scalar_chr(manifest$project_root %||% "", default = "")
-    candidates <- c(
-      as.character(color_assets$metadata_file %||% ""),
-      if (nzchar(root)) file.path(root, "data", "S_asv.rda") else ""
-    )
+    candidates <- .normalize_project_path(color_assets$metadata_file %||% "", root)
     candidates <- unique(candidates[nzchar(candidates)])
     if (length(candidates) < 1L) {
       return(out)
@@ -366,7 +363,7 @@ gflowui_make_server_renderer_helpers <- function(rv, current_reference_info) {
       if (!isTRUE(ok)) {
         next
       }
-      object_candidates <- unique(c(metadata_object, "mt.asv", "mt"))
+      object_candidates <- metadata_object[nzchar(metadata_object)]
       mt <- NULL
       for (obj_name in object_candidates) {
         if (!exists(obj_name, envir = env, inherits = FALSE)) {
@@ -495,33 +492,23 @@ gflowui_make_server_renderer_helpers <- function(rv, current_reference_info) {
 
     condexp_sets <- if (is.list(manifest$condexp_sets)) manifest$condexp_sets else list()
     set_id_chr <- tolower(as.character(set_id %||% ""))
-    alias <- unique(c(
-      set_id_chr,
-      sub("^top", "hv", set_id_chr),
-      sub("^hv", "top", set_id_chr),
-      sub("^asv[_-]?", "", set_id_chr),
-      sub("^shared_", "", set_id_chr)
-    ))
-    if (set_id_chr %in% c("all", "asv", "shared_all_asv", "full", "asvfull")) {
-      alias <- unique(c(alias, "all", "asv", "shared_all_asv", "full", "asvfull"))
-    }
-    alias <- alias[nzchar(alias)]
+    gs <- Filter(function(g) identical(tolower(g$id), set_id_chr), manifest$graph_sets)
+    alias <- unique(c(set_id_chr, if (length(gs)) tolower(gs[[1]]$aliases)))
+    alias <- alias[!is.na(alias) & nzchar(alias)]
 
-    pretty_outcome_label <- function(x) {
+    pretty_outcome_label <- function(x, labels = list()) {
       xx <- as.character(x %||% "")
       xx <- xx[nzchar(xx)]
       if (length(xx) < 1L) {
         return("")
       }
+      configured <- as.list(labels)[[xx[[1]]]]
+      if (length(configured) == 1L && !is.na(configured) && nzchar(configured)) return(configured)
       txt <- xx[[1]]
       txt <- gsub("[^A-Za-z0-9]+", "_", txt)
       txt <- gsub("^_+|_+$", "", txt)
       if (!nzchar(txt)) {
         return("")
-      }
-      low <- tolower(txt)
-      if (low %in% c("ibs", "ibd", "vag_odor")) {
-        return(toupper(low))
       }
       txt <- gsub("_+", " ", txt)
       paste(toupper(substr(txt, 1L, 1L)), substr(txt, 2L, nchar(txt)), sep = "")
@@ -592,7 +579,7 @@ gflowui_make_server_renderer_helpers <- function(rv, current_reference_info) {
       cs_id <- as.character(cs$id %||% "condexp")
       cs_outcomes <- as.character(cs$outcomes %||% character(0))
       cs_outcomes <- cs_outcomes[nzchar(cs_outcomes)]
-      cs_outcome_label <- pretty_outcome_label(if (length(cs_outcomes) > 0L) cs_outcomes[[1]] else cs_id)
+      cs_outcome_label <- pretty_outcome_label(if (length(cs_outcomes) > 0L) cs_outcomes[[1]] else cs_id, cs$outcome_labels)
       if (!nzchar(cs_outcome_label)) {
         cs_outcome_label <- cs_id
       }
@@ -601,17 +588,7 @@ gflowui_make_server_renderer_helpers <- function(rv, current_reference_info) {
         for (fr in cs$family_runs) {
           fam <- as.character(fr$family %||% "family")
           fam_key <- tolower(fam)
-          fam_alias <- unique(c(
-            fam_key,
-            sub("^top", "hv", fam_key),
-            sub("^hv", "top", fam_key),
-            sub("^asv[_-]?", "", fam_key),
-            sub("^shared_", "", fam_key)
-          ))
-          if (fam_key %in% c("all", "asv", "shared_all_asv", "full", "asvfull")) {
-            fam_alias <- unique(c(fam_alias, "all", "asv", "shared_all_asv", "full", "asvfull"))
-          }
-          fam_alias <- fam_alias[nzchar(fam_alias)]
+          fam_alias <- unique(c(fam_key, tolower(fr$graph_set_ids %||% character(0))))
           fam_match <- (fam_key %in% alias) || (length(intersect(alias, fam_alias)) > 0L)
           if (!isTRUE(fam_match)) {
             next
@@ -733,7 +710,7 @@ gflowui_make_server_renderer_helpers <- function(rv, current_reference_info) {
             if (nrow(dd) != n_vertices) {
               next
             }
-            oo_label <- pretty_outcome_label(oo)
+            oo_label <- pretty_outcome_label(oo, cs$outcome_labels)
             src_base_key <- sprintf("long_%s_%s", cs_id, oo)
             yhat <- suppressWarnings(as.numeric(dd$y_fitted))
             yobs <- if ("y_observed" %in% names(dd)) suppressWarnings(as.numeric(dd$y_observed)) else numeric(0)
@@ -1135,12 +1112,7 @@ gflowui_make_server_renderer_helpers <- function(rv, current_reference_info) {
     req_size <- parse_size_numeric(size_label, default = 1)
     req_size_tag <- tolower(size_label_to_manifest_tag(size_label))
 
-    set_alias <- unique(c(
-      set_id,
-      sub("^asv[_-]?", "", set_id),
-      sub("^shared_", "", set_id),
-      if (set_id %in% c("shared_all_asv", "asv")) "all" else character(0)
-    ))
+    set_alias <- unique(c(set_id, tolower(spec$graph_set$aliases %||% character(0))))
     set_alias <- set_alias[nzchar(set_alias)]
 
     read_one_manifest <- function(path) {
@@ -1237,10 +1209,8 @@ gflowui_make_server_renderer_helpers <- function(rv, current_reference_info) {
       NULL
     }
 
-    manifest_paths <- c(
-      file.path(root, "results", "asv_hv_k_gcv_sweep", "asv_layouts_html_manifest.csv"),
-      file.path(root, "results", "asv_full_graph_hv_criteria_k_selection", "asvfull_layouts_html_manifest.csv")
-    )
+    manifest_paths <- .normalize_project_path(
+      spec$graph_set$layout_assets$manifest_file %||% "", root)
 
     for (mp in manifest_paths) {
       out <- read_one_manifest(mp)

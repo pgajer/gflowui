@@ -19,5 +19,5 @@ project id exists.
 Unregister A gflowui Project
 }
 \examples{
-\dontrun{unregister_project("agp_restart")}
+\dontrun{unregister_project("my_project")}
 }

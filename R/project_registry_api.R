@@ -385,8 +385,6 @@ gflowui_write_manifest <- function(manifest, path) {
     profile_use,
     choices = c(
       if (isTRUE(allow_auto)) "auto",
-      "symptoms_restart",
-      "agp_restart",
       "quadform_benchmark",
       "iknn_3x3",
       "3x3",
@@ -895,17 +893,7 @@ gflowui_write_manifest <- function(manifest, path) {
   }
 
   sid <- tolower(.as_scalar_chr(set_id, default = ""))
-  alias <- unique(c(
-    sid,
-    sub("^top", "hv", sid),
-    sub("^hv", "top", sid),
-    sub("^asv[_-]?", "", sid),
-    sub("^shared_", "", sid)
-  ))
-  if (sid %in% c("all", "asv", "shared_all_asv", "full", "asvfull")) {
-    alias <- unique(c(alias, "all", "asv", "asvfull", "shared_all_asv", "full"))
-  }
-  alias <- alias[nzchar(alias)]
+  alias <- sid[nzchar(sid)]
 
   base_dir <- dirname(gp)
   parent_dir <- dirname(base_dir)
@@ -1134,7 +1122,7 @@ gflowui_write_manifest <- function(manifest, path) {
 
   metadata_file <- .normalize_path_or_url(ca$metadata_file %||% ca$data_file %||% "")
   ca$metadata_file <- metadata_file
-  ca$metadata_object <- .as_scalar_chr(ca$metadata_object, default = "mt.asv")
+  ca$metadata_object <- .as_scalar_chr(ca$metadata_object, default = "")
 
   cols <- as.character(ca$vector_columns %||% ca$columns %||% character(0))
   cols <- unique(cols[nzchar(cols)])
@@ -1275,13 +1263,6 @@ gflowui_normalize_graph_sets_manifest <- function(graph_sets) {
     return(profile)
   }
 
-  root_name <- basename(normalizePath(project_root, mustWork = FALSE))
-  if (identical(root_name, "symptoms")) {
-    return("symptoms_restart")
-  }
-  if (identical(root_name, "AGP")) {
-    return("agp_restart")
-  }
   if (file.exists(file.path(project_root, "quadform_benchmark_manifest.rds")) &&
       file.exists(file.path(project_root, "graph_assets.csv")) &&
       file.exists(file.path(project_root, "layout_assets.csv"))) {
@@ -1290,450 +1271,16 @@ gflowui_normalize_graph_sets_manifest <- function(graph_sets) {
   "custom"
 }
 
-.discover_symptoms_artifacts <- function(project_root) {
-  results_root <- file.path(project_root, "results")
-  metadata_file <- file.path(project_root, "data", "S_asv.rda")
-  metadata_file_norm <- if (file.exists(metadata_file)) normalizePath(metadata_file, mustWork = TRUE) else ""
-  symptoms_color_assets <- list(
-    metadata_file = metadata_file_norm,
-    metadata_object = "mt.asv",
-    vector_columns = c("CST", "subCST"),
-    preferred_order = c("CST", "subCST"),
-    labels = c(CST = "CST", subCST = "subCST")
-  )
-  hv_summary_file <- file.path(results_root, "asv_hv_k_gcv_sweep", "summary.across.feature.sets.csv")
-  full_summary_file <- file.path(results_root, "asv_full_graph_hv_criteria_k_selection", "summary.across.criteria.csv")
-  full_meta_file <- file.path(results_root, "asv_full_graph_hv_criteria_k_selection", "run.metadata.rds")
-
-  hv_summary_tbl <- .read_csv_if_exists(hv_summary_file)
-  full_summary_tbl <- .read_csv_if_exists(full_summary_file)
-  full_meta <- if (file.exists(full_meta_file)) {
-    tryCatch(readRDS(full_meta_file), error = function(e) NULL)
-  } else {
-    NULL
-  }
-
-  graph_specs <- list(
-    list(
-      id = "top20",
-      label = "ASV HV20",
-      graph_file = file.path(results_root, "asv_hv_k_gcv_sweep", "top20", "iknn.selection.rds"),
-      k_source = file.path(results_root, "vag_odor_asv_graph_gcv_sweep", "hv20", "vag_odor_gcv_by_k.csv")
-    ),
-    list(
-      id = "top30",
-      label = "ASV HV30",
-      graph_file = file.path(results_root, "asv_hv_k_gcv_sweep", "top30", "iknn.selection.rds"),
-      k_source = file.path(results_root, "vag_odor_asv_graph_gcv_sweep", "hv30", "vag_odor_gcv_by_k.csv")
-    ),
-    list(
-      id = "top50",
-      label = "ASV HV50",
-      graph_file = file.path(results_root, "asv_hv_k_gcv_sweep", "top50", "iknn.selection.rds"),
-      k_source = file.path(results_root, "vag_odor_asv_graph_gcv_sweep", "hv50", "vag_odor_gcv_by_k.csv")
-    ),
-    list(
-      id = "all",
-      label = "ASV Full Graph",
-      graph_file = file.path(results_root, "asv_full_graph_hv_criteria_k_selection", "asv.full.iknn.selection.rds"),
-      k_source = file.path(results_root, "vag_odor_asv_graph_gcv_sweep", "all", "vag_odor_gcv_by_k.csv")
-    )
-  )
-
-  hv_fig_dir <- file.path(results_root, "asv_hv_k_gcv_sweep", "figures")
-  full_criteria_dir <- file.path(results_root, "asv_full_graph_hv_criteria_k_selection")
-  full_fig_dir <- file.path(full_criteria_dir, "figures")
-  vag_fig_dir <- file.path(results_root, "vag_odor_asv_graph_gcv_sweep", "figures")
-
-  graph_sets <- list()
-  for (sp in graph_specs) {
-    if (!file.exists(sp$graph_file)) {
-      next
-    }
-    k_vals <- .k_from_column(sp$k_source, column_name = "k")
-    n_features <- suppressWarnings(as.integer(sub("^top([0-9]+)$", "\\1", sp$id, perl = TRUE)))
-    if (!is.finite(n_features)) {
-      n_features <- NA_integer_
-    }
-    n_samples <- NA_integer_
-
-    if (is.data.frame(hv_summary_tbl) && nrow(hv_summary_tbl) > 0L && "set.tag" %in% names(hv_summary_tbl)) {
-      row <- hv_summary_tbl[tolower(as.character(hv_summary_tbl$set.tag)) == tolower(sp$id), , drop = FALSE]
-      if (nrow(row) > 0L) {
-        s <- suppressWarnings(as.integer(row$n.samples))
-        s <- s[is.finite(s) & s > 0L]
-        if (length(s) > 0L) {
-          n_samples <- s[[1]]
-        }
-
-        f <- suppressWarnings(as.integer(row$n.features))
-        f <- f[is.finite(f) & f > 0L]
-        if (length(f) > 0L) {
-          n_features <- f[[1]]
-        }
-      }
-    }
-
-    if (identical(sp$id, "all") && is.data.frame(full_summary_tbl) && nrow(full_summary_tbl) > 0L) {
-      s <- suppressWarnings(as.integer(full_summary_tbl$n.samples))
-      s <- s[is.finite(s) & s > 0L]
-      if (length(s) > 0L) {
-        n_samples <- s[[1]]
-      }
-
-      gf <- suppressWarnings(as.integer(full_summary_tbl$graph.features))
-      gf <- gf[is.finite(gf) & gf > 0L]
-      if (length(gf) > 0L) {
-        n_features <- gf[[1]]
-      }
-    }
-
-    if (is.list(full_meta)) {
-      if (!is.finite(n_samples)) {
-        s <- suppressWarnings(as.integer(full_meta$asv.samples))
-        s <- s[is.finite(s) & s > 0L]
-        if (length(s) > 0L) {
-          n_samples <- s[[1]]
-        }
-      }
-      if (!is.finite(n_features)) {
-        f <- suppressWarnings(as.integer(full_meta$asv.features))
-        f <- f[is.finite(f) & f > 0L]
-        if (length(f) > 0L) {
-          n_features <- f[[1]]
-        }
-      }
-    }
-
-    optimal_artifacts <- list()
-    add_artifact <- function(name, path) {
-      if (file.exists(path)) {
-        optimal_artifacts[[name]] <<- normalizePath(path, mustWork = TRUE)
-      }
-      invisible(NULL)
-    }
-
-    if (identical(sp$id, "all")) {
-      add_artifact("median_norm_gcv", file.path(full_fig_dir, "criterion_hv20_hv30_hv50_mean_median_vs_k.pdf"))
-      add_artifact("median_norm_gcv_summary", file.path(full_criteria_dir, "summary.across.criteria.csv"))
-      add_artifact("median_norm_gcv_hv20", file.path(full_fig_dir, "criterion.hv20_mean_median_vs_k.pdf"))
-      add_artifact("median_norm_gcv_hv30", file.path(full_fig_dir, "criterion.hv30_mean_median_vs_k.pdf"))
-      add_artifact("median_norm_gcv_hv50", file.path(full_fig_dir, "criterion.hv50_mean_median_vs_k.pdf"))
-      add_artifact("response_gcv", file.path(vag_fig_dir, "all_vag_odor_gcv_vs_k.pdf"))
-      if (!("response_gcv" %in% names(optimal_artifacts))) {
-        add_artifact("response_gcv", sp$k_source)
-      }
-    } else {
-      set_tag <- as.character(sp$id)
-      fam_tag <- sub("^top", "hv", set_tag)
-
-      add_artifact("median_norm_gcv", file.path(hv_fig_dir, sprintf("%s_mean_median_vs_k.pdf", set_tag)))
-      add_artifact("median_norm_gcv_summary", file.path(results_root, "asv_hv_k_gcv_sweep", set_tag, "k.distribution.summary.csv"))
-      if (!("median_norm_gcv" %in% names(optimal_artifacts))) {
-        add_artifact("median_norm_gcv", file.path(results_root, "asv_hv_k_gcv_sweep", set_tag, "k.distribution.summary.csv"))
-      }
-
-      add_artifact("response_gcv", file.path(vag_fig_dir, sprintf("%s_vag_odor_gcv_vs_k.pdf", fam_tag)))
-      if (!("response_gcv" %in% names(optimal_artifacts))) {
-        add_artifact("response_gcv", sp$k_source)
-      }
-    }
-
-    graph_sets[[length(graph_sets) + 1L]] <- gflowui_normalize_graph_set_manifest(list(
-      id = sp$id,
-      label = sp$label,
-      data_type_id = sp$id,
-      data_type_label = if (identical(sp$id, "all")) "ASV" else sprintf("ASV-top%d", n_features),
-      graph_file = normalizePath(sp$graph_file, mustWork = TRUE),
-      k_values = k_vals,
-      n_samples = n_samples,
-      n_features = n_features,
-      optimal_k_artifacts = optimal_artifacts,
-      color_assets = symptoms_color_assets
-    ))
-  }
-
-  condexp_sets <- list()
-  fam_info <- list(
-    hv20 = list(
-      summary = file.path(results_root, "vag_odor_asv_graph_gcv_sweep", "hv20", "vag_odor_gcv_by_k.csv"),
-      fits = file.path(results_root, "vag_odor_asv_graph_gcv_sweep", "hv20", "fits")
-    ),
-    hv30 = list(
-      summary = file.path(results_root, "vag_odor_asv_graph_gcv_sweep", "hv30", "vag_odor_gcv_by_k.csv"),
-      fits = file.path(results_root, "vag_odor_asv_graph_gcv_sweep", "hv30", "fits")
-    ),
-    hv50 = list(
-      summary = file.path(results_root, "vag_odor_asv_graph_gcv_sweep", "hv50", "vag_odor_gcv_by_k.csv"),
-      fits = file.path(results_root, "vag_odor_asv_graph_gcv_sweep", "hv50", "fits")
-    ),
-    all = list(
-      summary = file.path(results_root, "vag_odor_asv_graph_gcv_sweep", "all", "vag_odor_gcv_by_k.csv"),
-      fits = file.path(results_root, "vag_odor_asv_graph_gcv_sweep", "all", "fits")
-    )
-  )
-
-  fam_rows <- list()
-  for (nm in names(fam_info)) {
-    summary_file <- fam_info[[nm]]$summary
-    fits_dir <- fam_info[[nm]]$fits
-    if (!file.exists(summary_file) || !dir.exists(fits_dir)) {
-      next
-    }
-
-    fit_files <- list.files(
-      fits_dir,
-      pattern = "^vag_odor_fit_k[0-9]+\\.rds$",
-      full.names = TRUE
-    )
-    fit_files <- fit_files[file.exists(fit_files)]
-
-    fam_rows[[length(fam_rows) + 1L]] <- list(
-      family = nm,
-      summary_file = normalizePath(summary_file, mustWork = TRUE),
-      fits_dir = normalizePath(fits_dir, mustWork = TRUE),
-      fit_files = normalizePath(fit_files, mustWork = TRUE),
-      k_values = .k_from_column(summary_file, column_name = "k")
-    )
-  }
-
-  if (length(fam_rows) > 0L) {
-    k_union <- .extract_int_values(unlist(lapply(fam_rows, function(x) x$k_values), use.names = FALSE))
-    condexp_sets[[1L]] <- list(
-      id = "vag_odor_binary",
-      label = "VAG_ODOR Conditional Expectation",
-      type = "fit_files",
-      outcomes = c("vag_odor"),
-      family_runs = fam_rows,
-      summary_file = if (file.exists(file.path(results_root, "vag_odor_asv_graph_gcv_sweep", "vag_odor_gcv_all_families.csv"))) {
-        normalizePath(file.path(results_root, "vag_odor_asv_graph_gcv_sweep", "vag_odor_gcv_all_families.csv"), mustWork = TRUE)
-      } else {
-        NA_character_
-      },
-      k_values = k_union
-    )
-  }
-
-  endpoint_runs <- list()
-  endpoint_dir <- file.path(results_root, "asv_full_graph_evenness_endpoints_k05")
-  endpoint_bundle <- file.path(endpoint_dir, "evenness.endpoints.k05.bundle.rds")
-  endpoint_summary <- file.path(endpoint_dir, "evenness.endpoint.summary.k05.csv")
-  endpoint_labels <- file.path(endpoint_dir, "evenness.endpoint.labels.k05.csv")
-
-  if (dir.exists(endpoint_dir) &&
-      (file.exists(endpoint_bundle) || file.exists(endpoint_summary) || file.exists(endpoint_labels))) {
-    k_vals <- .k_from_column(endpoint_summary, column_name = "k")
-    endpoint_runs[[1L]] <- list(
-      id = "evenness_k05",
-      label = "Evenness Endpoints (k=5)",
-      run_dir = normalizePath(endpoint_dir, mustWork = TRUE),
-      bundle_file = if (file.exists(endpoint_bundle)) normalizePath(endpoint_bundle, mustWork = TRUE) else NA_character_,
-      summary_csv = if (file.exists(endpoint_summary)) normalizePath(endpoint_summary, mustWork = TRUE) else NA_character_,
-      labels_csv = if (file.exists(endpoint_labels)) normalizePath(endpoint_labels, mustWork = TRUE) else NA_character_,
-      k_values = k_vals,
-      method = "evenness_minima"
-    )
-  }
-
-  list(
-    profile = "symptoms_restart",
-    project_root = normalizePath(project_root, mustWork = TRUE),
-    graph_sets = graph_sets,
-    condexp_sets = condexp_sets,
-    endpoint_runs = endpoint_runs,
-    metadata = list(),
-    artifacts = list(),
-    defaults = list(
-      graph_set_id = if (any(vapply(graph_sets, function(x) identical(x$id, "all"), logical(1)))) "all" else {
-        if (length(graph_sets) > 0L) graph_sets[[1L]]$id else NA_character_
-      },
-      condexp_set_id = if (length(condexp_sets) > 0L) condexp_sets[[1L]]$id else NA_character_,
-      endpoint_run_id = if (length(endpoint_runs) > 0L) endpoint_runs[[1L]]$id else NA_character_
-    )
-  )
-}
-
-.discover_agp_artifacts <- function(project_root) {
-  base <- file.path(project_root, "results", "asv_hv_k_gcv_sweep")
-  run_meta_file <- file.path(base, "run.metadata.rds")
-  run_meta <- if (file.exists(run_meta_file)) {
-    tryCatch(readRDS(run_meta_file), error = function(e) NULL)
-  } else {
-    NULL
-  }
-  run_meta_samples <- suppressWarnings(as.integer(run_meta$asv.samples %||% run_meta$sample_set.count %||% NA_integer_))
-  run_meta_samples <- run_meta_samples[is.finite(run_meta_samples) & run_meta_samples > 0L]
-  run_meta_features <- suppressWarnings(as.integer(run_meta$asv.features %||% NA_integer_))
-  run_meta_features <- run_meta_features[is.finite(run_meta_features) & run_meta_features > 0L]
-
-  graph_sets <- list()
-  shared_graph_file <- file.path(base, "shared_graphs_all_asv", "iknn.selection.rds")
-  if (file.exists(shared_graph_file)) {
-    k_status <- file.path(base, "top20", "k.status.csv")
-    k_vals <- .k_from_column(file.path(base, "top20", "k.status.csv"), column_name = "k.requested")
-    optimal_artifacts <- list()
-    if (file.exists(k_status)) {
-      optimal_artifacts$response_gcv <- normalizePath(k_status, mustWork = TRUE)
-    }
-    graph_sets[[length(graph_sets) + 1L]] <- gflowui_normalize_graph_set_manifest(list(
-      id = "shared_all_asv",
-      label = "Shared All-ASV Graph Family",
-      data_type_id = "shared_all_asv",
-      data_type_label = "ASV",
-      graph_file = normalizePath(shared_graph_file, mustWork = TRUE),
-      k_values = k_vals,
-      n_samples = if (length(run_meta_samples) > 0L) run_meta_samples[[1]] else NA_integer_,
-      n_features = if (length(run_meta_features) > 0L) run_meta_features[[1]] else NA_integer_,
-      optimal_k_artifacts = optimal_artifacts
-    ))
-  }
-
-  sens_dirs <- list.dirs(base, recursive = FALSE, full.names = TRUE)
-  sens_dirs <- sens_dirs[grepl("^k_sensitivity_", basename(sens_dirs))]
-  for (dd in sens_dirs) {
-    sens_file <- file.path(dd, "iknn.selection.sensitivity.rds")
-    if (!file.exists(sens_file)) {
-      next
-    }
-    k_vals <- .k_from_filename_vector(strsplit(basename(dd), "_", fixed = TRUE)[[1]])
-    graph_sets[[length(graph_sets) + 1L]] <- gflowui_normalize_graph_set_manifest(list(
-      id = basename(dd),
-      label = sprintf("Sensitivity Bundle (%s)", basename(dd)),
-      data_type_id = basename(dd),
-      data_type_label = sprintf("Sensitivity (%s)", basename(dd)),
-      graph_file = normalizePath(sens_file, mustWork = TRUE),
-      k_values = k_vals
-    ))
-  }
-
-  condexp_sets <- list()
-  bench_dirs <- list.dirs(base, recursive = FALSE, full.names = TRUE)
-  bench_dirs <- bench_dirs[grepl("^ibs_ibd_benchmark", basename(bench_dirs))]
-  for (dd in bench_dirs) {
-    long_file <- file.path(dd, "ibs_ibd_conditional_expectation.long.rds")
-    gcv_file <- file.path(dd, "ibs_ibd_gcv_summary.csv")
-    if (!file.exists(long_file)) {
-      next
-    }
-
-    k_vals <- integer(0)
-    outcomes <- character(0)
-    gcv_tbl <- .read_csv_if_exists(gcv_file)
-    if (!is.null(gcv_tbl)) {
-      if ("k" %in% names(gcv_tbl)) {
-        k_vals <- .extract_int_values(gcv_tbl$k)
-      }
-      if ("outcome" %in% names(gcv_tbl)) {
-        outcomes <- sort(unique(as.character(gcv_tbl$outcome)))
-      }
-    }
-    if ((length(k_vals) < 1L || length(outcomes) < 1L) && file.exists(long_file)) {
-      long_tbl <- tryCatch(readRDS(long_file), error = function(e) NULL)
-      if (is.data.frame(long_tbl) && nrow(long_tbl) > 0L) {
-        if (length(k_vals) < 1L && "k" %in% names(long_tbl)) {
-          k_vals <- .extract_int_values(long_tbl$k)
-        }
-        if (length(outcomes) < 1L && "outcome" %in% names(long_tbl)) {
-          outcomes <- sort(unique(as.character(long_tbl$outcome)))
-        }
-      }
-    }
-
-    condexp_sets[[length(condexp_sets) + 1L]] <- list(
-      id = basename(dd),
-      label = sprintf("IBS/IBD Benchmark (%s)", basename(dd)),
-      type = "long_table",
-      run_dir = normalizePath(dd, mustWork = TRUE),
-      long_table_file = normalizePath(long_file, mustWork = TRUE),
-      gcv_summary_file = if (file.exists(gcv_file)) normalizePath(gcv_file, mustWork = TRUE) else NA_character_,
-      outcomes = outcomes,
-      k_values = k_vals
-    )
-  }
-
-  endpoint_runs <- list()
-  ep_dirs <- list.dirs(base, recursive = FALSE, full.names = TRUE)
-  ep_dirs <- ep_dirs[grepl("^evenness_endpoints_", basename(ep_dirs))]
-  for (dd in ep_dirs) {
-    summary_file <- file.path(dd, "evenness_endpoint_summary.csv")
-    labels_file <- file.path(dd, "evenness_endpoint_labels.csv")
-    per_k_dir <- file.path(dd, "per_k")
-    per_k_files <- list.files(
-      per_k_dir,
-      pattern = "^evenness_k[0-9]+_endpoints\\.rds$",
-      full.names = TRUE
-    )
-
-    has_any <- file.exists(summary_file) || file.exists(labels_file) || length(per_k_files) > 0L
-    if (!has_any) {
-      next
-    }
-
-    k_vals <- .k_from_column(summary_file, column_name = "k")
-    if (length(k_vals) < 1L) {
-      k_vals <- .k_from_filename_vector(per_k_files)
-    }
-
-    methods <- character(0)
-    summary_tbl <- .read_csv_if_exists(summary_file)
-    if (!is.null(summary_tbl) && "endpoint.method" %in% names(summary_tbl)) {
-      methods <- sort(unique(as.character(summary_tbl$endpoint.method)))
-    }
-
-    endpoint_runs[[length(endpoint_runs) + 1L]] <- list(
-      id = basename(dd),
-      label = sprintf("Evenness Endpoints (%s)", basename(dd)),
-      run_dir = normalizePath(dd, mustWork = TRUE),
-      summary_csv = if (file.exists(summary_file)) normalizePath(summary_file, mustWork = TRUE) else NA_character_,
-      labels_csv = if (file.exists(labels_file)) normalizePath(labels_file, mustWork = TRUE) else NA_character_,
-      run_metadata = if (file.exists(file.path(dd, "run.metadata.rds"))) normalizePath(file.path(dd, "run.metadata.rds"), mustWork = TRUE) else NA_character_,
-      per_k_bundles = if (length(per_k_files) > 0L) normalizePath(per_k_files, mustWork = TRUE) else character(0),
-      k_values = k_vals,
-      methods = methods
-    )
-  }
-
-  pick_default <- function(ids, preferred) {
-    if (length(ids) < 1L) {
-      return(NA_character_)
-    }
-    for (pp in preferred) {
-      if (pp %in% ids) {
-        return(pp)
-      }
-    }
-    ids[1]
-  }
-
-  graph_ids <- vapply(graph_sets, function(x) x$id, character(1))
-  condexp_ids <- vapply(condexp_sets, function(x) x$id, character(1))
-  endpoint_ids <- vapply(endpoint_runs, function(x) x$id, character(1))
-
-  list(
-    profile = "agp_restart",
-    project_root = normalizePath(project_root, mustWork = TRUE),
-    graph_sets = graph_sets,
-    condexp_sets = condexp_sets,
-    endpoint_runs = endpoint_runs,
-    metadata = list(),
-    artifacts = list(),
-    defaults = list(
-      graph_set_id = pick_default(graph_ids, c("shared_all_asv")),
-      condexp_set_id = pick_default(condexp_ids, c("ibs_ibd_benchmark_k071230")),
-      endpoint_run_id = pick_default(endpoint_ids, c("evenness_endpoints_k07", "evenness_endpoints_k071230_tuned"))
-    )
-  )
-}
-
 #' Discover Existing Project Artifacts
 #'
 #' Scans an existing analysis project directory and returns graph, conditional
 #' expectation, and endpoint artifacts that can be registered in `gflowui`.
 #'
 #' @param project_root Path to the external analysis project root.
-#' @param profile Discovery profile. Use `"auto"` to infer from project folder
-#'   name (`symptoms`, `AGP`), or set one of `"symptoms_restart"`,
-#'   `"agp_restart"`, `"quadform_benchmark"`, `"iknn_3x3"`, or `"custom"`.
+#' @param profile Discovery profile. Use `"auto"` to recognize the quadratic-surface
+#'   benchmark asset format, otherwise defaulting to `"custom"`. Project folder
+#'   names have no effect. Explicit profiles are `"quadform_benchmark"`,
+#'   `"iknn_3x3"`, and `"custom"`.
 #'
 #' @return A list with `graph_sets`, `condexp_sets`, `endpoint_runs`,
 #'   project-level `metadata`, project-level `artifacts`, and suggested
@@ -1742,23 +1289,17 @@ gflowui_normalize_graph_sets_manifest <- function(graph_sets) {
 #'
 #' @examples
 #' \dontrun{
-#' discover_project_artifacts("~/current_projects/symptoms", profile = "symptoms_restart")
+#' discover_project_artifacts("~/my_project", profile = "custom")
 #' }
 discover_project_artifacts <- function(
     project_root,
-    profile = c("auto", "symptoms_restart", "agp_restart", "quadform_benchmark", "iknn_3x3", "custom")) {
+    profile = c("auto", "quadform_benchmark", "iknn_3x3", "custom")) {
   if (!is.character(project_root) || !nzchar(project_root[1])) {
     stop("project_root must be a non-empty string.", call. = FALSE)
   }
   root <- normalizePath(path.expand(project_root[1]), mustWork = TRUE)
   profile_use <- .resolve_profile(profile = profile[1], project_root = root)
 
-  if (identical(profile_use, "symptoms_restart")) {
-    return(.discover_symptoms_artifacts(root))
-  }
-  if (identical(profile_use, "agp_restart")) {
-    return(.discover_agp_artifacts(root))
-  }
   if (identical(profile_use, "quadform_benchmark")) {
     return(quadform_discover_benchmark_artifacts(root))
   }
@@ -1873,14 +1414,14 @@ build_project_spec_iknn_3x3 <- function(
 #' (5) writes an RDS manifest and (6) upserts the global project registry.
 #'
 #' @param project_root Absolute or \code{~}-prefixed path to the root of an
-#'   external analysis project (e.g. \code{"~/current_projects/symptoms"}).
+#'   external analysis project (e.g. \code{"~/my_project"}).
 #'   The directory must already exist. It is expanded with
 #'   \code{path.expand()} and normalized to an absolute path.
 #'   All asset paths in the resulting manifest are resolved relative to this
 #'   root.
 #'
 #' @param project_id Optional character string used as the unique project
-#'   identifier in the registry (e.g. \code{"symptoms_restart"}).  When
+#'   identifier in the registry (e.g. \code{"my_project"}).  When
 #'   \code{NULL} (the default), an id is generated automatically from
 #'   \code{project_name}.  Must be unique across registered projects unless
 #'   \code{overwrite = TRUE}.
@@ -1891,17 +1432,8 @@ build_project_spec_iknn_3x3 <- function(
 #' @param profile Discovery profile that controls how on-disk assets are
 #'   located when \code{scan_results = TRUE}.  One of:
 #'   \describe{
-#'     \item{\code{"auto"}}{(default) Infer profile from the project folder
-#'       name: a folder named \code{"symptoms"} maps to
-#'       \code{"symptoms_restart"}, a folder named \code{"AGP"} maps to
-#'       \code{"agp_restart"}, anything else maps to \code{"custom"}.}
-#'     \item{\code{"symptoms_restart"}}{Expects the symptoms project layout
-#'       with \code{results/} sub-directories for HV sweep graphs, vaginal
-#'       odor conditional expectations, and evenness-based endpoint runs.}
-#'     \item{\code{"agp_restart"}}{Expects the AGP project layout with
-#'       \code{results/asv_hv_k_gcv_sweep/} containing shared graphs,
-#'       sensitivity bundles, IBS/IBD benchmark conditional expectations,
-#'       and evenness endpoint directories with per-k RDS bundles.}
+#'     \item{\code{"auto"}}{(default) Recognize the quadratic-surface benchmark
+#'       asset format, otherwise use \code{"custom"}. Folder names are ignored.}
 #'     \item{\code{"quadform_benchmark"}}{Expects one quadratic-surface
 #'       benchmark run directory containing
 #'       \code{quadform_benchmark_manifest.rds},
@@ -1928,7 +1460,7 @@ build_project_spec_iknn_3x3 <- function(
 #'   discovery.  Each element is a named list with the following fields:
 #'   \describe{
 #'     \item{\code{id}}{Character.  Unique identifier for this graph set
-#'       (e.g. \code{"top20"}, \code{"all"}, \code{"shared_all_asv"}).}
+#'       (e.g. \code{"main"}, \code{"subset"}).}
 #'     \item{\code{label}}{Character.  Human-readable label for the UI
 #'       (e.g. \code{"ASV HV20"}).}
 #'     \item{\code{graph_file}}{Character.  Path to an RDS file containing
@@ -1962,7 +1494,7 @@ build_project_spec_iknn_3x3 <- function(
 #'   found by discovery.  Each element is a named list whose structure
 #'   depends on the \code{type} field:
 #'   \describe{
-#'     \item{Type \code{"fit_files"} (symptoms-style)}{
+#'     \item{Type \code{"fit_files"} (individual fit files)}{
 #'       \describe{
 #'         \item{\code{id}}{Character.  Unique identifier
 #'           (e.g. \code{"vag_odor_binary"}).}
@@ -1981,7 +1513,7 @@ build_project_spec_iknn_3x3 <- function(
 #'           across families.}
 #'       }
 #'     }
-#'     \item{Type \code{"long_table"} (AGP-style)}{
+#'     \item{Type \code{"long_table"} (long tables)}{
 #'       \describe{
 #'         \item{\code{id}}{Character.  Unique identifier.}
 #'         \item{\code{label}}{Character.  UI label.}
@@ -2067,8 +1599,7 @@ build_project_spec_iknn_3x3 <- function(
 #'       endpoint run to select initially.}
 #'   }
 #'   When \code{scan_results = TRUE}, defaults are populated automatically
-#'   by the discovery function (e.g. \code{"all"} graph set in symptoms,
-#'   \code{"shared_all_asv"} in AGP).  Any values supplied here are
+#'   by the discovery function. Any values supplied here are
 #'   \emph{merged on top} of the discovered defaults, overriding them
 #'   field-by-field.
 #'
@@ -2101,20 +1632,6 @@ build_project_spec_iknn_3x3 <- function(
 #'
 #' @examples
 #' \dontrun{
-#' # Register using automatic profile detection and on-disk discovery
-#' register_project(
-#'   project_root = "~/current_projects/AGP",
-#'   project_name = "AGP Restart"
-#' )
-#'
-#' # Register with explicit profile, overwriting any previous registration
-#' register_project(
-#'   project_root = "~/current_projects/symptoms",
-#'   profile = "symptoms_restart",
-#'   project_name = "Symptoms",
-#'   overwrite = TRUE
-#' )
-#'
 #' # Custom project: skip discovery, supply assets explicitly
 #' register_project(
 #'   project_root = "~/my_project",
@@ -2172,7 +1689,7 @@ register_project <- function(
     project_root,
     project_id = NULL,
     project_name = NULL,
-    profile = c("auto", "symptoms_restart", "agp_restart", "quadform_benchmark", "iknn_3x3", "custom"),
+    profile = c("auto", "quadform_benchmark", "iknn_3x3", "custom"),
     project_spec = NULL,
     graph_sets = NULL,
     condexp_sets = NULL,
@@ -2384,7 +1901,7 @@ list_projects <- function(include_manifests = FALSE) {
 #' @export
 #'
 #' @examples
-#' \dontrun{unregister_project("agp_restart")}
+#' \dontrun{unregister_project("my_project")}
 unregister_project <- function(project_id, delete_manifest = TRUE) {
   if (!is.character(project_id) || !nzchar(project_id[1])) {
     stop("project_id must be a non-empty string.", call. = FALSE)

@@ -8,8 +8,7 @@ register_project(
   project_root,
   project_id = NULL,
   project_name = NULL,
-  profile = c("auto", "symptoms_restart", "agp_restart", "quadform_benchmark",
-    "iknn_3x3", "custom"),
+  profile = c("auto", "quadform_benchmark", "iknn_3x3", "custom"),
   project_spec = NULL,
   graph_sets = NULL,
   condexp_sets = NULL,
@@ -26,14 +25,14 @@ register_project(
 }
 \arguments{
 \item{project_root}{Absolute or \code{~}-prefixed path to the root of an
-external analysis project (e.g. \code{"~/current_projects/symptoms"}).
+external analysis project (e.g. \code{"~/my_project"}).
 The directory must already exist. It is expanded with
 \code{path.expand()} and normalized to an absolute path.
 All asset paths in the resulting manifest are resolved relative to this
 root.}
 
 \item{project_id}{Optional character string used as the unique project
-identifier in the registry (e.g. \code{"symptoms_restart"}).  When
+identifier in the registry (e.g. \code{"my_project"}).  When
 \code{NULL} (the default), an id is generated automatically from
 \code{project_name}.  Must be unique across registered projects unless
 \code{overwrite = TRUE}.}
@@ -44,17 +43,8 @@ identifier in the registry (e.g. \code{"symptoms_restart"}).  When
 \item{profile}{Discovery profile that controls how on-disk assets are
 located when \code{scan_results = TRUE}.  One of:
 \describe{
-\item{\code{"auto"}}{(default) Infer profile from the project folder
-name: a folder named \code{"symptoms"} maps to
-\code{"symptoms_restart"}, a folder named \code{"AGP"} maps to
-\code{"agp_restart"}, anything else maps to \code{"custom"}.}
-\item{\code{"symptoms_restart"}}{Expects the symptoms project layout
-with \code{results/} sub-directories for HV sweep graphs, vaginal
-odor conditional expectations, and evenness-based endpoint runs.}
-\item{\code{"agp_restart"}}{Expects the AGP project layout with
-\code{results/asv_hv_k_gcv_sweep/} containing shared graphs,
-sensitivity bundles, IBS/IBD benchmark conditional expectations,
-and evenness endpoint directories with per-k RDS bundles.}
+\item{\code{"auto"}}{(default) Recognize the quadratic-surface benchmark
+asset format, otherwise use \code{"custom"}. Folder names are ignored.}
 \item{\code{"quadform_benchmark"}}{Expects one quadratic-surface
 benchmark run directory containing
 \code{quadform_benchmark_manifest.rds},
@@ -81,7 +71,7 @@ non-\code{NULL} this \emph{replaces} any graph sets found by automatic
 discovery.  Each element is a named list with the following fields:
 \describe{
 \item{\code{id}}{Character.  Unique identifier for this graph set
-(e.g. \code{"top20"}, \code{"all"}, \code{"shared_all_asv"}).}
+(e.g. \code{"main"}, \code{"subset"}).}
 \item{\code{label}}{Character.  Human-readable label for the UI
 (e.g. \code{"ASV HV20"}).}
 \item{\code{graph_file}}{Character.  Path to an RDS file containing
@@ -115,7 +105,7 @@ specifications.  When non-\code{NULL} this \emph{replaces} any sets
 found by discovery.  Each element is a named list whose structure
 depends on the \code{type} field:
 \describe{
-\item{Type \code{"fit_files"} (symptoms-style)}{
+\item{Type \code{"fit_files"} (individual fit files)}{
 \describe{
 \item{\code{id}}{Character.  Unique identifier
 (e.g. \code{"vag_odor_binary"}).}
@@ -134,7 +124,7 @@ combined cross-family GCV summary CSV.}
 across families.}
 }
 }
-\item{Type \code{"long_table"} (AGP-style)}{
+\item{Type \code{"long_table"} (long tables)}{
 \describe{
 \item{\code{id}}{Character.  Unique identifier.}
 \item{\code{label}}{Character.  UI label.}
@@ -220,8 +210,7 @@ conditional-expectation set to select initially.}
 endpoint run to select initially.}
 }
 When \code{scan_results = TRUE}, defaults are populated automatically
-by the discovery function (e.g. \code{"all"} graph set in symptoms,
-\code{"shared_all_asv"} in AGP).  Any values supplied here are
+by the discovery function. Any values supplied here are
 \emph{merged on top} of the discovered defaults, overriding them
 field-by-field.}
 
@@ -263,20 +252,6 @@ endpoint assets, (3) optionally normalizes a richer \code{project_spec},
 }
 \examples{
 \dontrun{
-# Register using automatic profile detection and on-disk discovery
-register_project(
-  project_root = "~/current_projects/AGP",
-  project_name = "AGP Restart"
-)
-
-# Register with explicit profile, overwriting any previous registration
-register_project(
-  project_root = "~/current_projects/symptoms",
-  profile = "symptoms_restart",
-  project_name = "Symptoms",
-  overwrite = TRUE
-)
-
 # Custom project: skip discovery, supply assets explicitly
 register_project(
   project_root = "~/my_project",

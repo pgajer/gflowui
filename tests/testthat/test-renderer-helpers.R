@@ -24,6 +24,7 @@ test_that("spectral layout selection honors requested graph family", {
   )
 
   manifest <- list(
+    graph_sets = list(list(id = "top50", aliases = "hv50")),
     condexp_sets = list(list(
       id = "condexp",
       family_runs = list(
@@ -77,6 +78,7 @@ test_that("binary fit-file condexp adds rel.y.hat color source", {
     condexp_sets = list(list(
       id = "vag_odor_binary",
       outcomes = "vag_odor",
+      outcome_labels = c(vag_odor = "VAG_ODOR"),
       family_runs = list(
         list(family = "all", fit_files = fit_path)
       )
@@ -169,7 +171,7 @@ test_that("rel.y.hat is added only for binary long-table outcomes", {
     }
     as.character(src$label[[1]])
   }, character(1))
-  expect_true("IBS rel.y.hat" %in% labels)
+  expect_true("Ibs rel.y.hat" %in% labels)
   expect_false("Severity score rel.y.hat" %in% labels)
 })
 
@@ -213,7 +215,8 @@ test_that("project layout manifest matrix resolves set and k specific layout", {
 
   mat <- renderer_helpers$project_layout_manifest_matrix(
     project_root = root,
-    spec = list(set_id = "top20", k_ref = 10L),
+    spec = list(set_id = "top20", k_ref = 10L,
+      graph_set = list(layout_assets = list(manifest_file = manifest_csv))),
     size_label = "0.5x"
   )
 

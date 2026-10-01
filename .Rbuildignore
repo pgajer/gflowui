@@ -3,3 +3,4 @@
 ^gflowui\.Rcheck$
 ^gflowui_[^/]*\.tar\.gz$
 ^DOCUMENT_LOCATIONS[.]md$
+^README[.]html$

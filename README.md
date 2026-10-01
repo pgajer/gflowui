@@ -214,3 +214,39 @@ For projects that display precomputed results, creators can hide the graph
 build/import and data-upload buttons with
 `metadata$project_controls = list(graph_update = FALSE, add_data = FALSE)`.
 Omitted flags retain the controls in other projects.
+
+## Explicit project configuration
+
+Application behavior does not depend on project IDs or folder names. Use
+`profile = "custom", scan_results = FALSE` with explicit graph collections and
+metadata. The former `symptoms_restart` and `agp_restart` discovery profiles
+have been removed; old registration scripts must supply explicit assets.
+`auto` recognizes only the reusable quadratic-surface benchmark file format.
+
+For matrix-based endpoint profiles, `metadata$endpoint_label_provider` accepts
+`matrix_file` (a numeric sample-by-feature RDS matrix), optional
+`taxonomy_map_file` (an RDS character vector named by feature ID), and
+`source_detail`. Matrix row names provide sample IDs; feature IDs stay intact
+when a taxonomy map supplies display names. Multiple representations can use
+`graph_set_matrix_map`. Subject trajectories use
+`metadata$subject_provider$rows_file`, containing vertex, subject and sample
+identifiers and optional visit/time fields. These paths may be relative to the
+project root. The application does not search neighboring repositories.
+
+Optional `defaults$open_graph_set_id`, `defaults$open_graph_k`, and
+`defaults$open_panels` control initial selections. When omitted, the existing
+reference/default selection rules apply. User selections retain precedence.
+
+To retire a viewer while keeping its assets, use `unregister_project(id,
+delete_manifest = FALSE)`. The development helper
+`dev/retire_project_registration.R` first saves a recoverable registration
+snapshot. Retirement is separate from Settings → Delete Project, which moves
+owned assets to Trash. Dataset conversion belongs in the dataset repository;
+`dev/register_projects_examples.R` illustrates generic registration.
+
+Graph families with differently named conditional-expectation assets declare
+`graph_sets[[i]]$aliases`; the application no longer assumes that `top20` means
+`hv20` or that `all` means `shared_all_asv`. Color metadata declares its file,
+R object name and columns in `color_assets`. Selection diagnostics use explicit
+`optimal_k_artifacts`; a layout index uses `layout_assets$manifest_file`.
+Conditional-expectation collections may supply named `outcome_labels`.

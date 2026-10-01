@@ -21,3 +21,7 @@ tmp/
 /dev/benchmark_basins_reference.R
 /dev/basins_renderer_final_state_qa_2026-07-28.md
 /dev/qa_basins_renderer_reference.R
+
+# Generated local reading companions
+/README.html
+/dev/project_manifest_cleanup_01_oct_2026.html
