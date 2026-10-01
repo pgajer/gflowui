@@ -11842,6 +11842,9 @@ app_server <- function(input, output, session) {
             sc
           }
         )
+      hover_asset <- gflowui_vertex_hover_asset(active_manifest())
+      p <- gflowui_add_vertex_hover(p, gflowui_vertex_hover_text(
+        st$vertex_ids, hover_asset, input$graph_hover_top_n))
       p <- plotly::event_register(p, "plotly_click")
       p <- attach_reference_plotly_camera_preserver(p)
       p
@@ -14716,6 +14719,8 @@ app_server <- function(input, output, session) {
               width = "180px"
             )
           ),
+          gflowui_vertex_hover_controls(graph_ui$manifest,
+            shiny::isolate(input$graph_hover_top_n), graph_ui$renderer_selected),
           if (!is.null(graph_ui$dcst)) {
             dcst_row <- function(label, control) shiny::div(
               class = "gf-graph-row gf-graph-layout-row",

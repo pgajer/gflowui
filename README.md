@@ -42,6 +42,22 @@ gflowui::run_gflowui()
 The app now defaults to `RGL (live)` and falls back to `HTML`/`Plotly` when
 `rgl` is unavailable.
 
+## Vertex abundance hover labels
+
+Projects with original relative-abundance profiles can opt into richer Plotly
+hover labels through `metadata$vertex_hover$abundances_file`. Labels show the
+stable vertex ID, its graph-local number, and ranked phylotype abundances as
+percentages. **Phylotypes on hover** defaults to four and accepts any count from
+one through the number of features. Only nonzero phylotypes are listed.
+
+The shared RDS asset contains `sample_ids`, `taxon_names`, and parallel
+`indices` / `abundances` lists, one sorted nonzero profile per sample ID. Values
+must be positive proportions summing to one; indices address `taxon_names`.
+Every graph must supply stable `vertex_ids`. Matching uses IDs, not display row
+positions, so filtered views and subject overlays retain the correct profiles.
+Coordinate transformations do not change these original-abundance labels.
+Missing IDs are explicitly reported instead of borrowing another vertex's data.
+
 ## Next implementation targets
 
 - Replace adapter stubs with real `gflow` calls.
