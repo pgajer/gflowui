@@ -43,6 +43,10 @@ test_that("Settings can edit provenance without changing graph assets",{
  a<-register_project(root,project_id="test",scan_results=FALSE,provenance=list(summary="Original"))
  shiny::testServer(app_server,{
   open_project("test");session$flushReact()
+  session$setInputs(workflow_accordion="workflow_provenance");session$flushReact()
+  html<-output$workflow_controls$html
+  expect_match(html,'data-value="workflow_provenance"',fixed=TRUE)
+  expect_match(html,'accordion-button" type="button"',fixed=TRUE)
   session$setInputs(edit_project_provenance=1);session$flushReact()
   session$setInputs(provenance_edit_summary="Updated in Settings",save_project_provenance=1);session$flushReact()
   expect_equal(active_manifest()$provenance$summary,"Updated in Settings")

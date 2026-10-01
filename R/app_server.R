@@ -15342,6 +15342,7 @@ app_server <- function(input, output, session) {
     }
 
     available_panels <- c(
+      "workflow_provenance",
       if (is.list(overview_ui)) "workflow_overview" else character(0),
       if (isTRUE(rv$project.show.data)) "workflow_data" else character(0),
       if (isTRUE(has_asset_views)) {
