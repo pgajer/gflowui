@@ -15521,6 +15521,10 @@ app_server <- function(input, output, session) {
           choices = endpoint_choices,
           selected = settings_default_endpoint_run
         ),
+        shiny::hr(),
+        shiny::h5("Delete this project"),
+        shiny::p("Move this project's saved assets to the system Trash. Review the affected files before confirming."),
+        shiny::actionButton("delete_project", "Delete Project", class = "btn-outline-danger"),
         footer = shiny::tagList(
           shiny::modalButton("Cancel"),
           shiny::actionButton("save_project_settings", "Save Settings", class = "btn-primary")
@@ -15528,6 +15532,51 @@ app_server <- function(input, output, session) {
       )
     )
   }, ignoreInit = TRUE)
+
+  pending_project_delete <- shiny::reactiveVal(NULL)
+  shiny::observeEvent(input$delete_project, {
+    if (is.null(input$delete_project) || input$delete_project < 1L) return()
+    if (!isTRUE(rv$project.active)) return()
+    plan <- tryCatch(gflowui_project_delete_plan(rv$project.id), error=function(e)e)
+    if (inherits(plan,"error")) {
+      shiny::showNotification(conditionMessage(plan),type="error",duration=NULL)
+      return()
+    }
+    pending_project_delete(plan)
+    moving <- plan$files[plan$files$action=="Move to Trash",,drop=FALSE]
+    retained <- plan$files[plan$files$action!="Move to Trash",,drop=FALSE]
+    shiny::showModal(shiny::modalDialog(
+      title=paste0("Delete Project: ",plan$label),easyClose=FALSE,size="l",
+      shiny::p(sprintf("Move %d files (%.1f MiB) to the system Trash and remove this project from the project list?",
+        nrow(moving),sum(moving$bytes,na.rm=TRUE)/1024^2)),
+      shiny::p("The project root and unrelated files stay in place. Shared assets used by other registered projects and external referenced assets are retained. Unsaved session changes will be discarded."),
+      shiny::p("Recovery information and the saved project manifest will be included in the Trash bundle."),
+      shiny::tags$details(shiny::tags$summary("Files moving to Trash"),
+        shiny::tags$pre(style="max-height:240px;overflow:auto;",paste(moving$path,collapse="\n"))),
+      if(nrow(retained)) shiny::tags$details(shiny::tags$summary(sprintf("Retained shared or external files (%d)",nrow(retained))),
+        shiny::tags$pre(style="max-height:200px;overflow:auto;",paste(retained$action,retained$path,sep=": ",collapse="\n"))),
+      footer=shiny::tagList(shiny::modalButton("Cancel"),
+        shiny::actionButton("confirm_delete_project","Move to Trash",class="btn-danger"))))
+  },ignoreInit=TRUE)
+
+  shiny::observeEvent(input$confirm_delete_project, {
+    if (is.null(input$confirm_delete_project) || input$confirm_delete_project < 1L) return()
+    plan <- pending_project_delete()
+    if (!isTRUE(rv$project.active) || is.null(plan) || !identical(plan$project_id,rv$project.id)) return()
+    pending_project_delete(NULL)
+    result <- tryCatch(shiny::withProgress(message="Moving project to Trash",value=0,
+      gflowui_trash_project(plan)),error=function(e)e)
+    if(inherits(result,"error")) {
+      shiny::removeModal()
+      shiny::showNotification(conditionMessage(result),type="error",duration=NULL)
+      return()
+    }
+    close_project()
+    project_registry(result$registry)
+    shiny::removeModal()
+    shiny::showNotification(paste0("Project ‘",plan$label,"’ moved to Trash. Recovery bundle: ",result$trash_path),
+      type="message",duration=NULL)
+  },ignoreInit=TRUE)
 
   shiny::observeEvent(input$save_project_settings, {
     if (!isTRUE(rv$project.active)) {

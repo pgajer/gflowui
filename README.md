@@ -102,3 +102,29 @@ Regression checks cover straight and branching arms, a closed circle, isolated
 close pairs, coincident points, transformations, merging, stale previews, and
 import into the working set. `tests/testthat/test-embedding-endpoints.R` contains
 these checks; `FNN` is needed to run the detector and its numerical tests.
+
+## Delete a project
+
+Open **Settings → Delete Project**, review the file list, then choose **Move to
+Trash**. The button is inside Settings, away from the workspace's Settings and
+Save Project buttons. Successful deletion closes the project and removes it
+from the project selector.
+
+The saved manifest, project-owned registered assets under the project root, and
+per-project gflowui state/cache files move together to one macOS Trash bundle.
+The research project root and unrelated files remain in place. Files referenced
+by other registered projects, and external referenced assets outside the project
+root, are retained and listed in the confirmation. Directory references include
+their contents; symbolic-link directories are not traversed. Unregistered results
+and dependencies known only to external analysis scripts are not inferred.
+
+The bundle contains `restore-map.csv` with original file locations and
+`recovery.rds` with the manifest and registry entry. To recover, retrieve the
+bundle from Trash, restore its mapped files to their original locations, and
+restore the saved registry entry (or register the recovered project again).
+Unsaved session changes are not part of the saved project bundle.
+
+This currently uses the macOS Foundation Trash API through Swift. There is no
+permanent-delete fallback. Assets must be movable to the staging bundle on the
+registry's filesystem; a failed move or registry update restores files already
+moved and leaves the project registered. A changed project requires a new review.
