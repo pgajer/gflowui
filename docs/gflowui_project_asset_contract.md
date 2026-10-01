@@ -18,6 +18,14 @@ For robust startup and UI population, each graph set should include explicit met
 - `layout_assets` with `grip_layouts`
 - `color_assets` for metadata-driven color options (for example `CST`, `subCST`)
 
+For graph sets without a nearest-neighbor parameter, set
+`neighbor_parameter = FALSE` on the graph-set entry. This hides the `k` selector,
+`Optimal k` controls, and selected-k/stability metadata. The internal asset key
+remains bound in a hidden input so selecting a graph and **Set Reference**
+continue to work. Existing graph sets default to `TRUE`; their controls are
+unchanged. This is appropriate for complete-metric embeddings whose asset key
+is only a storage identifier.
+
 For fitted metric embeddings, set
 `layout_assets$coordinate_normalization = "uniform"`. The live viewer then
 centers coordinates and applies one common scale to all three axes, preserving

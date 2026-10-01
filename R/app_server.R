@@ -12833,13 +12833,14 @@ app_server <- function(input, output, session) {
     add_graph_meta("Screen", gs$screen_label %||% gs$screen_name %||% "")
     add_graph_meta("Representation", gs$representation_label %||% gs$representation %||% "")
 
+    neighbor_parameter <- gflowui_has_neighbor_parameter(gs)
     k_top20 <- suppressWarnings(as.integer(gs$selected_k %||% k_sel))
-    if (is.finite(k_top20)) {
+    if (neighbor_parameter && is.finite(k_top20)) {
       add_graph_meta("Selected k (top20)", format(k_top20, big.mark = ","))
     }
 
     k_top30 <- suppressWarnings(as.integer(gs$selected_k_top30 %||% NA_integer_))
-    if (is.finite(k_top30)) {
+    if (neighbor_parameter && is.finite(k_top30)) {
       add_graph_meta("Selected k (top30)", format(k_top30, big.mark = ","))
     }
 
@@ -12854,7 +12855,7 @@ app_server <- function(input, output, session) {
         ""
       }
     }
-    if (nzchar(stable_txt)) {
+    if (neighbor_parameter && nzchar(stable_txt)) {
       add_graph_meta("Top20/top30 stable", stable_txt)
     }
 
@@ -12889,6 +12890,7 @@ app_server <- function(input, output, session) {
       selector_summary_label = as.character(sel$selector_summary_label %||% "Graph family"),
       selector_summary_value = as.character(sel$selector_summary_value %||% gs$label %||% infer_data_type_label(gs)),
       dims_text = dims_text,
+      neighbor_parameter = neighbor_parameter,
       k_choices = k_choices,
       k_selected = k_sel,
       optimal_choices = optimal_choices,
@@ -14659,38 +14661,7 @@ app_server <- function(input, output, session) {
 
         shiny::tagList(
           selector_rows,
-          shiny::div(
-            class = "gf-graph-row gf-graph-row-tight gf-graph-row-k",
-            shiny::span(class = "gf-graph-row-label", "k:"),
-            shiny::selectInput(
-              "graph_k",
-              label = NULL,
-              choices = graph_ui$k_choices,
-              selected = if (is.finite(graph_ui$k_selected)) as.character(graph_ui$k_selected) else "",
-              width = "105px"
-            ),
-            shiny::actionButton(
-              "set_reference_graph_inline",
-              "Set Reference",
-              class = "btn-light btn-sm gf-btn-inline"
-            )
-          ),
-          shiny::div(
-            class = "gf-graph-row gf-graph-row-tight gf-graph-row-optimal",
-            shiny::span(class = "gf-graph-row-label", "Optimal k:"),
-            shiny::selectInput(
-              "graph_optimal_method",
-              label = NULL,
-              choices = graph_ui$optimal_choices,
-              selected = graph_ui$optimal_selected,
-              width = "180px"
-            ),
-            shiny::actionButton(
-              "graph_optimal_show",
-              "Show",
-              class = "btn-light btn-sm gf-btn-inline"
-            )
-          ),
+          gflowui_graph_neighbor_controls(graph_ui),
           shiny::actionButton(
             "graph_update_placeholder",
             "Update / Expand Graphs...",
