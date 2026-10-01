@@ -1100,9 +1100,9 @@ gflowui_write_manifest <- function(manifest, path) {
   }
   presets$vertex_layout <- vertex_layout
 
-  vertex_size <- .as_scalar_chr(presets$vertex_size, default = "1x")
+  vertex_size <- .as_scalar_chr(presets$vertex_size, default = "0.6x")
   if (!nzchar(vertex_size)) {
-    vertex_size <- "1x"
+    vertex_size <- "0.6x"
   }
   presets$vertex_size <- vertex_size
 

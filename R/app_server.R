@@ -1194,7 +1194,7 @@ app_server <- function(input, output, session) {
     layout_presets <- list(
       renderer = normalize_live_renderer_choice(input$graph_layout_renderer, default = "plotly"),
       vertex_layout = tolower(as.character(input$graph_layout_vertex %||% "point")),
-      vertex_size = as.character(input$graph_layout_size %||% "1.0x"),
+      vertex_size = as.character(input$graph_layout_size %||% "0.6x"),
       color_by = as.character(input$graph_layout_color_by %||% "vertex_degree"),
       vertex_color = normalize_palette_choice(
         input$graph_layout_vertex_color %||% graph_solid_color_default,
@@ -10607,11 +10607,11 @@ app_server <- function(input, output, session) {
       input$graph_layout_size %||%
         graph_layout_state$size_label %||%
         layout_presets$vertex_size %||%
-        "1.0x"
+        "0.6x"
     )
     size_mult <- suppressWarnings(as.numeric(gsub("[^0-9.]+", "", size_raw)))
     if (!is.finite(size_mult) || size_mult <= 0) {
-      size_mult <- 1
+      size_mult <- 0.6
     }
     size_label <- sprintf("%sx", format(size_mult, scientific = FALSE, trim = TRUE))
     component_mode <- tolower(trimws(as.character(
@@ -12817,8 +12817,8 @@ app_server <- function(input, output, session) {
       input$graph_layout_size %||%
         graph_layout_state$size_label %||%
         layout_presets$vertex_size %||%
-        "1.0x",
-      default = "1.0x"
+        "0.6x",
+      default = "0.6x"
     )
     component_choices <- c("All vertices" = "all", "Main connected component" = "lcc")
     component_selected <- tolower(as.character(
@@ -12889,7 +12889,7 @@ app_server <- function(input, output, session) {
     }
 
     if (is.finite(n_samples)) {
-      add_graph_meta("Graph samples", format(as.integer(n_samples), big.mark = ","))
+      add_graph_meta("Graph vertices", format(as.integer(n_samples), big.mark = ","))
     }
     if (is.finite(n_features)) {
       add_graph_meta("Graph features", format(as.integer(n_features), big.mark = ","))
@@ -14767,14 +14767,7 @@ app_server <- function(input, output, session) {
             )
           })
 
-          c(rows, list(
-            shiny::div(
-              class = "gf-graph-row gf-graph-row-tight",
-              shiny::span(class = "gf-graph-row-label", paste0(as.character(graph_ui$selector_summary_label %||% "Graph family"), ":")),
-              shiny::span(class = "gf-graph-row-value", as.character(graph_ui$selector_summary_value %||% graph_ui$data_type_label %||% "")),
-              shiny::span(class = "gf-graph-dims", graph_ui$dims_text)
-            )
-          ))
+          rows
         } else {
           list(
             shiny::div(
@@ -14793,13 +14786,35 @@ app_server <- function(input, output, session) {
         }
 
         shiny::tagList(
+          shiny::div(
+            class = "gf-graph-metadata",
+            shiny::h6(class = "gf-graph-layout-head", "Graph metadata"),
+            build_html_table(graph_ui$metadata_tbl, empty_text = "No graph metadata available.")
+          ),
           selector_rows,
           gflowui_graph_neighbor_controls(graph_ui),
           shiny::actionButton(
             "graph_update_placeholder",
             "Update / Expand Graphs...",
+            title = "Build graph sets from data loaded in the Data panel, or register an existing graph RDS file. This does not rerun the experiment pipeline.",
             class = "btn-light gf-btn-wide"
           ),
+          shiny::div(
+            class = "gf-graph-row gf-graph-layout-row",
+            shiny::span(class = "gf-graph-row-label", "Component:"),
+            shiny::selectInput(
+              "graph_layout_component",
+              label = NULL,
+              choices = graph_ui$component_choices,
+              selected = graph_ui$component_selected,
+              width = "205px"
+            )
+          ),
+          if (nzchar(as.character(graph_ui$component_hint %||% ""))) {
+            shiny::div(class = "gf-hint", graph_ui$component_hint)
+          } else {
+            NULL
+          },
           shiny::hr(),
           shiny::h6(class = "gf-graph-layout-head", "Graph Layout"),
           shiny::div(
@@ -14835,6 +14850,8 @@ app_server <- function(input, output, session) {
               width = "180px"
             )
           ),
+          shiny::hr(),
+          shiny::h6(class = "gf-graph-layout-head", "Vertex annotations & filtering"),
           gflowui_vertex_hover_controls(graph_ui$manifest,
             shiny::isolate(input$graph_hover_top_n), graph_ui$renderer_selected),
           if (!is.null(graph_ui$dcst)) {
@@ -14877,31 +14894,6 @@ app_server <- function(input, output, session) {
             )
           } else {
             NULL
-          },
-          shiny::div(
-            class = "gf-graph-row gf-graph-layout-row",
-            shiny::span(class = "gf-graph-row-label", "Component:"),
-            shiny::selectInput(
-              "graph_layout_component",
-              label = NULL,
-              choices = graph_ui$component_choices,
-              selected = graph_ui$component_selected,
-              width = "205px"
-            )
-          ),
-          if (nzchar(as.character(graph_ui$component_hint %||% ""))) {
-            shiny::div(class = "gf-hint", graph_ui$component_hint)
-          } else {
-            NULL
-          },
-          if (is.data.frame(graph_ui$metadata_tbl) && nrow(graph_ui$metadata_tbl) > 0L) {
-            shiny::tags$details(
-              class = "gf-endpoint-metrics-details",
-              shiny::tags$summary("Graph metadata"),
-              build_html_table(graph_ui$metadata_tbl, empty_text = "No graph metadata available.")
-            )
-          } else {
-            NULL
           }
         )
       }
@@ -14913,139 +14905,6 @@ app_server <- function(input, output, session) {
             "Graphs",
             value = "workflow_graph_structure",
             graph_panel
-          ),
-          bslib::accordion_panel(
-            "Subjects",
-            value = "workflow_subject_structure",
-            build_subject_panel_ui(subject_panel)
-          ),
-          if (isTRUE(occupation_panel$has_assets)) {
-            bslib::accordion_panel(
-              "Occupation Densities",
-              value = "workflow_occupation_density",
-              shiny::tagList(
-                shiny::selectInput(
-                  "occupation_density_set",
-                  "Density set",
-                  choices = occupation_panel$set_choices,
-                  selected = occupation_panel$set_id
-                ),
-                shiny::selectizeInput(
-                  "occupation_density_subject",
-                  "Subject",
-                  choices = occupation_panel$subject_choices,
-                  selected = occupation_panel$subject_selected,
-                  multiple = FALSE,
-                  options = list(placeholder = "Choose subject")
-                ),
-                shiny::selectInput(
-                  "occupation_density_method",
-                  "Method",
-                  choices = occupation_panel$method_choices,
-                  selected = occupation_panel$method_selected
-                ),
-                shiny::selectInput(
-                  "occupation_density_mode",
-                  "Estimate",
-                  choices = if (isTRUE(occupation_panel$is_precomputed_path)) {
-                    c("Explore diffusion-time path" = "parameters")
-                  } else {
-                    c(
-                      "CV-selected parameters" = "selected",
-                      "Choose parameters" = "parameters"
-                    )
-                  },
-                  selected = occupation_panel$mode
-                ),
-                shiny::conditionalPanel(
-                  condition = "input.occupation_density_mode == 'selected'",
-                  shiny::selectInput(
-                    "occupation_density_selector",
-                    "CV selector",
-                    choices = c(
-                      "Brier score" = "minimum_brier",
-                      "Bernoulli negative log likelihood" = "minimum_bernoulli_nll"
-                    ),
-                    selected = occupation_panel$selector
-                  )
-                ),
-                shiny::uiOutput("occupation_density_parameters"),
-                shiny::actionButton(
-                  "occupation_density_show",
-                  "Show Density on Graph",
-                  class = "btn-primary gf-btn-wide"
-                ),
-                if (!isTRUE(occupation_panel$is_precomputed_path)) {
-                  shiny::actionButton(
-                    "occupation_density_use_graph_k",
-                    "Use Estimate's Graph k",
-                    class = "btn-light gf-btn-wide"
-                  )
-                } else {
-                  NULL
-                },
-                shiny::div(
-                  class = "gf-density-status",
-                  shiny::textOutput("occupation_density_status")
-                )
-              )
-            )
-          } else {
-            NULL
-          },
-          bslib::accordion_panel(
-            "Conditional Expectations",
-            value = "workflow_condexp_structure",
-            shiny::tagList(
-              build_html_table(condexp_tbl, empty_text = "No conditional expectation assets found."),
-              shiny::actionButton(
-                "condexp_update_placeholder",
-                "Update / Refit CondExp...",
-                class = "btn-light gf-btn-wide"
-              )
-            )
-          ),
-          bslib::accordion_panel(
-            "Basins",
-            value = "workflow_basin_structure",
-            shiny::tagList(
-              if (isTRUE(basin_panel$has_sources)) {
-                shiny::tagList(
-                  shiny::selectInput(
-                    "basin_source",
-                    "Estimate source",
-                    choices = basin_panel$choices,
-                    selected = basin_panel$selected
-                  )
-                )
-              } else {
-                shiny::p(
-                  class = "gf-hint",
-                  "Apply an occupation density or load a conditional-expectation estimate first."
-                )
-              },
-              shiny::actionButton(
-                "basin_compute",
-                "Compute & Open Basin Inspector",
-                class = "btn-primary gf-btn-wide"
-              ),
-              shiny::div(
-                class = "gf-density-status",
-                shiny::textOutput("basin_status")
-              ),
-              shiny::tags$details(
-                class = "gf-endpoint-metrics-details",
-                shiny::tags$summary("Construction details"),
-                shiny::p(
-                  class = "gf-hint",
-                  paste(
-                    "Canonical gflow trajectory_flow in both directions;",
-                    "CLOSEST; connected exact plateaus; all graph edges",
-                    "admissible; backend primary assignments."
-                  )
-                )
-              )
-            )
           ),
           bslib::accordion_panel(
             "Endpoints",
@@ -15309,6 +15168,139 @@ app_server <- function(input, output, session) {
               )
             )
           ),
+          bslib::accordion_panel(
+            "Subjects",
+            value = "workflow_subject_structure",
+            build_subject_panel_ui(subject_panel)
+          ),
+          if (isTRUE(occupation_panel$has_assets)) {
+            bslib::accordion_panel(
+              "Occupation Densities",
+              value = "workflow_occupation_density",
+              shiny::tagList(
+                shiny::selectInput(
+                  "occupation_density_set",
+                  "Density set",
+                  choices = occupation_panel$set_choices,
+                  selected = occupation_panel$set_id
+                ),
+                shiny::selectizeInput(
+                  "occupation_density_subject",
+                  "Subject",
+                  choices = occupation_panel$subject_choices,
+                  selected = occupation_panel$subject_selected,
+                  multiple = FALSE,
+                  options = list(placeholder = "Choose subject")
+                ),
+                shiny::selectInput(
+                  "occupation_density_method",
+                  "Method",
+                  choices = occupation_panel$method_choices,
+                  selected = occupation_panel$method_selected
+                ),
+                shiny::selectInput(
+                  "occupation_density_mode",
+                  "Estimate",
+                  choices = if (isTRUE(occupation_panel$is_precomputed_path)) {
+                    c("Explore diffusion-time path" = "parameters")
+                  } else {
+                    c(
+                      "CV-selected parameters" = "selected",
+                      "Choose parameters" = "parameters"
+                    )
+                  },
+                  selected = occupation_panel$mode
+                ),
+                shiny::conditionalPanel(
+                  condition = "input.occupation_density_mode == 'selected'",
+                  shiny::selectInput(
+                    "occupation_density_selector",
+                    "CV selector",
+                    choices = c(
+                      "Brier score" = "minimum_brier",
+                      "Bernoulli negative log likelihood" = "minimum_bernoulli_nll"
+                    ),
+                    selected = occupation_panel$selector
+                  )
+                ),
+                shiny::uiOutput("occupation_density_parameters"),
+                shiny::actionButton(
+                  "occupation_density_show",
+                  "Show Density on Graph",
+                  class = "btn-primary gf-btn-wide"
+                ),
+                if (!isTRUE(occupation_panel$is_precomputed_path)) {
+                  shiny::actionButton(
+                    "occupation_density_use_graph_k",
+                    "Use Estimate's Graph k",
+                    class = "btn-light gf-btn-wide"
+                  )
+                } else {
+                  NULL
+                },
+                shiny::div(
+                  class = "gf-density-status",
+                  shiny::textOutput("occupation_density_status")
+                )
+              )
+            )
+          } else {
+            NULL
+          },
+          bslib::accordion_panel(
+            "Conditional Expectations",
+            value = "workflow_condexp_structure",
+            shiny::tagList(
+              build_html_table(condexp_tbl, empty_text = "No conditional expectation assets found."),
+              shiny::actionButton(
+                "condexp_update_placeholder",
+                "Update / Refit CondExp...",
+                class = "btn-light gf-btn-wide"
+              )
+            )
+          ),
+          bslib::accordion_panel(
+            "Basins",
+            value = "workflow_basin_structure",
+            shiny::tagList(
+              if (isTRUE(basin_panel$has_sources)) {
+                shiny::tagList(
+                  shiny::selectInput(
+                    "basin_source",
+                    "Estimate source",
+                    choices = basin_panel$choices,
+                    selected = basin_panel$selected
+                  )
+                )
+              } else {
+                shiny::p(
+                  class = "gf-hint",
+                  "Apply an occupation density or load a conditional-expectation estimate first."
+                )
+              },
+              shiny::actionButton(
+                "basin_compute",
+                "Compute & Open Basin Inspector",
+                class = "btn-primary gf-btn-wide"
+              ),
+              shiny::div(
+                class = "gf-density-status",
+                shiny::textOutput("basin_status")
+              ),
+              shiny::tags$details(
+                class = "gf-endpoint-metrics-details",
+                shiny::tags$summary("Construction details"),
+                shiny::p(
+                  class = "gf-hint",
+                  paste(
+                    "Canonical gflow trajectory_flow in both directions;",
+                    "CLOSEST; connected exact plateaus; all graph edges",
+                    "admissible; backend primary assignments."
+                  )
+                )
+              )
+            )
+          ),
           bslib::accordion_panel("Analysis", value = "workflow_analysis", shiny::div(
             class = "gf-analysis-placeholder",
             shiny::p("Analysis tools section placeholder."),
@@ -15350,12 +15342,12 @@ app_server <- function(input, output, session) {
       if (isTRUE(has_asset_views)) {
         c(
           "workflow_graph_structure",
+          "workflow_endpoint_structure",
+          "workflow_arm_structure",
           "workflow_subject_structure",
           if (isTRUE(occupation_panel$has_assets)) "workflow_occupation_density" else character(0),
           "workflow_condexp_structure",
           "workflow_basin_structure",
-          "workflow_endpoint_structure",
-          "workflow_arm_structure",
           "workflow_analysis"
         )
       } else {
@@ -15414,7 +15406,7 @@ app_server <- function(input, output, session) {
       class = "gf-sidebar-panel gf-run-monitor-panel",
       shiny::div(
         class = "gf-run-monitor-head",
-        shiny::strong("Run Monitor"),
+        shiny::strong("Run Monitor", title = "Latest job message from this app session; does not monitor external experiment workers."),
         shiny::actionButton("hide_run_monitor", "Hide", class = "btn-light btn-sm")
       ),
       shiny::div(
@@ -15437,6 +15429,7 @@ app_server <- function(input, output, session) {
       shiny::actionButton(
         button_id,
         button_label,
+        title = "Show or hide the Data panel to load a CSV for graph construction. Loading data does not append samples to existing graph assets.",
         class = "btn-light gf-btn-wide"
       )
     )

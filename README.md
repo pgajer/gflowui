@@ -176,3 +176,21 @@ Hidden selectors retain their internal selection state. For collections containi
 precomputed graph, set `neighbor_parameter = FALSE` on each graph set to hide the generic
 `k` and `Optimal k` controls. A separate grouped field can still expose the scientific
 neighbor count as `Neighbors (k)`.
+
+## Graph controls and panel order
+
+The Graphs panel begins with always-visible graph metadata, followed by graph
+selection and the connected-component selector. Graph Layout contains renderer,
+vertex shape and vertex size; the default size is 0.6x. Explicit saved size
+presets remain supported. A separate, non-collapsible **Vertex annotations &
+filtering** subsection holds phylotype hover counts, coloring and dCST filters.
+Grouped selectors do not repeat their choices in a second summary label.
+The workflow panel order is **Graphs → Endpoints → Arms → Subjects**.
+
+**Set Reference** saves the selected graph as the project reference and default
+graph set. **Update / Expand Graphs** builds graph sets from data loaded in the
+Data panel or registers an existing graph RDS; it does not run an external
+Fermat experiment. **Add Data** opens that CSV-loading panel; it does not append
+rows to existing graph assets. **Run Monitor** shows the latest in-app job
+message, not the progress of external experiment workers. These controls also
+provide explanatory hover text.

@@ -18,6 +18,7 @@ gflowui_graph_neighbor_controls <- function(graph_ui) {
       if (enabled) shiny::span(class = "gf-graph-row-label", "k:"),
       if (enabled) selector else shiny::div(style = "display: none;", `aria-hidden` = "true", selector),
       shiny::actionButton("set_reference_graph_inline", "Set Reference",
+        title = "Save the selected graph as the project reference and default graph set.",
         class = "btn-light btn-sm gf-btn-inline")
     ),
     if (enabled) shiny::div(

@@ -193,7 +193,7 @@ body {
 .gf-graph-layout-row .gf-graph-row-label {
   min-width: 108px;
   width: 108px;
-  white-space: nowrap;
+  white-space: normal;
 }
 
 .gf-graph-layout-row .form-group {
