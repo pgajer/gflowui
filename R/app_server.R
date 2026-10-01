@@ -3576,6 +3576,20 @@ app_server <- function(input, output, session) {
     if (!is.finite(vid) || vid < 1L || !is.list(manifest)) {
       return(empty_endpoint_label_profile_suggestion(vertex_id))
     }
+    spec <- manifest$metadata$endpoint_label_provider
+    if (identical(spec$mode, "vertex_abundances")) {
+      view <- reference_view_state()
+      ctx <- current_endpoint_graph_context()
+      if (!is.list(view) || !is.null(view$error) ||
+          !identical(view$set_id, ctx$graph_set_id))
+        return(empty_endpoint_label_profile_suggestion(vid))
+      gs <- view$graph_set
+      coordinate <- spec$metric_coordinates[[gs$base_metric]] %||% "abundance"
+      suggestion <- gflowui_endpoint_abundance_profile(vid, view$vertex_ids,
+        gflowui_vertex_hover_asset(manifest), coordinate,
+        spec$reference_taxa[[gs$anchor]])
+      return(suggestion %||% empty_endpoint_label_profile_suggestion(vid))
+    }
     provider <- resolve_live_endpoint_label_provider(rv$project.id, manifest)
     provider_view <- endpoint_provider_active_view(provider)
     if (!is.list(provider) || !is.list(provider_view) || !is.matrix(provider_view$X)) {
@@ -13230,13 +13244,16 @@ app_server <- function(input, output, session) {
     build_profile_table <- function(profile_tbl) {
       profile_tbl <- normalize_endpoint_feature_profile(profile_tbl)
       if (!is.data.frame(profile_tbl) || nrow(profile_tbl) < 1L) {
-        return(shiny::p(class = "gf-hint", "No feature profile is available for the selected vertex."))
+        return(shiny::p(class = "gf-hint", label_suggestion$empty_profile_message %||%
+          "No feature profile is available for the selected vertex."))
       }
       profile_chr <- profile_tbl
       for (cc in names(profile_chr)) {
         profile_chr[[cc]] <- format_endpoint_metric_value(profile_chr[[cc]])
       }
-      head_row <- shiny::tags$tr(lapply(names(profile_chr), function(cc) shiny::tags$th(cc)))
+      profile_headers <- names(profile_chr)
+      profile_headers[profile_headers == "abundance"] <- label_suggestion$profile_value_label %||% "abundance"
+      head_row <- shiny::tags$tr(lapply(profile_headers, function(cc) shiny::tags$th(cc)))
       body_rows <- lapply(seq_len(nrow(profile_chr)), function(ii) {
         shiny::tags$tr(lapply(profile_chr[ii, , drop = FALSE], function(val) shiny::tags$td(as.character(val[[1]] %||% ""))))
       })

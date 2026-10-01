@@ -63,3 +63,11 @@ Missing IDs are explicitly reported instead of borrowing another vertex's data.
 - Replace adapter stubs with real `gflow` calls.
 - Add async job execution for expensive graph/smoothing steps.
 - Add export of standalone HTML artifacts for consortium sharing.
+
+Endpoint inspection can reuse that same asset by setting
+`metadata$endpoint_label_provider$mode = "vertex_abundances"`, with
+`metric_coordinates` mapping graph-set base metrics to `abundance`, `ratio`, or
+`sqrt_ratio`, and `reference_taxa` mapping anchor names to exact phylotype names.
+Profiles match stable vertex IDs. Ratio labels identify numerator and reference;
+the pure-reference composition is labeled as the chart origin. Endpoint profile
+values use the selected coordinates, while hover values remain original abundances.
