@@ -63,6 +63,15 @@ list(
 )
 ```
 
+For consistent categorical colors across graphs or displayed components, provide
+`color_assets$categorical_palettes`, a named list keyed by the color column.
+Each entry is a named character vector mapping category labels to R colors,
+for example `list(CST = c(A = "#123456", B = "#789ABC"))`. Legend order follows
+the mapping order, restricted to visible categories. Categories absent from the
+mapping, including missing values displayed as `NA`, use gray. Plotly, RGL and
+the exported legend use the same mapping. Omitting the mapping preserves the
+existing automatic palette behavior.
+
 Optional grouped-selector schema example:
 
 ```r

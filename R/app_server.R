@@ -10711,7 +10711,9 @@ app_server <- function(input, output, session) {
     )
   })
 
-  categorical_palette <- function(values, source_key = "", source_label = "") {
+  categorical_palette <- function(values, source_key = "", source_label = "", palettes = NULL) {
+    explicit <- gflowui_explicit_categorical_palette(values, palettes[[source_key]])
+    if (!is.null(explicit)) return(explicit)
     to_hex <- function(col) {
       cc <- as.character(col %||% "")
       if (!nzchar(cc)) {
@@ -11163,7 +11165,8 @@ app_server <- function(input, output, session) {
         pal_info <- categorical_palette(
           plot_data$value,
           source_key = src_key,
-          source_label = src$label %||% src_key
+          source_label = src$label %||% src_key,
+          palettes = st$graph_set$color_assets$categorical_palettes
         )
         fac <- factor(pal_info$values, levels = pal_info$levels)
         nlev <- nlevels(fac)
@@ -12590,7 +12593,8 @@ app_server <- function(input, output, session) {
         pal_info <- categorical_palette(
           values_view,
           source_key = src_key,
-          source_label = src$label %||% src_key
+          source_label = src$label %||% src_key,
+          palettes = st$graph_set$color_assets$categorical_palettes
         )
         vv <- pal_info$values
         cltr_col_tbl <- pal_info$colors
@@ -15829,7 +15833,8 @@ app_server <- function(input, output, session) {
         pal_info <- categorical_palette(
           values_view,
           source_key = src_key,
-          source_label = src$label %||% src_key
+          source_label = src$label %||% src_key,
+          palettes = st_state$graph_set$color_assets$categorical_palettes
         )
         lev <- pal_info$levels
         if (length(lev) < 1L) {
