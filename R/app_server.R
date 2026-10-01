@@ -11717,6 +11717,9 @@ app_server <- function(input, output, session) {
         }
       }
 
+      p <- gflowui_add_saved_edge_overlays(
+        p, coords, idx, st$graph_set$layout_assets$edge_overlays_file)
+
       subject_rows <- if (is.data.frame(subject_overlay$rows)) subject_overlay$rows else empty_subject_sample_rows()
       if (nrow(subject_rows) > 0L) {
         subject_rows <- subject_rows[subject_rows$vertex %in% idx, , drop = FALSE]
