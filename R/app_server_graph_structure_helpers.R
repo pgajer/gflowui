@@ -356,6 +356,7 @@ gflowui_make_server_graph_structure_helpers <- function(rv) {
         label = field_label,
         order = field_order,
         labels = field_labels,
+        show_when = if (is.list(one)) one$show_when %||% list() else list(),
         input_id = sprintf("graph_selector_%s", field_id)
       )
     }
@@ -648,6 +649,17 @@ gflowui_make_server_graph_structure_helpers <- function(rv) {
     }
 
     set_id <- resolve_set_id_from_choices(unname(choices))
+    selected_graph <- graph_set_by_id(graph_sets, set_id)
+    selector_fields <- lapply(selector_fields, function(spec) {
+      conditions <- spec$show_when
+      spec$visible <- if (!length(conditions)) TRUE else {
+        is.list(conditions) && !is.null(names(conditions)) &&
+          all(nzchar(names(conditions))) && all(vapply(names(conditions), function(field) {
+            graph_set_field_value(selected_graph, field) %in% as.character(conditions[[field]])
+          }, logical(1)))
+      }
+      spec
+    })
     k_choices <- graph_k_choices(graph_sets, set_id)
     kvals <- suppressWarnings(as.integer(unname(k_choices)))
     kvals <- kvals[is.finite(kvals)]

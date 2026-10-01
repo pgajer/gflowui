@@ -14750,6 +14750,8 @@ app_server <- function(input, output, session) {
             is_method <- identical(spec$field, "graph_method")
             shiny::div(
               class = if (is_method) "gf-graph-row gf-graph-method-row" else "gf-graph-row gf-graph-row-tight",
+              style = if (identical(spec$visible, FALSE)) "display: none;" else NULL,
+              `aria-hidden` = if (identical(spec$visible, FALSE)) "true" else NULL,
               shiny::span(class = "gf-graph-row-label", paste0(as.character(spec$label %||% "Selector"), ":")),
               shiny::selectInput(
                 as.character(spec$input_id %||% ""),

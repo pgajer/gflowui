@@ -167,3 +167,12 @@ register_project(
   )
 )
 ```
+
+### Conditional graph selectors
+
+A grouped selector field can specify `show_when = list(construction = "Symmetric kNN + MST")`.
+The field is displayed only when the selected graph matches these literal metadata values.
+Hidden selectors retain their internal selection state. For collections containing a single
+precomputed graph, set `neighbor_parameter = FALSE` on each graph set to hide the generic
+`k` and `Optimal k` controls. A separate grouped field can still expose the scientific
+neighbor count as `Neighbors (k)`.
