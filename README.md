@@ -103,6 +103,50 @@ close pairs, coincident points, transformations, merging, stale previews, and
 import into the working set. `tests/testthat/test-embedding-endpoints.R` contains
 these checks; `FNN` is needed to run the detector and its numerical tests.
 
+## Shared endpoint sets
+
+The **Endpoints** panel has an **Endpoint set** selector and **New**, **Rename**,
+and **Duplicate** controls. A set stores stable sample IDs, labels, visibility,
+and the embedding where it was created. Switching between embeddings of the
+same declared graph keeps the selected set; edits are shared. Duplicate a set
+before making an independent alternative. Changes are saved immediately.
+
+Endpoints outside the current graph, component, or display filter remain in the
+set. The panel reports how many are visible. Detector settings, source geometry
+fingerprints and scores remain measurements of the embedding used for detection;
+switching embeddings does not recompute them. Existing saved detector records
+retain whatever provenance they originally contained.
+
+**Show a set from another graph…** adds a read-only comparison table and overlay,
+matched by sample ID. **Copy to this graph** makes an independent editable copy,
+including endpoints currently outside the view. Automatic sharing never crosses
+a different graph identity or neighbor count.
+
+Project creators declare sharing in each graph-set manifest entry:
+
+```r
+endpoint_scope_id = "hellinger-complete-fermat-p2",
+endpoint_vertex_namespace = "my-dataset/sample-id"
+```
+
+Use the same scope for different embeddings of the same graph or distance
+construction, and a different scope when metric, power, neighborhood, sample
+universe, or graph construction changes. The actual selected `k` is also part of
+the identity. The namespace identifies the meaning of the vertex IDs and must
+match for comparison across graphs. If omitted, it defaults to the project ID.
+Without a scope declaration, sharing is confined to the graph-set ID and `k`.
+Graph assets must supply unique `vertex_ids` (or unique adjacency-list names).
+An asset without these IDs retains its legacy local editor; row positions are
+never used to transfer endpoints to another graph.
+
+Existing working tables and snapshots are imported as separate named sets when
+their graph is visited, or when browsing sets from other graphs. Imports use the
+original graph's sample IDs, preserve the original files, and are not repeated.
+No tables are automatically merged. New state lives under the project-managed
+`endpoint_sets/sets.rds` directory, so it is included with the project's managed
+assets when moving a deleted project to Trash. Older snapshots without stable
+IDs can be migrated only against their original, unchanged graph asset.
+
 ## Delete a project
 
 Open **Settings → Delete Project**, review the file list, then choose **Move to

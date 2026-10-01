@@ -2278,7 +2278,8 @@ app_server <- function(input, output, session) {
     missing_cols <- setdiff(names(template), names(rows))
     if (length(missing_cols) > 0L) {
       for (cc in missing_cols) {
-        rows[[cc]] <- template[[cc]]
+        rows[[cc]] <- rep(if (is.logical(template[[cc]])) FALSE else
+          if (is.integer(template[[cc]])) NA_integer_ else "", nrow(rows))
       }
     }
     rows <- rows[, names(template), drop = FALSE]
@@ -4963,7 +4964,7 @@ app_server <- function(input, output, session) {
     sanitize_working_endpoint_state(best_state, ctx = ctx)
   }
 
-  load_working_endpoint_state <- function(ctx) {
+  load_legacy_working_endpoint_state <- function(ctx) {
     if (!is.list(ctx)) {
       st <- empty_working_endpoint_state(ctx = ctx)
       attr(st, "state_exists") <- FALSE
@@ -4986,7 +4987,7 @@ app_server <- function(input, output, session) {
     st
   }
 
-  save_working_endpoint_state <- function(state, ctx) {
+  save_legacy_working_endpoint_state <- function(state, ctx) {
     if (!is.list(ctx)) {
       return(invisible(FALSE))
     }
@@ -5001,6 +5002,36 @@ app_server <- function(input, output, session) {
     save_rds_safely(cleaned, path)
     endpoint_workspace_revision(isolate(endpoint_workspace_revision()) + 1L)
     invisible(TRUE)
+  }
+
+  endpoint_ids_cache <- new.env(parent = emptyenv())
+  shared_endpoint_sets <- gflowui_endpoint_sets_server("shared_endpoint_sets",
+    context = current_endpoint_graph_context, manifest = active_manifest,
+    view = function() reference_view_state(),
+    visible_vertices = function() reference_renderer_state()$keep_idx %||%
+      seq_along(reference_view_state()$vertex_ids),
+    state_dir = project_state_dir, legacy_dir = endpoint_state_graph_dir,
+    read_ids = function(gs, k) {
+      file <- as.character(gs$graph_file %||% "")
+      if (!file.exists(file)) return(NULL)
+      key <- digest::digest(list(file, file.info(file)$mtime, k))
+      if (exists(key, endpoint_ids_cache, inherits = FALSE)) return(endpoint_ids_cache[[key]])
+      obj <- readRDS(file)
+      picked <- select_graph_for_k(extract_graph_collection(obj), k)
+      ids <- gflowui_endpoint_ids(obj$vertex_ids %||% picked$graph$vertex_ids %||% names(picked$graph$adj_list))
+      if (length(ids) != length(picked$graph$adj_list)) ids <- NULL
+      endpoint_ids_cache[[key]] <- ids
+      ids
+    },
+    empty_state = empty_working_endpoint_state, sanitize_state = sanitize_working_endpoint_state,
+    snapshot_state = working_endpoint_state_from_snapshot_record,
+    legacy_load = load_legacy_working_endpoint_state,
+    legacy_save = save_legacy_working_endpoint_state,
+    changed = function() endpoint_workspace_revision(isolate(endpoint_workspace_revision()) + 1L))
+  load_working_endpoint_state <- function(ctx) shared_endpoint_sets$load(ctx)
+  save_working_endpoint_state <- function(state, ctx) {
+    state$last_session_id <- endpoint_session_id
+    shared_endpoint_sets$save(state, ctx)
   }
 
   working_endpoint_state_from_dataset <- function(row_df) {
@@ -5976,6 +6007,15 @@ app_server <- function(input, output, session) {
           nm <- as.character(working_rows$vertex[[ii]])
           label_lookup[[nm]] <- as.character(working_rows$label[[ii]] %||% sprintf("v%d", working_rows$vertex[[ii]]))
         }
+      }
+    }
+
+    comparison <- shared_endpoint_sets$overlay()
+    if (is.data.frame(comparison) && nrow(comparison)) {
+      vertices_all <- c(vertices_all, comparison$vertex)
+      for (ii in seq_len(nrow(comparison))) {
+        nm <- as.character(comparison$vertex[ii])
+        if (!nm %in% names(label_lookup)) label_lookup[[nm]] <- comparison$label[ii]
       }
     }
 
@@ -13078,7 +13118,9 @@ app_server <- function(input, output, session) {
           label=detection$rows$label[v],source_type="embedding_detector")
         if (!v %in% existing) {
           hit <- match(v,working$rows$vertex)
-          working$rows$notes[hit] <- note
+          working$rows$notes[hit] <- jsonlite::toJSON(list(
+            detection = jsonlite::fromJSON(note), scores = detection$rows[v, , drop = FALSE]),
+            auto_unbox = TRUE)
           working$rows$manually_added[hit] <- FALSE
         }
       }
@@ -14564,6 +14606,7 @@ app_server <- function(input, output, session) {
               },
               shiny::div(
                 class = "gf-endpoint-section",
+                shiny::uiOutput("shared_endpoint_sets-controls"),
                 build_working_endpoint_table(endpoint_working)
               ),
               shiny::div(
