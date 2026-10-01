@@ -12913,10 +12913,10 @@ app_server <- function(input, output, session) {
     }
 
     if (is.finite(n_samples)) {
-      add_graph_meta("Graph vertices", format(as.integer(n_samples), big.mark = ","))
+      add_graph_meta("Number of graph vertices", format(as.integer(n_samples), big.mark = ","))
     }
     if (is.finite(n_features)) {
-      add_graph_meta("Graph features", format(as.integer(n_features), big.mark = ","))
+      add_graph_meta("Number of graph features", format(as.integer(n_features), big.mark = ","))
     }
 
     edge_count <- suppressWarnings(as.integer(gs$graph_edge_count %||% NA_integer_))
@@ -12929,7 +12929,7 @@ app_server <- function(input, output, session) {
       comp_count <- suppressWarnings(as.integer(st_use$components$n_components %||% NA_integer_))
     }
     if (is.finite(comp_count)) {
-      add_graph_meta("Graph components", format(comp_count, big.mark = ","))
+      add_graph_meta("Number of graph components", format(comp_count, big.mark = ","))
     }
 
     list(
@@ -14813,8 +14813,7 @@ app_server <- function(input, output, session) {
         shiny::tagList(
           shiny::div(
             class = "gf-graph-metadata",
-            shiny::h6(class = "gf-graph-layout-head", "Graph metadata"),
-            build_html_table(graph_ui$metadata_tbl, empty_text = "No graph metadata available.")
+            build_html_table(graph_ui$metadata_tbl, empty_text = "No graph metadata available.", show_header = FALSE)
           ),
           selector_rows,
           gflowui_graph_neighbor_controls(graph_ui),

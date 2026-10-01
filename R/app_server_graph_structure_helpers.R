@@ -184,7 +184,7 @@ gflowui_make_server_graph_structure_helpers <- function(rv) {
     out
   }
 
-  build_html_table <- function(df, empty_text = "No assets found.") {
+  build_html_table <- function(df, empty_text = "No assets found.", show_header = TRUE) {
     if (!is.data.frame(df) || nrow(df) < 1L) {
       return(shiny::p(class = "gf-hint", empty_text))
     }
@@ -200,7 +200,7 @@ gflowui_make_server_graph_structure_helpers <- function(rv) {
       class = "table-responsive",
       shiny::tags$table(
         class = "table table-sm gf-asset-table",
-        shiny::tags$thead(shiny::tags$tr(header)),
+        if (isTRUE(show_header)) shiny::tags$thead(shiny::tags$tr(header)),
         shiny::tags$tbody(body_rows)
       )
     )
