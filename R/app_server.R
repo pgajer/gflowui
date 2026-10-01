@@ -14817,7 +14817,7 @@ app_server <- function(input, output, session) {
           ),
           selector_rows,
           gflowui_graph_neighbor_controls(graph_ui),
-          shiny::actionButton(
+          if (!identical(graph_ui$manifest$metadata$project_controls$graph_update, FALSE)) shiny::actionButton(
             "graph_update_placeholder",
             "Update / Expand Graphs...",
             title = "Build graph sets from data loaded in the Data panel, or register an existing graph RDS file. This does not rerun the experiment pipeline.",
@@ -15441,7 +15441,8 @@ app_server <- function(input, output, session) {
   })
 
   output$project_middle_actions <- shiny::renderUI({
-    if (!isTRUE(rv$project.active)) {
+    if (!isTRUE(rv$project.active) ||
+        identical(active_manifest()$metadata$project_controls$add_data, FALSE)) {
       return(NULL)
     }
 

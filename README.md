@@ -209,3 +209,8 @@ are stored by stable project ID in `project-order.rds` alongside the registry,
 separately from project manifests and assets. Renaming and result refreshes do
 not change positions; new projects are appended. Saving reconciles projects
 added or removed while the dialog was open without overwriting the registry.
+
+For projects that display precomputed results, creators can hide the graph
+build/import and data-upload buttons with
+`metadata$project_controls = list(graph_update = FALSE, add_data = FALSE)`.
+Omitted flags retain the controls in other projects.
