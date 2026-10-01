@@ -627,7 +627,31 @@ app_server <- function(input, output, session) {
     }
   }, ignoreInit = FALSE, priority = -100)
 
-  shiny::observeEvent(project_registry(), {
+  project_order_revision <- gflowui_project_manager_server(input, session,
+    active_id = function() rv$project.id %||% "",
+    on_open = function(id) {
+      if (identical(id, rv$project.id)) return(TRUE)
+      if (isTRUE(rv$project.active)) {
+        endpoints <- endpoint_panel_state()
+        arms <- arm_panel_state()
+        if (isTRUE(rv$project.dirty) ||
+            working_endpoint_needs_replace_prompt(endpoints$working) ||
+            working_arm_needs_replace_prompt(arms$working)) {
+          shiny::showNotification("Save your work or use Exit Project before switching projects.", type = "warning")
+          return(FALSE)
+        }
+      }
+      registry <- gflowui_load_registry()
+      if (!id %in% registry$id) {
+        shiny::showNotification("This project is no longer registered. Reopen Projects to refresh the list.", type = "warning")
+        return(FALSE)
+      }
+      project_registry(registry)
+      open_project(id)
+      TRUE
+    })
+
+  shiny::observeEvent(list(project_registry(), project_order_revision()), {
     reg <- project_registry()
     selected <- input$project_select %||% ""
     if (!selected %in% reg$id) {
@@ -13237,6 +13261,7 @@ app_server <- function(input, output, session) {
       return(NULL)
     }
 
+    project_order_revision()
     gflowui_project_controls_ui(project_registry())
   })
 

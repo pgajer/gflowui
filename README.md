@@ -194,3 +194,18 @@ Fermat experiment. **Add Data** opens that CSV-loading panel; it does not append
 rows to existing graph assets. **Run Monitor** shows the latest in-app job
 message, not the progress of external experiment workers. These controls also
 provide explanatory hover text.
+
+## Arrange projects
+
+Click **gflowui** at the top left to open **Projects**, from either the opening
+screen or an active project. The title has a subtle hover cue and a visible
+keyboard-focus outline. Drag project handles or use the up/down buttons, then
+choose **Save order**. **Sort A–Z** offers a starting order; **Cancel** leaves the
+saved order unchanged. **Open** selects a project without saving ordering edits.
+Save work or exit the current project before switching if it has unsaved changes.
+
+The opening Projects dropdown follows this order across sessions. Preferences
+are stored by stable project ID in `project-order.rds` alongside the registry,
+separately from project manifests and assets. Renaming and result refreshes do
+not change positions; new projects are appended. Saving reconciles projects
+added or removed while the dialog was open without overwriting the registry.

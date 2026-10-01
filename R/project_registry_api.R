@@ -103,7 +103,7 @@ gflowui_load_registry <- function() {
   }
 
   loaded <- tryCatch(readRDS(path), error = function(e) NULL)
-  gflowui_sanitize_registry(loaded)
+  gflowui_order_projects(loaded)
 }
 
 gflowui_save_registry <- function(registry_df) {

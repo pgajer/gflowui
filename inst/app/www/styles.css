@@ -1429,3 +1429,25 @@ body.gf-general-inspector-resizing {
   height: 100% !important;
   max-width: 100%;
 }
+
+/* The brand is a quiet entry point to project controls. */
+.gf-brand-button.btn {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  border-radius: 0.2rem;
+  color: inherit;
+  line-height: inherit;
+  box-shadow: none;
+}
+.gf-brand-button.btn:hover { color: var(--gf-teal); text-decoration: underline; }
+.gf-brand-button.btn:focus-visible { outline: 2px solid var(--gf-teal); outline-offset: 5px; }
+.gf-project-order-list { list-style: none; margin: 0; padding: 0; max-height: 55vh; overflow-y: auto; }
+.gf-project-order-row { display: flex; align-items: center; gap: 0.4rem; padding: 0.55rem 0; border-bottom: 1px solid var(--gf-line); }
+.gf-project-order-name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.gf-project-current { display: block; font-size: 0.75rem; color: var(--gf-teal); }
+.gf-project-drag { touch-action: none; user-select: none; background: none; border: 0; cursor: grab; color: #627775; font-size: 1.1rem; padding: 0.35rem; }
+.gf-project-dragging { opacity: 0.45; }
+.gf-project-order-status { min-height: 1.5rem; margin-top: 0.6rem; font-size: 0.85rem; }
+
+.gf-project-drop-target { outline: 2px dashed var(--gf-teal); outline-offset: -2px; }

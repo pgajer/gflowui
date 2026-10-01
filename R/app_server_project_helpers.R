@@ -602,7 +602,7 @@ gflowui_make_server_project_helpers <- function(
   }
 
   populate_project_select <- function(selected = "") {
-    reg <- project_registry()
+    reg <- gflowui_order_projects(project_registry())
     choices <- c("Choose a project..." = "")
     if (nrow(reg) > 0) {
       choices <- c(choices, stats::setNames(reg$id, reg$label))

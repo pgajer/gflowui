@@ -1,4 +1,5 @@
 gflowui_project_controls_ui <- function(registry, ready = TRUE) {
+  registry <- gflowui_order_projects(registry)
   choices <- c("Choose a project..." = "")
   if (nrow(registry) > 0L) {
     choices <- c(choices, stats::setNames(registry$id, registry$label))
@@ -55,7 +56,9 @@ app_ui <- function() {
       class = "gf-appbar",
       shiny::div(
         class = "gf-brand",
-        shiny::span(class = "gf-brand-mark", "gflowui")
+        shiny::actionButton("project_manager", "gflowui",
+          class = "gf-brand-mark gf-brand-button", title = "Projects: open or reorder",
+          `aria-label` = "gflowui: open projects and reorder", `aria-haspopup` = "dialog")
       ),
       shiny::div(
         class = "gf-appbar-chips",
@@ -84,6 +87,7 @@ app_ui <- function() {
     ),
     shiny::tags$head(
       if (nzchar(css.path)) shiny::includeCSS(css.path),
+      shiny::includeScript(system.file("app/www/project-order.js", package = "gflowui")),
       if (nzchar(embedding.css.path)) shiny::includeCSS(embedding.css.path),
       if (nzchar(embedding.js.path)) shiny::includeScript(embedding.js.path),
       if (nzchar(density.state.js.path)) {
