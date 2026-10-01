@@ -8,7 +8,7 @@ test_that("hover matches stable IDs after reordering and never substitutes rows"
   a <- gflowui_validate_vertex_hover(hover_fixture())
   text <- gflowui_vertex_hover_text(c("sample<&B", "sample-A", "unknown"), a)
   expect_match(text[1], "Vertex ID:</b> sample&lt;&amp;B", fixed = TRUE)
-  expect_match(text[1], "Vertex number: 1", fixed = TRUE)
+  expect_false(any(grepl("Vertex number", text, fixed = TRUE)))
   expect_match(text[1], "1. Taxon &lt;two&gt;: 50", fixed = TRUE)
   expect_match(text[1], "2. Taxon five: 20", fixed = TRUE)
   expect_match(text[1], "4. Taxon three: 10", fixed = TRUE)

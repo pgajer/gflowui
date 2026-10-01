@@ -46,7 +46,7 @@ The app now defaults to `RGL (live)` and falls back to `HTML`/`Plotly` when
 
 Projects with original relative-abundance profiles can opt into richer Plotly
 hover labels through `metadata$vertex_hover$abundances_file`. Labels show the
-stable vertex ID, its graph-local number, and ranked phylotype abundances as
+stable vertex ID and ranked phylotype abundances as
 percentages. **Phylotypes on hover** defaults to four and accepts any count from
 one through the number of features. Only nonzero phylotypes are listed.
 

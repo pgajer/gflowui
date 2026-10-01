@@ -51,7 +51,7 @@ gflowui_vertex_hover_text <- function(vertex_ids, asset, top_n = 4L) {
   n <- gflowui_hover_top_n(top_n, length(asset$taxon_names))
   escape <- function(x) as.character(htmltools::htmlEscape(x))
   vapply(seq_along(vertex_ids), function(i) {
-    heading <- sprintf("<b>Vertex ID:</b> %s<br>Vertex number: %d", escape(vertex_ids[[i]]), i)
+    heading <- sprintf("<b>Vertex ID:</b> %s", escape(vertex_ids[[i]]))
     if (is.na(rows[[i]])) return(paste0(heading, "<br>Relative abundances unavailable"))
     row <- rows[[i]]; values <- asset$abundances[[row]]
     take <- seq_len(min(n, length(values)))
