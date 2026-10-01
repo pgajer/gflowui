@@ -33,3 +33,28 @@ test_that("hiding intersects component selection and keeps empty intersections e
   expect_length(gflowui_dcst_focus(st, 2L, "dcst_level1", "dcst_level1:A", "hide")$keep_idx, 0L)
   expect_identical(gflowui_dcst_focus(st, 1:4, "dcst_level2", "dcst_level2:D", "hide")$keep_idx, c(2L, 4L))
 })
+
+test_that("table selection shows the union and respects component filtering", {
+  st <- fixture_dcst()
+  out <- gflowui_dcst_table_focus(st, 2:4, "dcst_level1", c("A", "B"))
+  expect_identical(out$keep_idx, 2:3)
+  expect_identical(out$st, st)
+  expect_identical(gflowui_dcst_table_focus(st, 1:4, "dcst_level1")$keep_idx, 1:4)
+  expect_length(gflowui_dcst_table_focus(st, 1:4, "dcst_level1", "absent")$keep_idx, 0)
+  selection <- list(project = "AGP", level = "dcst_level1", groups = c("A", "B"))
+  expect_identical(gflowui_dcst_table_groups(selection, "AGP", "dcst_level1"), c("A", "B"))
+  expect_length(gflowui_dcst_table_groups(selection, "other", "dcst_level1"), 0)
+  expect_length(gflowui_dcst_table_groups(selection, "AGP", "dcst_level2"), 0)
+})
+
+test_that("table rows are size ordered and expose checkboxes and current colors", {
+  st <- fixture_dcst()
+  opt <- gflowui_dcst_options(st$sources)
+  expect_identical(opt$groups, c("A", "B"))
+  expect_equal(unname(opt$counts), c(2, 1))
+  html <- as.character(gflowui_dcst_table_ui(opt,
+    st$graph_set$color_assets$categorical_palettes, "AGP"))
+  expect_match(html, 'type="checkbox"', fixed = TRUE)
+  expect_match(html, 'type="color" value="#FF0000"', fixed = TRUE)
+  expect_match(html, 'Show all / clear selection', fixed = TRUE)
+})

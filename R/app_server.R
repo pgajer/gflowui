@@ -10654,8 +10654,9 @@ app_server <- function(input, output, session) {
     }
 
     if (!is.null(dcst)) {
-      focused <- gflowui_dcst_focus(st, keep_idx, dcst$level, dcst$group,
-        input$graph_dcst_mode %||% "gray", input$graph_dcst_background %||% "#b3b3b3")
+      focused <- gflowui_dcst_table_focus(st, keep_idx, dcst$level,
+        gflowui_dcst_table_groups(input$graph_dcst_table_selection,
+          manifest$project_id, dcst$level))
       st <- focused$st
       keep_idx <- focused$keep_idx
       component_note <- trimws(paste(component_note, focused$note))
@@ -12912,6 +12913,7 @@ app_server <- function(input, output, session) {
       metadata_tbl = graph_metadata_tbl,
       dcst = gflowui_dcst_options(st_use$sources,
         input$graph_dcst_level %||% "dcst_level1", input$graph_dcst_group %||% ""),
+      dcst_palettes = st_use$graph_set$color_assets$categorical_palettes,
       color_choices = color_choices,
       color_selected = color_selected,
       vertex_color_choices = solid_vertex_color_choices,
@@ -14719,16 +14721,9 @@ app_server <- function(input, output, session) {
               dcst_row("dCST level:", shiny::selectInput("graph_dcst_level", NULL,
                 choices = c("Level 1" = "dcst_level1", "Level 2" = "dcst_level2"),
                 selected = graph_ui$dcst$level, width = "205px")),
-              dcst_row("Select dCST:", shiny::selectInput("graph_dcst_group", NULL,
-                choices = graph_ui$dcst$choices, selected = graph_ui$dcst$group, width = "205px")),
-              dcst_row("Other vertices:", shiny::selectInput("graph_dcst_mode", NULL,
-                choices = c("Recolor" = "gray", "Hide" = "hide"),
-                selected = input$graph_dcst_mode %||% "gray", width = "205px")),
-              dcst_row("Other color:", shiny::selectInput("graph_dcst_background", NULL,
-                choices = c("Gray" = "#b3b3b3", "Light gray" = "#e5e5e5",
-                  "Dark gray" = "#555555", "White" = "#ffffff", "Black" = "#000000",
-                  "Blue" = "#4477aa", "Gold" = "#ddaa33"),
-                selected = input$graph_dcst_background %||% "#b3b3b3", width = "205px"))
+              gflowui_dcst_table_ui(graph_ui$dcst, graph_ui$dcst_palettes,
+                graph_ui$manifest$project_id,
+                shiny::isolate(input$graph_dcst_table_selection))
             )
           } else shiny::div(
             class = "gf-graph-row gf-graph-layout-row",
@@ -15541,6 +15536,27 @@ app_server <- function(input, output, session) {
     shiny::removeModal()
     set_run_monitor_note("Project settings saved.")
     shiny::showNotification("Project settings saved.", type = "message")
+  }, ignoreInit = TRUE)
+
+  shiny::observeEvent(input$graph_dcst_table_color, {
+    event <- input$graph_dcst_table_color
+    manifest <- active_manifest()
+    if (!is.list(event) || !identical(event$project, manifest$project_id) ||
+        !event$level %in% c("dcst_level1", "dcst_level2") ||
+        length(event$color) != 1L || !grepl("^#[0-9a-fA-F]{6}$", event$color)) return()
+    valid <- graph_structure_state()$dcst$groups
+    if (length(event$group) != 1L || !event$group %in% valid) return()
+    tryCatch({
+      payload <- load_or_init_active_manifest(active_project_context())
+      for (key in names(payload$manifest$graph_sets)) {
+        palette <- payload$manifest$graph_sets[[key]]$color_assets$categorical_palettes[[event$level]]
+        if (is.null(palette) || !event$group %in% names(palette)) next
+        palette[event$group] <- event$color
+        payload$manifest$graph_sets[[key]]$color_assets$categorical_palettes[[event$level]] <- palette
+      }
+      save_active_manifest(payload)
+    }, error = function(e) shiny::showNotification(
+      paste("Unable to save dCST color:", conditionMessage(e)), type = "error"))
   }, ignoreInit = TRUE)
 
   shiny::observeEvent(input$save_project, {
