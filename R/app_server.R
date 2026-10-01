@@ -11856,6 +11856,7 @@ app_server <- function(input, output, session) {
             sc
           }
         )
+      p <- gflowui_add_embedding_endpoint_preview(p, coords, endpoint_detector$preview(), keep_idx)
       hover_asset <- gflowui_vertex_hover_asset(active_manifest())
       p <- gflowui_add_vertex_hover(p, gflowui_vertex_hover_text(
         st$vertex_ids, hover_asset, input$graph_hover_top_n))
@@ -13355,6 +13356,32 @@ app_server <- function(input, output, session) {
       )
     )
   }
+
+  endpoint_detector <- gflowui_embedding_endpoints_server("endpoint_detector",
+    frame = shiny::reactive(gflowui_embedding_endpoint_frame(reference_renderer_state()$st)),
+    label_for_vertex = function(v) endpoint_label_profile_suggestion(v)$label,
+    add_vertices = function(vertices, detection) {
+      ctx <- current_endpoint_graph_context()
+      current <- gflowui_embedding_endpoint_frame(reference_renderer_state()$st)
+      if (is.null(current) || !identical(current$key, detection$key))
+        stop("The embedding changed. Detect candidates again.")
+      panel <- endpoint_panel_state()
+      working <- panel$working %||% empty_working_endpoint_state(ctx=ctx)
+      existing <- working$rows$vertex
+      note <- jsonlite::toJSON(list(method=detection$method,version=detection$version,
+        embedding=detection$key,created=detection$created,options=detection$options),auto_unbox=TRUE)
+      for (v in vertices) {
+        working <- upsert_working_endpoint_vertex_state(working,v,
+          label=detection$rows$label[v],source_type="embedding_detector")
+        if (!v %in% existing) {
+          hit <- match(v,working$rows$vertex)
+          working$rows$notes[hit] <- note
+          working$rows$manually_added[hit] <- FALSE
+        }
+      }
+      save_working_endpoint_state(working,ctx=ctx)
+      endpoint_show_working_set(TRUE)
+    })
 
   output$endpoint_vertex_inspector <- shiny::renderUI({
     build_endpoint_vertex_inspector_ui(endpoint_panel_state())
@@ -14972,6 +14999,8 @@ app_server <- function(input, output, session) {
               ),
               shiny::div(
                 class = "gf-endpoint-section",
+                gflowui_embedding_endpoints_ui("endpoint_detector",
+                  open=shiny::isolate(isTRUE(input[["endpoint_detector-open"]]))),
                 shiny::h6(class = "gf-graph-layout-head", "Vertex Inspector"),
                 shiny::uiOutput("endpoint_vertex_inspector")
               ),

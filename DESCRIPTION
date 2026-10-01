@@ -26,6 +26,7 @@ Imports:
     jsonlite,
     zip
 Suggests:
+    FNN,
     ivue (>= 0.1.0),
     geosmooth,
     grip,

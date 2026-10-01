@@ -71,3 +71,34 @@ Endpoint inspection can reuse that same asset by setting
 Profiles match stable vertex IDs. Ratio labels identify numerator and reference;
 the pure-reference composition is labeled as the chart origin. Endpoint profile
 values use the selected coordinates, while hover values remain original abundances.
+
+## Embedding endpoint candidates
+
+In **Endpoints → Detect endpoints from embedding**, the default rule uses ten
+nearest neighbors, a maximum pairwise direction angle of 90 degrees, and a
+nearest-neighbor spacing cutoff at its estimated mode. This optional tool uses
+`FNN`'s k-d tree and all vertices in the current displayed 3D coordinate system,
+including hidden vertices. It does not alter the embedding or graph.
+
+Controls provide neighbor count, angle threshold, optional exclusion of one
+angular outlier, nearest- or k-th-neighbor support, mode/percentile/manual/no
+spacing cutoff, a cutoff multiplier, and mode smoothing. Optional merging
+keeps the narrowest-angle candidate first, breaking ties by spacing and vertex
+number, and suppresses nearby candidates within the specified multiple of the
+smaller local k-th-neighbor radius. Suppressed candidates remain in the table
+and can be selected explicitly. Coincident positions share one representative.
+
+Orange Plotly diamonds preview selected candidates. The paginated table shows
+phylotype-derived labels, spacing, raw and adjusted angles, and merging status.
+The histogram shows the spacing distribution and cutoff. Changes to coordinates,
+graph identity, or detection settings deactivate results until detection is rerun.
+**Add selected to Working Endpoints** preserves existing labels and records the
+method, settings, and embedding fingerprint with newly added endpoints. The CSV
+export includes scores for every vertex, settings, and the selection. Detection
+results and options are session-local; imported working endpoints and downloaded
+scores persist. These are geometric candidates for review, not biological claims.
+
+Regression checks cover straight and branching arms, a closed circle, isolated
+close pairs, coincident points, transformations, merging, stale previews, and
+import into the working set. `tests/testthat/test-embedding-endpoints.R` contains
+these checks; `FNN` is needed to run the detector and its numerical tests.
