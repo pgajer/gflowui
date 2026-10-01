@@ -128,3 +128,42 @@ This currently uses the macOS Foundation Trash API through Swift. There is no
 permanent-delete fallback. Assets must be movable to the staging bundle on the
 registry's filesystem; a failed move or registry update restores files already
 moved and leaves the project registered. A changed project requires a new review.
+
+## Provenance, reproduction and asset inventories
+
+Each project has a **Provenance & assets** panel. Creators can use **Settings →
+Edit provenance / attach documents** to describe data selection, methods,
+reproduction commands, software revisions, random seeds and limitations, attach
+documents, or append an asset-inventory CSV (`path`, `role`, `description`,
+optional `sha256`). These commands are documentation; the viewer never runs them.
+
+For scripted creation, pass `provenance = list(...)` to `register_project()`.
+For an existing project, call `set_project_provenance(project_id, provenance)`.
+Omitting provenance when re-registering preserves the current record. Replacing
+it retains the previous record under the project's managed provenance history.
+
+Local documents become SHA-256-verified snapshots. Use self-contained HTML or
+attach its required companion files. URLs remain remote references. Large source
+and result assets remain references, with optional supplied SHA-256 hashes. The
+panel downloads attached documents, the provenance JSON and an inventory of
+registered and creator-supplied assets, including missing-file status. Source
+assets listed only as provenance are retained when deleting a project; attached
+snapshots and provenance history move with its managed state to Trash.
+
+```r
+register_project(
+  project_root = "/path/to/viewer-assets", project_id = "example",
+  scan_results = FALSE,
+  provenance = list(
+    summary = "A reproducible distance and embedding comparison",
+    data = "Describe sample selection and feature processing here.",
+    methods = "Describe distances, graphs, fitting and evaluation here.",
+    reproduction = "Rscript /path/to/analysis.R",
+    software = "Record package versions and source revisions.",
+    seeds = "Distance-query landmarks: 42; embedding fit: 73",
+    documents = list(list(path = "/path/to/methods.html", label = "Methods")),
+    assets = list(list(path = "/path/to/input.rds", role = "Input",
+                       description = "Frozen input matrix"))
+  )
+)
+```

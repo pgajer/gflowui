@@ -12942,6 +12942,72 @@ app_server <- function(input, output, session) {
     )
   })
 
+  output$project_provenance_content <- shiny::renderUI(gflowui_provenance_ui(active_manifest()$provenance))
+  output$project_provenance_documents <- shiny::renderUI({
+    docs <- active_manifest()$provenance$documents %||% list()
+    if(!length(docs)) return(shiny::p("No documents attached."))
+    choices <- stats::setNames(seq_along(docs),vapply(docs,function(d)paste(d$label,d$storage,sep=" — "),""))
+    shiny::tagList(shiny::selectInput("provenance_document","Attached document",choices),
+      shiny::downloadButton("provenance_document_download","Download attached document"),
+      shiny::textOutput("provenance_document_status"))
+  })
+  selected_provenance_document <- shiny::reactive({
+    docs<-active_manifest()$provenance$documents %||% list()
+    i<-suppressWarnings(as.integer(input$provenance_document %||% 1L))
+    if(length(i)!=1L || is.na(i) || i<1L || i>length(docs)) return(NULL)
+    docs[[i]]
+  })
+  output$provenance_document_status <- shiny::renderText({
+    d<-selected_provenance_document();if(is.null(d))return("")
+    if(.is_url_path(d$path))return(paste("Remote reference:",d$path))
+    if(!file.exists(d$path))return("Attached document is missing.")
+    if(!identical(digest::digest(file=d$path,algo="sha256"),d$sha256))return("Attached document has changed since registration.")
+    "Attached snapshot verified against its recorded SHA-256."
+  })
+  output$provenance_document_download <- shiny::downloadHandler(
+    filename=function(){d<-selected_provenance_document();basename(d$original_path %||% d$path)},
+    content=function(file){d<-selected_provenance_document();shiny::req(!is.null(d),!.is_url_path(d$path),file.exists(d$path));
+      if(!identical(digest::digest(file=d$path,algo="sha256"),d$sha256))stop("Document checksum changed")
+      if(!file.copy(d$path,file))stop("Unable to download document")})
+  output$provenance_assets_download <- shiny::downloadHandler(filename=function()"project-assets.csv",
+    content=function(file)utils::write.csv(gflowui_provenance_inventory(active_manifest()),file,row.names=FALSE))
+  output$provenance_record_download <- shiny::downloadHandler(filename=function()"project-provenance.json",
+    content=function(file)jsonlite::write_json(active_manifest()$provenance %||% list(),file,auto_unbox=TRUE,pretty=TRUE,null="null"))
+  provenance_edit_project <- shiny::reactiveVal(NULL)
+  shiny::observeEvent(input$edit_project_provenance,{
+    if(!isTRUE(rv$project.active))return()
+    p<-active_manifest()$provenance %||% list();provenance_edit_project(rv$project.id)
+    labels<-c(summary="Summary",data="Data and selection",methods="Methods",reproduction="Reproduction commands",
+      software="Software and revisions",seeds="Random seeds",limitations="Limitations",creator="Created by")
+    shiny::showModal(shiny::modalDialog(title="Project provenance",size="l",easyClose=FALSE,
+      lapply(names(labels),function(n)shiny::textAreaInput(paste0("provenance_edit_",n),labels[[n]],value=p[[n]] %||% "",rows=3,width="100%")),
+      shiny::fileInput("provenance_upload","Attach documents (appended to existing documents)",multiple=TRUE),
+      shiny::p("Use self-contained HTML or include companion files. Existing attachments and asset records are retained."),
+      shiny::fileInput("provenance_assets_upload","Append asset inventory CSV (path, role, description, optional sha256)",accept=".csv"),
+      footer=shiny::tagList(shiny::modalButton("Cancel"),shiny::actionButton("save_project_provenance","Save provenance",class="btn-primary"))))
+  },ignoreInit=TRUE)
+  shiny::observeEvent(input$save_project_provenance,{
+    if(!isTRUE(rv$project.active) || !identical(provenance_edit_project(),rv$project.id))return()
+    tryCatch({
+      p<-active_manifest()$provenance %||% list()
+      for(n in c("summary","data","methods","reproduction","software","seeds","limitations","creator"))
+        p[[n]]<-input[[paste0("provenance_edit_",n)]] %||% ""
+      upload<-input$provenance_upload
+      if(!is.null(upload)) for(i in seq_len(nrow(upload))) {
+        # Use the submitted filename for snapshots; Shiny's temporary filename is opaque.
+        temp<-tempfile("provenance-upload-");dir.create(temp)
+        dest<-file.path(temp,basename(upload$name[i]));if(!file.copy(upload$datapath[i],dest))stop("Attachment copy failed")
+        p$documents<-c(p$documents %||% list(),list(list(path=dest,label=upload$name[i],original_path=upload$name[i])))
+      }
+      assets<-input$provenance_assets_upload
+      if(!is.null(assets))p$assets<-c(p$assets %||% list(),.rows_to_list(utils::read.csv(assets$datapath[1],stringsAsFactors=FALSE)))
+      set_project_provenance(rv$project.id,p)
+      # Re-read from disk so other updates and the saved provenance are both retained.
+      payload<-load_or_init_active_manifest(active_project_context());save_active_manifest(payload)
+      shiny::removeModal();shiny::showNotification("Project provenance saved.",type="message")
+    },error=function(e)shiny::showNotification(conditionMessage(e),type="error",duration=NULL))
+  },ignoreInit=TRUE)
+
   project_overview_state <- shiny::reactive({
     manifest <- active_manifest()
     if (!is.list(manifest) || !is.list(manifest$metadata) || !is.list(manifest$metadata$overview)) {
@@ -14612,7 +14678,11 @@ app_server <- function(input, output, session) {
       )
     }
 
-    panels <- list()
+    panels <- list(bslib::accordion_panel("Provenance & assets",value="workflow_provenance",
+      shiny::uiOutput("project_provenance_content"),shiny::uiOutput("project_provenance_documents"),
+      shiny::downloadButton("provenance_record_download","Download provenance"),
+      shiny::downloadButton("provenance_assets_download","Download asset inventory"),
+      shiny::p("The inventory lists registered files and creator-supplied source assets. Missing files are flagged; recorded asset hashes are not rechecked automatically.")))
     open.panels <- c("workflow_graph_structure")
 
     if (is.list(overview_ui)) {
@@ -15521,6 +15591,9 @@ app_server <- function(input, output, session) {
           choices = endpoint_choices,
           selected = settings_default_endpoint_run
         ),
+        shiny::hr(),
+        shiny::h5("Project documentation"),
+        shiny::actionButton("edit_project_provenance","Edit provenance / attach documents",class="btn-light"),
         shiny::hr(),
         shiny::h5("Delete this project"),
         shiny::p("Move this project's saved assets to the system Trash. Review the affected files before confirming."),

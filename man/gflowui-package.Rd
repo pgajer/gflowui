@@ -11,5 +11,10 @@ Companion package for interactive graph workflow exploration backed by gflow.
 \author{
 \strong{Maintainer}: Pawel Gajer \email{pgajer@gmail.com}
 
+Authors:
+\itemize{
+  \item Pawel Gajer \email{pgajer@gmail.com}
+}
+
 }
 \keyword{internal}

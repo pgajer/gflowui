@@ -2082,6 +2082,10 @@ build_project_spec_iknn_3x3 <- function(
 #'   explicitly supplied asset lists are used -- useful for custom projects
 #'   whose layout does not match any built-in profile.
 #'
+#' @param provenance Optional provenance list as described in
+#'   [set_project_provenance()]. When omitted, overwriting a registration keeps
+#'   its attached provenance. Supply a new list to replace it and retain history.
+#'
 #' @param overwrite Logical (default \code{FALSE}).  Whether to overwrite an
 #'   existing project with the same \code{project_id}.  When \code{FALSE}
 #'   and a matching id already exists, an error is raised.
@@ -2179,7 +2183,8 @@ register_project <- function(
     artifacts = list(),
     defaults = list(),
     scan_results = TRUE,
-    overwrite = FALSE) {
+    overwrite = FALSE,
+    provenance = NULL) {
   if (!is.character(project_root) || !nzchar(project_root[1])) {
     stop("project_root must be a non-empty string.", call. = FALSE)
   }
@@ -2309,6 +2314,10 @@ register_project <- function(
   )
 
   manifest_file <- gflowui_manifest_path(project_id)
+  previous <- if(!is.na(idx_existing)) gflowui_read_manifest(reg$manifest_file[idx_existing]) else NULL
+  if(is.list(previous$provenance)) manifest$provenance <- previous$provenance
+  # Validate before altering the registered manifest.
+  if(!is.null(provenance)) gflowui_normalize_provenance(provenance,project_id,root)
   gflowui_write_manifest(manifest, manifest_file)
 
   entry <- gflowui_registry_entry(
@@ -2328,6 +2337,10 @@ register_project <- function(
   reg_updated <- gflowui_upsert_registry_row(reg, entry, overwrite = TRUE)
   gflowui_save_registry(reg_updated)
 
+  if(!is.null(provenance)) {
+    set_project_provenance(project_id,provenance)
+    manifest <- gflowui_read_manifest(manifest_file)
+  }
   invisible(list(
     project_id = project_id,
     manifest_file = normalizePath(manifest_file, mustWork = FALSE),

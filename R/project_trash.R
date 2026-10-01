@@ -3,10 +3,11 @@ gflowui_path_within <- function(path, root) {
   nzchar(root) & (path == root | startsWith(path, paste0(root, "/")))
 }
 
-gflowui_project_asset_references <- function(manifest) {
+gflowui_project_asset_references <- function(manifest, include_provenance=TRUE, existing_only=TRUE) {
   root <- .as_scalar_chr(manifest$project_root)
   paths <- character()
   walk <- function(x, key="") {
+    if(!include_provenance && key=="provenance") return(invisible(NULL))
     if (is.list(x)) {
       for (i in seq_along(x)) walk(x[[i]], if(length(names(x))) names(x)[i] else key)
     } else if (is.character(x) && !key %in% c("project_root", "source", "label", "title", "description")) {
@@ -16,7 +17,7 @@ gflowui_project_asset_references <- function(manifest) {
         if (!.is_absolute_path(p) && !nzchar(root)) next
         pp <- if(.is_absolute_path(p)) path.expand(p) else file.path(root,p)
         pp <- file.path(normalizePath(dirname(pp),mustWork=FALSE),basename(pp))
-        if (file.exists(pp) || nzchar(Sys.readlink(pp))) paths <<- c(paths, pp)
+        if (!existing_only || file.exists(pp) || nzchar(Sys.readlink(pp))) paths <<- c(paths, pp)
       }
     }
   }
@@ -41,7 +42,7 @@ gflowui_project_delete_plan <- function(project_id) {
   m <- manifests[[idx]]
   root <- .as_scalar_chr(m$project_root)
   root <- if(nzchar(root)) normalizePath(root,mustWork=FALSE) else ""
-  refs <- gflowui_project_asset_references(m)
+  refs <- gflowui_project_asset_references(m,include_provenance=FALSE)
   managed <- gflowui_project_managed_paths(project_id)
   other_refs <- unique(unlist(lapply(manifests[-idx],gflowui_project_asset_references),use.names=FALSE))
   other_managed <- unlist(lapply(reg$id[-idx],gflowui_project_managed_paths),use.names=FALSE)

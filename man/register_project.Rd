@@ -20,7 +20,8 @@ register_project(
   artifacts = list(),
   defaults = list(),
   scan_results = TRUE,
-  overwrite = FALSE
+  overwrite = FALSE,
+  provenance = NULL
 )
 }
 \arguments{
@@ -237,6 +238,10 @@ whose layout does not match any built-in profile.}
 \item{overwrite}{Logical (default \code{FALSE}).  Whether to overwrite an
 existing project with the same \code{project_id}.  When \code{FALSE}
 and a matching id already exists, an error is raised.}
+
+\item{provenance}{Optional provenance list as described in
+\code{\link[=set_project_provenance]{set_project_provenance()}}. When omitted, overwriting a registration keeps
+its attached provenance. Supply a new list to replace it and retain history.}
 }
 \value{
 Invisibly returns a list with three elements:
