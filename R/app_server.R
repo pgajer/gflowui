@@ -12952,6 +12952,7 @@ app_server <- function(input, output, session) {
       renderer_selected = renderer_selected,
       vertex_layout = vertex_layout,
       size_selected = size_selected,
+      component_count = comp_count,
       component_choices = component_choices,
       component_selected = component_selected,
       component_hint = component_hint,
@@ -14825,6 +14826,8 @@ app_server <- function(input, output, session) {
           ),
           shiny::div(
             class = "gf-graph-row gf-graph-layout-row",
+            style = if (!isTRUE(graph_ui$component_count > 1L)) "display: none;" else NULL,
+            `aria-hidden` = if (!isTRUE(graph_ui$component_count > 1L)) "true" else NULL,
             shiny::span(class = "gf-graph-row-label", "Component:"),
             shiny::selectInput(
               "graph_layout_component",
@@ -14834,7 +14837,7 @@ app_server <- function(input, output, session) {
               width = "205px"
             )
           ),
-          if (nzchar(as.character(graph_ui$component_hint %||% ""))) {
+          if (isTRUE(graph_ui$component_count > 1L) && nzchar(as.character(graph_ui$component_hint %||% ""))) {
             shiny::div(class = "gf-hint", graph_ui$component_hint)
           } else {
             NULL
