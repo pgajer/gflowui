@@ -1,11 +1,28 @@
-# Named endpoint sets are stored in sample-ID coordinates, independently of layouts.
-# Graph authors opt into sharing with endpoint_scope_id; k remains part of identity.
+# Named endpoint sets belong to a dataset, independently of graphs and layouts.
 gflowui_endpoint_scope <- function(graph_set, k, project_id) {
-  declared <- as.character(graph_set$endpoint_scope_id %||% "")
-  if (!nzchar(declared)) declared <- paste0("graph:", graph_set$id)
   namespace <- as.character(graph_set$endpoint_vertex_namespace %||% project_id)
-  list(key = digest::digest(list(declared, as.integer(k), namespace), algo = "sha256"),
-    label = declared, namespace = namespace)
+  list(key = digest::digest(list("dataset", namespace), algo = "sha256"),
+    label = namespace, namespace = namespace)
+}
+
+# Preserve all existing alternatives while lifting the former graph/k boundary.
+gflowui_endpoint_store_upgrade <- function(store, preferred_scope = NULL) {
+  if (identical(store$version, 2L)) return(store)
+  old_active <- store$active
+  store$active <- list()
+  preferred <- old_active[[preferred_scope %||% ""]]
+  for (id in names(store$sets)) {
+    set <- store$sets[[id]]
+    scope <- gflowui_endpoint_scope(list(endpoint_vertex_namespace = set$namespace), NULL, NULL)
+    set$legacy_scope <- set$scope
+    set$legacy_scope_label <- set$scope_label
+    set$scope <- scope$key; set$scope_label <- scope$label
+    store$sets[[id]] <- set
+    if (is.null(store$active[[scope$key]]) || identical(id, preferred))
+      store$active[[scope$key]] <- id
+  }
+  store$version <- 2L
+  store
 }
 
 gflowui_endpoint_ids <- function(ids) {
@@ -64,7 +81,7 @@ gflowui_endpoint_set_new <- function(name, state, ids, scope, provenance) {
 
 gflowui_endpoint_store_read <- function(path) {
   if (file.exists(path)) return(readRDS(path))
-  list(version = 1L, sets = list(), active = list(), migrated = character())
+  list(version = 2L, sets = list(), active = list(), migrated = character())
 }
 
 gflowui_endpoint_store_write <- function(store, path) {

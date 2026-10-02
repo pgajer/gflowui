@@ -4,7 +4,6 @@ gflowui_endpoint_sets_server <- function(id, context, manifest, view, visible_ve
     legacy_load, legacy_save, changed) {
   shiny::moduleServer(id, function(input, output, session) {
     revision <- shiny::reactiveVal(0L)
-    foreign <- shiny::reactiveVal("")
     dialog <- shiny::reactiveVal(NULL)
     info <- shiny::reactive({
       ctx <- context()
@@ -19,20 +18,27 @@ gflowui_endpoint_sets_server <- function(id, context, manifest, view, visible_ve
         path = file.path(state_dir(ctx$project_id), "endpoint_sets", "sets.rds"))
     })
     provenance <- function(i) list(graph_set_id = i$ctx$graph_set_id, graph_label = i$gs$label,
+      graph_description = i$gs$data_type_label %||% i$gs$label,
       embedding = i$gs$embedding_route %||% i$gs$label %||% i$gs$id,
       k = i$ctx$k, created_at = .gflowui_now())
+    source_label <- function(set) {
+      original <- Filter(function(gs) identical(gs$id, set$provenance$graph_set_id), manifest()$graph_sets)
+      description <- if (length(original)) original[[1]]$data_type_label %||% original[[1]]$label else NULL
+      set$provenance$graph_description %||% description %||%
+        set$provenance$graph_label %||% set$provenance$embedding %||% "Unknown source"
+    }
     bump <- function() {
       revision(shiny::isolate(revision()) + 1L)
       changed()
     }
     # Read existing files once per path. Never reinterpret saved indices using another graph.
-    migrate <- function(store, i, all = FALSE) {
+    migrate <- function(store, i) {
       sets <- manifest()$graph_sets
       entries <- list()
       sets <- sets[order(!vapply(sets, function(gs) identical(gs$id, i$ctx$graph_set_id), logical(1)))]
       for (gs in sets) {
         ks <- gs$k_values %||% gs$selected_k %||% 1L
-        if (!all && !any(vapply(ks, function(k)
+        if (!any(vapply(ks, function(k)
             identical(gflowui_endpoint_scope(gs, k, i$ctx$project_id)$key, i$scope$key), logical(1)))) next
         base <- legacy_dir(gs$id, project_id = i$ctx$project_id)
         files <- c(file.path(base, "working", "current.rds"),
@@ -46,7 +52,7 @@ gflowui_endpoint_sets_server <- function(id, context, manifest, view, visible_ve
           k <- as.integer(obj$k %||% gs$selected_k %||% ks[1])
           if (length(k) != 1L || !is.finite(k) || k < 1L) k <- as.integer(ks[1])
           scope <- gflowui_endpoint_scope(gs, k, i$ctx$project_id)
-          if (!all && !identical(scope$key, i$scope$key)) next
+          if (!identical(scope$key, i$scope$key)) next
           ids <- tryCatch(read_ids(gs, k), error = function(e) NULL)
           if (is.null(gflowui_endpoint_ids(ids))) next
           ctx <- list(project_id = i$ctx$project_id, graph_set_id = gs$id, k = k)
@@ -55,15 +61,25 @@ gflowui_endpoint_sets_server <- function(id, context, manifest, view, visible_ve
             name = paste(gs$embedding_route %||% gs$label %||% gs$id,
               if (basename(file) == "current.rds") "— working table" else paste("—", obj$label %||% basename(file))),
             state = state, provenance = list(graph_set_id = gs$id, graph_label = gs$label,
+              graph_description = gs$data_type_label %||% gs$label,
               embedding = gs$embedding_route %||% gs$label %||% gs$id, k = k,
               created_at = obj$created_at %||% obj$updated_at, imported_from = file))
         }
       }
       gflowui_endpoint_sets_migrate(store, entries)
     }
-    get_store <- function(i, all = FALSE) {
+    get_store <- function(i) {
       old <- gflowui_endpoint_store_read(i$path)
-      store <- migrate(old, i, all)
+      # The first upgrade keeps the current graph's former selection when possible.
+      declared <- i$gs$endpoint_scope_id %||% paste0("graph:", i$gs$id)
+      previous_scope <- digest::digest(list(declared, as.integer(i$ctx$k), i$scope$namespace), algo = "sha256")
+      store <- gflowui_endpoint_store_upgrade(old, previous_scope)
+      if (!identical(old$version, 2L) && file.exists(i$path)) {
+        backup <- paste0(i$path, ".before_dataset_sharing")
+        if (!file.exists(backup) && !file.copy(i$path, backup))
+          stop("Could not back up endpoint sets before migration.")
+      }
+      store <- migrate(store, i)
       if (!identical(old, store)) gflowui_endpoint_store_write(store, i$path)
       store
     }
@@ -117,7 +133,6 @@ gflowui_endpoint_sets_server <- function(id, context, manifest, view, visible_ve
       store <- get_store(i)
       list(info = i, store = store, set = current_set(store, i))
     })
-    shiny::observeEvent(info()$scope$key, { foreign("") }, ignoreInit = TRUE)
     output$controls <- shiny::renderUI({
       st <- state()
       ns <- session$ns
@@ -126,31 +141,15 @@ gflowui_endpoint_sets_server <- function(id, context, manifest, view, visible_ve
       i <- st$info
       local <- Filter(function(x) identical(x$scope, i$scope$key) &&
         identical(x$namespace, i$scope$namespace), st$store$sets)
-      choices <- stats::setNames(vapply(local, `[[`, "", "id"), vapply(local, `[[`, "", "name"))
+      choices <- stats::setNames(vapply(local, `[[`, "", "id"), make.unique(vapply(local, function(x) {
+        paste(x$name, "—", source_label(x))
+      }, ""), sep = " — alternative "))
       set <- st$set
       rows <- if (!is.null(set)) set$state$rows else data.frame()
       shown <- if (nrow(rows)) rows$accepted & rows$visible else logical()
       present <- i$ids[visible_vertices()]
       count <- if (nrow(rows)) sum(shown & rows$vertex_id %in% present) else 0L
       n <- sum(shown)
-      foreign_set <- st$store$sets[[foreign()]]
-      comparison <- if (!is.null(foreign_set)) {
-        rr <- foreign_set$state$rows
-        rr <- rr[rr$accepted & rr$visible, , drop = FALSE]
-        in_view <- rr$vertex_id %in% present
-        shiny::tags$details(open = "open",
-          shiny::tags$summary(paste("Comparison:", foreign_set$name)),
-          shiny::p(class = "gf-hint", sprintf("%d of %d visible. Read-only; source: %s.",
-            sum(in_view), nrow(rr), foreign_set$provenance$graph_label %||% foreign_set$provenance$embedding)),
-          shiny::div(class = "gf-endpoint-table-scroll",
-            shiny::tags$table(class = "table table-sm",
-              shiny::tags$thead(shiny::tags$tr(shiny::tags$th("Vertex ID"),
-                shiny::tags$th("Label"), shiny::tags$th("In view"))),
-              shiny::tags$tbody(lapply(seq_len(nrow(rr)), function(j) shiny::tags$tr(
-                shiny::tags$td(rr$vertex_id[j]), shiny::tags$td(rr$label[j]),
-                shiny::tags$td(if (in_view[j]) "Yes" else "No")))))),
-          shiny::actionLink(ns("hide_foreign"), "Hide comparison"))
-      } else NULL
       shiny::tagList(
         shiny::selectInput(ns("set"), "Endpoint set:", choices = choices,
           selected = set$id %||% character(), width = "100%"),
@@ -159,10 +158,8 @@ gflowui_endpoint_sets_server <- function(id, context, manifest, view, visible_ve
           shiny::actionButton(ns("rename"), "Rename", class = "btn-light btn-sm"),
           shiny::actionButton(ns("duplicate"), "Duplicate", class = "btn-light btn-sm")),
         shiny::p(class = "gf-hint", sprintf("%d of %d endpoints visible; %d outside the current graph, component or filter.", count, n, n - count)),
-        if (!is.null(set)) shiny::p(class = "gf-hint", "Created in: ", set$provenance$embedding,
-          ". Edits are shared across embeddings of this graph. Detector scores describe the source embedding."),
-        shiny::actionLink(ns("browse"), "Show a set from another graph…"),
-        comparison)
+        if (!is.null(set)) shiny::p(class = "gf-hint", "Created in: ", source_label(set),
+          ". This set is shared across all graphs and embeddings of this dataset. Detector scores describe the source embedding."))
     })
     shiny::observeEvent(input$set, {
       st <- state()
@@ -206,50 +203,6 @@ gflowui_endpoint_sets_server <- function(id, context, manifest, view, visible_ve
       gflowui_endpoint_store_write(store, i$path)
       shiny::removeModal(); bump()
     })
-    shiny::observeEvent(input$browse, {
-      st <- state(); if (is.null(st)) return()
-      i <- st$info; store <- get_store(i, all = TRUE)
-      available <- Filter(function(x) !identical(x$scope, i$scope$key) &&
-        identical(x$namespace, i$scope$namespace), store$sets)
-      choices <- stats::setNames(vapply(available, `[[`, "", "id"),
-        vapply(available, function(x) paste(x$name, "—", x$scope_label, "—", x$provenance$embedding), ""))
-      dialog(list(action = "browse", scope = i$scope$key))
-      shiny::showModal(shiny::modalDialog(title = "Endpoints from another graph",
-        shiny::p("This adds a read-only comparison overlay, matched by stable sample ID. Use Copy to make an independent editable set for this graph."),
-        if (!length(choices)) shiny::p("No saved endpoint sets from other compatible graphs.") else
-          shiny::selectInput(session$ns("other_set"), "Endpoint set", choices, width = "100%"),
-        footer = shiny::tagList(shiny::modalButton("Cancel"),
-          if (length(choices)) shiny::actionButton(session$ns("show_other"), "Show overlay"),
-          if (length(choices)) shiny::actionButton(session$ns("copy_other"), "Copy to this graph"))))
-      bump()
-    })
-    other_action <- function(copy = FALSE) {
-      st <- state(); d <- dialog()
-      if (is.null(st) || !identical(d$scope, st$info$scope$key)) return()
-      i <- st$info; store <- get_store(i); set <- store$sets[[input$other_set %||% ""]]
-      if (is.null(set) || !identical(set$namespace, i$scope$namespace)) return()
-      if (copy) {
-        set$copied_from <- set$id
-        set$id <- paste0("set_", digest::digest(list(Sys.time(), tempfile()), algo = "sha256"))
-        set$name <- paste(set$name, "copy")
-        set$scope <- i$scope$key; set$scope_label <- i$scope$label
-        set$revision <- 1L; set$created_at <- .gflowui_now()
-        store$sets[[set$id]] <- set; store$active[[i$scope$key]] <- set$id
-        gflowui_endpoint_store_write(store, i$path)
-      } else foreign(set$id)
-      shiny::removeModal(); bump()
-    }
-    shiny::observeEvent(input$show_other, other_action())
-    shiny::observeEvent(input$copy_other, other_action(TRUE))
-    shiny::observeEvent(input$hide_foreign, foreign(""))
-    overlay <- shiny::reactive({
-      st <- state()
-      if (is.null(st) || !nzchar(foreign())) return(NULL)
-      set <- st$store$sets[[foreign()]]
-      if (is.null(set) || !identical(set$namespace, st$info$scope$namespace)) return(NULL)
-      rows <- gflowui_endpoint_set_project(set, st$info$ids)$rows
-      rows[rows$accepted & rows$visible, , drop = FALSE]
-    })
-    list(load = load, save = save, overlay = overlay, state = state)
+    list(load = load, save = save, state = state)
   })
 }

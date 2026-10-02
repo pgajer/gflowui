@@ -106,46 +106,42 @@ these checks; `FNN` is needed to run the detector and its numerical tests.
 ## Shared endpoint sets
 
 The **Endpoints** panel has an **Endpoint set** selector and **New**, **Rename**,
-and **Duplicate** controls. A set stores stable sample IDs, labels, visibility,
-and the embedding where it was created. Switching between embeddings of the
-same declared graph keeps the selected set; edits are shared. Duplicate a set
-before making an independent alternative. Changes are saved immediately.
+and **Duplicate** controls. Named sets belong to the dataset: the selected set
+follows changes of graph, base metric, Fermat power, neighbor count and embedding.
+Edits are shared immediately. Duplicate a set to keep an independent alternative.
+The selector includes the source graph label so sets created using different
+methods can be distinguished; this provenance does not restrict availability.
 
-Endpoints outside the current graph, component, or display filter remain in the
-set. The panel reports how many are visible. Detector settings, source geometry
-fingerprints and scores remain measurements of the embedding used for detection;
-switching embeddings does not recompute them. Existing saved detector records
-retain whatever provenance they originally contained.
+Endpoints are matched by stable sample ID, not vertex position. Endpoints outside
+the current graph, component or display filter remain saved, and the panel reports
+how many are visible. Detector settings and scores describe the source embedding;
+changing the view does not recompute them or establish that an endpoint remains
+geometrically extremal in the new view.
 
-**Show a set from another graph…** adds a read-only comparison table and overlay,
-matched by sample ID. **Copy to this graph** makes an independent editable copy,
-including endpoints currently outside the view. Automatic sharing never crosses
-a different graph identity or neighbor count.
-
-Project creators declare sharing in each graph-set manifest entry:
+Project creators identify each dataset in graph-set manifest entries:
 
 ```r
-endpoint_scope_id = "hellinger-complete-fermat-p2",
 endpoint_vertex_namespace = "my-dataset/sample-id"
 ```
 
-Use the same scope for different embeddings of the same graph or distance
-construction, and a different scope when metric, power, neighborhood, sample
-universe, or graph construction changes. The actual selected `k` is also part of
-the identity. The namespace identifies the meaning of the vertex IDs and must
-match for comparison across graphs. If omitted, it defaults to the project ID.
-Without a scope declaration, sharing is confined to the graph-set ID and `k`.
-Graph assets must supply unique `vertex_ids` (or unique adjacency-list names).
-An asset without these IDs retains its legacy local editor; row positions are
-never used to transfer endpoints to another graph.
+Use the same namespace for all graphs and subsets of the same dataset. Use a
+different namespace for unrelated datasets, even if their vertex IDs overlap.
+If omitted, the namespace defaults to the project ID. The old `endpoint_scope_id`
+field is no longer a sharing boundary; neither is `k`. Graph assets must supply
+unique `vertex_ids` (or unique adjacency-list names). Assets without valid stable
+IDs retain their legacy local editor; row positions never transfer endpoints.
 
-Existing working tables and snapshots are imported as separate named sets when
-their graph is visited, or when browsing sets from other graphs. Imports use the
-original graph's sample IDs, preserve the original files, and are not repeated.
-No tables are automatically merged. New state lives under the project-managed
-`endpoint_sets/sets.rds` directory, so it is included with the project's managed
-assets when moving a deleted project to Trash. Older snapshots without stable
-IDs can be migrated only against their original, unchanged graph asset.
+Existing named sets are upgraded in place, retaining their IDs, names, labels,
+source metadata and separate tables. The old store is backed up before upgrading.
+Legacy working tables and snapshots across the dataset's graphs are imported
+once using their original graph IDs, with original files preserved. Tables are
+never automatically merged. Older snapshots containing only row indices require
+their original graph asset to retain its vertex order.
+
+The project-managed `endpoint_sets/sets.rds` stores all named sets and the active
+selection per dataset. This state accompanies the project's managed assets when
+a deleted project is moved to Trash. No cross-graph copying or comparison overlay
+is needed to select a dataset's endpoint set.
 
 ## Delete a project
 

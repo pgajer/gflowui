@@ -6010,15 +6010,6 @@ app_server <- function(input, output, session) {
       }
     }
 
-    comparison <- shared_endpoint_sets$overlay()
-    if (is.data.frame(comparison) && nrow(comparison)) {
-      vertices_all <- c(vertices_all, comparison$vertex)
-      for (ii in seq_len(nrow(comparison))) {
-        nm <- as.character(comparison$vertex[ii])
-        if (!nm %in% names(label_lookup)) label_lookup[[nm]] <- comparison$label[ii]
-      }
-    }
-
     vertices_all <- sort(unique(suppressWarnings(as.integer(vertices_all))))
     vertices_all <- vertices_all[is.finite(vertices_all) & vertices_all > 0L]
     list(vertices = vertices_all, labels = label_lookup)

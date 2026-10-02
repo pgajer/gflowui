@@ -25,13 +25,17 @@ test_that("endpoint sets follow sample IDs across reordering and preserve absent
   expect_error(gflowui_endpoint_set_project(set, c("a","a")), "unique stable")
 })
 
-test_that("sharing is explicit and keeps distinct k values separate", {
+test_that("sharing spans graphs and k values but separates datasets", {
   a <- list(id="a", endpoint_scope_id="graph", endpoint_vertex_namespace="samples")
   b <- a; b$id <- "b"
   expect_identical(gflowui_endpoint_scope(a, 1L, "p"), gflowui_endpoint_scope(b, 1L, "p"))
-  expect_false(identical(gflowui_endpoint_scope(a, 1L, "p")$key, gflowui_endpoint_scope(b, 2L, "p")$key))
+  expect_identical(gflowui_endpoint_scope(a, 1L, "p")$key, gflowui_endpoint_scope(b, 2L, "p")$key)
   a$endpoint_scope_id <- b$endpoint_scope_id <- NULL
+  expect_identical(gflowui_endpoint_scope(a, 1L, "p")$key, gflowui_endpoint_scope(b, 1L, "p")$key)
+  b$endpoint_vertex_namespace <- "other_dataset"
   expect_false(identical(gflowui_endpoint_scope(a, 1L, "p")$key, gflowui_endpoint_scope(b, 1L, "p")$key))
+  expect_identical(gflowui_endpoint_scope(list(id="a"), 3L, "p"),
+    gflowui_endpoint_scope(list(id="b"), 10L, "p"))
 })
 
 test_that("migration retains separate tables and snapshots without duplicate imports", {
@@ -93,21 +97,25 @@ test_that("the endpoint editor shares edits across routes using stable IDs", {
     session$setInputs(`shared_endpoint_sets-set`=first$id)
     expect_identical(shared_endpoint_sets$state()$set$id,first$id)
     session$setInputs(graph_data_type="route3")
-    expect_null(shared_endpoint_sets$state()$set)
-    session$setInputs(`shared_endpoint_sets-browse`=1)
-    session$setInputs(`shared_endpoint_sets-other_set`=first$id, `shared_endpoint_sets-show_other`=1)
-    expect_identical(shared_endpoint_sets$overlay()$vertex,1L)
-    expect_identical(shared_endpoint_sets$overlay()$label,"Shared edit")
-    expect_null(shared_endpoint_sets$state()$set)
-    session$setInputs(`shared_endpoint_sets-browse`=2)
-    session$setInputs(`shared_endpoint_sets-copy_other`=1)
-    expect_identical(shared_endpoint_sets$state()$set$copied_from,first$id)
-    expect_false(identical(shared_endpoint_sets$state()$set$scope,first$scope))
+    expect_identical(shared_endpoint_sets$state()$set$id,first$id)
+    working <- load_working_endpoint_state(current_endpoint_graph_context())
+    expect_identical(working$rows$label,"Shared edit")
+    expect_identical(working$rows$vertex,1L)
+    working$rows$label <- "Across graphs"
+    save_working_endpoint_state(working,current_endpoint_graph_context()); session$flushReact()
+    session$setInputs(graph_data_type="route1")
+    expect_identical(load_working_endpoint_state(current_endpoint_graph_context())$rows$label,"Across graphs")
+    expect_length(shared_endpoint_sets$state()$store$sets,2L)
+    session$setInputs(`shared_endpoint_sets-set`=copy$id)
+    expect_identical(shared_endpoint_sets$state()$set$name,"Renamed")
     session$setInputs(`shared_endpoint_sets-new`=1)
     session$setInputs(`shared_endpoint_sets-name`="Empty", `shared_endpoint_sets-confirm_name`=3)
     expect_equal(nrow(shared_endpoint_sets$state()$set$state$rows),0)
-    session$setInputs(graph_data_type="route1")
-    expect_identical(shared_endpoint_sets$state()$set$id,first$id)
+    empty_id <- shared_endpoint_sets$state()$set$id
+    session$setInputs(graph_data_type="route3")
+    expect_identical(shared_endpoint_sets$state()$set$id,empty_id)
+    session$setInputs(`shared_endpoint_sets-set`=first$id)
+    expect_identical(load_working_endpoint_state(current_endpoint_graph_context())$rows$label,"Across graphs")
 
   })
 })
@@ -119,7 +127,7 @@ test_that("legacy files from multiple routes migrate separately and remain untou
   file <- file.path(root,"graph.rds")
   saveRDS(list(X.graphs=list(list(adj_list=list(2L,c(1L,3L),2L),
     weight_list=list(1,c(1,1),1))), k.values=1L,vertex_ids=c("a","b","c")),file)
-  sets <- lapply(c("a","b"),function(id)list(id=id,label=id,endpoint_scope_id="same",
+  sets <- lapply(c("a","b"),function(id)list(id=id,label=id,endpoint_scope_id=id,
     graph_file=file,k_values=1L))
   register_project(root,"migration",profile="custom",graph_sets=sets,
     defaults=list(graph_set_id="a",reference_graph_set_id="a",reference_k=1L),scan_results=FALSE)
@@ -144,4 +152,26 @@ test_that("legacy files from multiple routes migrate separately and remain untou
     session$setInputs(graph_data_type="b")
     expect_length(shared_endpoint_sets$state()$store$sets,4L)
   })
+})
+
+
+test_that("old graph-scoped stores upgrade without merging or losing alternatives", {
+  make <- function(ns, old_scope) {
+    set <- gflowui_endpoint_set_new(old_scope, endpoint_test_state(), c("a","b"),
+      gflowui_endpoint_scope(list(endpoint_vertex_namespace=ns),1L,"p"),list(embedding="source"))
+    set$scope <- old_scope; set
+  }
+  sets <- list(make("samples","graph1"),make("samples","graph2"),make("other","graph3"))
+  names(sets) <- vapply(sets, `[[`, "", "id")
+  old <- list(version=1L,sets=sets,active=list(graph1=sets[[1]]$id,graph2=sets[[2]]$id),migrated="file")
+  new <- gflowui_endpoint_store_upgrade(old,"graph2")
+  expect_identical(new$version,2L)
+  expect_identical(names(new$sets),names(old$sets))
+  expect_identical(lapply(new$sets, `[[`, "state"),lapply(old$sets, `[[`, "state"))
+  expect_identical(lapply(new$sets, `[[`, "provenance"),lapply(old$sets, `[[`, "provenance"))
+  expect_identical(new$sets[[1]]$scope,new$sets[[2]]$scope)
+  expect_false(identical(new$sets[[1]]$scope,new$sets[[3]]$scope))
+  expect_identical(new$active[[new$sets[[1]]$scope]],sets[[2]]$id)
+  expect_identical(new$migrated,old$migrated)
+  expect_identical(gflowui_endpoint_store_upgrade(new),new)
 })
