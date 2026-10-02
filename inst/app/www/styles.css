@@ -1499,3 +1499,9 @@ body.gf-general-inspector-resizing {
 .gf-default-menu-caption { padding: 5px 9px; font-size: .85em; overflow-wrap: anywhere; color: #58645b; }
 .gf-default-menu button { display: block; width: 100%; text-align: left; border: 0; border-radius: 5px; padding: 8px 10px; background: transparent; color: inherit; }
 .gf-default-menu button:hover, .gf-default-menu button:focus-visible { background: #f0eddc; outline: none; }
+
+/* Keep linked composition and embedding views visible together. */
+body:has(#source_datasets-show:checked) .gf-reference-view-plain { min-height: 0; }
+body:has(#source_datasets-show:checked) .gf-reference-split { height: 44vh; min-height: 300px; }
+body:has(#source_datasets-show:checked) #reference_plot { height: calc(44vh - 32px) !important; min-height: 260px; }
+body:has(#source_datasets-show:checked) #source_datasets-plot { height: 38vh !important; min-height: 310px; }

@@ -44,6 +44,21 @@ app_server <- function(input, output, session) {
       if(isTRUE(was_dirty)){rv$project.baseline.signature<-baseline;rv$project.dirty<-TRUE}
     })
 
+  source_datasets <- gflowui_source_datasets_server("source_datasets",
+    manifest=atlas_base_manifest, view=function()reference_view_state_raw(),
+    visible=function()reference_renderer_state()$keep_idx,
+    click3d=shiny::reactive({
+      raw<-input[["plotly_click-reference_plot_source"]]
+      d<-tryCatch(if(is.character(raw))jsonlite::fromJSON(raw) else raw,error=function(e)NULL)
+      extract_plotly_clicked_vertex_id(d)
+    }),
+    level=function()input$graph_dcst_level %||% "dcst_level1",
+    save_palette=function(palette){
+      payload<-load_or_init_active_manifest(active_project_context())
+      payload$manifest$metadata$source_datasets$palette<-palette
+      save_active_manifest(payload)
+    })
+
   embedding_comparison_active <- shiny::reactive(gflowui_ec_active(active_manifest()))
   embedding_comparison_state <- if (requireNamespace("plotly", quietly = TRUE) &&
                                     requireNamespace("htmlwidgets", quietly = TRUE)) {
@@ -7853,7 +7868,7 @@ app_server <- function(input, output, session) {
     shiny::showNotification(sprintf("Displaying symmetric kNN graph k=%d.", graph_k), type = "message")
   }, ignoreInit = TRUE)
 
-  reference_view_state <- shiny::reactive({
+  reference_view_state_raw <- shiny::reactive({
     sel <- current_graph_selection()
     if (!is.list(sel) || !is.null(sel$error)) {
       return(list(error = as.character(sel$error %||% "No graph assets found for this project.")))
@@ -8239,6 +8254,8 @@ app_server <- function(input, output, session) {
       default_key = default_key
     )
   })
+
+  reference_view_state <- shiny::reactive(source_datasets$augment(reference_view_state_raw()))
 
   basin_panel_state <- shiny::reactive({
     st <- reference_view_state()
@@ -10455,6 +10472,10 @@ app_server <- function(input, output, session) {
     if (!is.null(atlas_preview) && local_atlas$only_members())
       keep_idx <- intersect(keep_idx, which(st$vertex_ids %in% atlas_preview$vertex_ids))
 
+    keep_idx <- source_datasets$filter(st, keep_idx)
+    if (source_datasets$only() && length(source_datasets$selected()))
+      keep_idx <- intersect(keep_idx, which(st$vertex_ids %in% source_datasets$selected()))
+
     plotly_ready <- requireNamespace("plotly", quietly = TRUE)
     rgl_ready <- requireNamespace("rgl", quietly = TRUE)
     effective <- requested
@@ -11630,6 +11651,14 @@ app_server <- function(input, output, session) {
           type="scatter3d", mode="markers", inherit=FALSE, name="Region membership",
           marker=list(size=3, color="#f97316", opacity=0.9),
           text=st$vertex_ids[ai], customdata=ai, hoverinfo="text", showlegend=FALSE)
+      }
+      if (source_datasets$show()) {
+        si <- intersect(keep_idx, which(st$vertex_ids %in% source_datasets$selected()))
+        if(length(si)) p <- plotly::add_trace(p,inherit=FALSE,type="scatter3d",mode="markers",
+          x=coords[si,1],y=coords[si,2],z=coords[si,3],customdata=si,key=si,
+          name="Linked 2D selection",showlegend=FALSE,
+          marker=list(size=point_size+4,color="#f97316",symbol="circle-open",line=list(width=3)),
+          text=st$vertex_ids[si],hoverinfo="text")
       }
       p <- gflowui_add_embedding_endpoint_preview(p, coords, endpoint_detector$preview(), keep_idx)
       hover_asset <- gflowui_vertex_hover_asset(active_manifest())
@@ -14620,6 +14649,12 @@ app_server <- function(input, output, session) {
             value = "workflow_graph_structure",
             graph_panel
           ),
+          if (!is.null(graph_ui$manifest$metadata$source_datasets))
+            bslib::accordion_panel("Source datasets",value="workflow_source_datasets",
+              gflowui_source_datasets_ui("source_datasets")),
+          if (!is.null(graph_ui$manifest$metadata$source_datasets))
+            bslib::accordion_panel("Within-dCST 2D",value="workflow_within_dcst",
+              gflowui_within_dcst_ui("source_datasets")),
           bslib::accordion_panel(
             "Endpoints",
             value = "workflow_endpoint_structure",

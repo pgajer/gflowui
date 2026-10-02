@@ -92,6 +92,7 @@ app_ui <- function() {
       shiny::includeScript(system.file("app/www/graph-selection.js", package = "gflowui")),
       shiny::includeScript(system.file("app/www/lazy-edges.js", package = "gflowui")),
       shiny::includeScript(system.file("app/www/scene-updates.js", package = "gflowui")),
+      shiny::includeScript(system.file("app/www/source-datasets.js", package = "gflowui")),
       if (nzchar(embedding.css.path)) shiny::includeCSS(embedding.css.path),
       if (nzchar(embedding.js.path)) shiny::includeScript(embedding.js.path),
       if (nzchar(density.state.js.path)) {
@@ -103,7 +104,11 @@ app_ui <- function() {
     ),
     shiny::div(
       class = "gf-viewer-stage",
-      shiny::uiOutput("workspace_view")
+      shiny::uiOutput("workspace_view"),
+      if (requireNamespace("plotly",quietly=TRUE)) shiny::conditionalPanel("input['source_datasets-show'] === true",
+        shiny::div(class="gf-sidebar-panel",
+          shiny::p("Linked within-dCST coordinates. Points are colored by source dataset. Box/lasso or click to select; use the panel to clear or add to the selection."),
+          plotly::plotlyOutput("source_datasets-plot",height="420px")))
     )
   )
 }
