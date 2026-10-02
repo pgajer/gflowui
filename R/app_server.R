@@ -15100,7 +15100,10 @@ app_server <- function(input, output, session) {
 
     structure(list(panels=panels,open=open.panels),class="gflowui_workflow_model")
   })
-  gflowui_stable_workflow_server(output,workflow_controls_model,graph_selector_scope)
+  # Region navigation changes graph selection scope, but must not remount the
+  # sidebar containing the region controls that initiated that navigation.
+  workflow_project_scope <- gflowui_distinct_reactive(function() rv$project.id %||% "")
+  gflowui_stable_workflow_server(output,workflow_controls_model,workflow_project_scope)
 
   output$run_monitor_panel <- shiny::renderUI({
     if (!isTRUE(rv$project.active) || !isTRUE(rv$run.monitor.visible)) {

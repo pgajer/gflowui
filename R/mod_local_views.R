@@ -69,19 +69,46 @@ gflowui_local_views_server <- function(id, manifest, view_state, selected_vertex
       if (identical(region_id(), "__draft__")) return(if(length(drafts())) drafts()[[1L]] else NULL)
       regions()[[region_id()]]
     })
-    output$navigation <- shiny::renderUI({
-      if (!isTRUE(config()$enabled)) return(shiny::p("Local views require a dataset abundance source in the project configuration."))
-      visible<-Filter(function(r)!isTRUE(r$retired)||isTRUE(input$show_retired),regions())
-      choices <- c("Whole dataset"="", stats::setNames(names(visible), vapply(visible,gflowui_atlas_region_label,"")))
+    region_choices <- shiny::reactive({
+      visible <- Filter(function(r) !isTRUE(r$retired) || isTRUE(input$show_retired), regions())
+      choices <- c("Whole dataset"="", stats::setNames(names(visible) %||% character(), vapply(visible,gflowui_atlas_region_label,"")))
       if (length(drafts())) choices <- c(choices, "Unsaved membership preview"="__draft__")
-      r <- region(); views <- r$views %||% list()
-      vc <- c("Locate in parent embedding (preview)"="__preview__", stats::setNames(
-        vapply(views, `[[`, "", "id"), vapply(views, function(gs) gs$label %||% gs$id, "")))
-      shiny::tagList(shiny::selectInput(session$ns("region"), "Data region", choices, selected=region_id()),
-        if (!is.null(r)) shiny::selectInput(session$ns("view"), "Region view", vc, selected=view_id()))
+      choices
     })
-    shiny::observeEvent(input$region, { if (!identical(input$region, region_id())) { region_id(input$region); view_id("__preview__") } }, ignoreNULL=TRUE)
+    view_choices <- shiny::reactive({
+      views <- region()$views %||% list()
+      c("Locate in parent embedding (preview)"="__preview__", stats::setNames(
+        vapply(views, `[[`, "", "id"), vapply(views, function(gs) gs$label %||% gs$id, "")))
+    })
+    output$navigation <- shiny::renderUI({
+      manifest()$project_id
+      if (!isTRUE(config()$enabled)) return(shiny::p("Local views require a dataset abundance source in the project configuration."))
+      # Keep both inputs mounted while navigating. Recreating a select can emit
+      # its previous/default value and undo a selection already accepted here.
+      shiny::isolate(shiny::tagList(
+        shiny::selectInput(session$ns("region"), "Data region", region_choices(), selected=region_id()),
+        shiny::conditionalPanel(sprintf("input['%s'] !== ''", session$ns("region")),
+          shiny::selectInput(session$ns("view"), "Region view", view_choices(), selected=view_id()))))
+    })
+    shiny::observe({
+      choices <- region_choices(); selected <- region_id()
+      shiny::freezeReactiveValue(input, "region")
+      shiny::updateSelectInput(session, "region", choices=choices, selected=selected)
+    })
+    shiny::observe({
+      choices <- view_choices(); selected <- view_id()
+      shiny::freezeReactiveValue(input, "view")
+      shiny::updateSelectInput(session, "view", choices=choices, selected=selected)
+    })
+    shiny::observeEvent(input$region, {
+      if (!input$region %in% unname(region_choices())) return()
+      if (!identical(input$region, region_id())) {
+        region_id(input$region); view_id("__preview__")
+      }
+    }, ignoreNULL=TRUE, priority=100)
     shiny::observeEvent(input$view, {
+      # A delayed view event from the previous region must not switch this one.
+      if (!identical(input$region, region_id()) || !input$view %in% unname(view_choices())) return()
       if (!identical(input$view, view_id())) {
         if(identical(view_id(),"__preview__") && !identical(input$view,"__preview__"))
           parent_set(view_state()$set_id)

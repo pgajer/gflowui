@@ -34,11 +34,12 @@ test_that('panel structure remains stable when only contents change', {
   first<-gflowui_workflow_parts(list(panels('first')), 'graphs')
   second<-gflowui_workflow_parts(list(panels('second')), 'graphs')
   expect_identical(first$signature,second$signature)
-  expect_length(first$chunks,3)
-  expect_match(as.character(first$chunks[[1]]),'first')
-  expect_match(as.character(second$chunks[[1]]),'second')
-  expect_null(first$chunks[[2]])
-  expect_match(as.character(first$panels[[1]]),'stable_graphs_3')
+  expect_length(first$chunks,4)
+  expect_match(as.character(first$chunks[[2]]),'first')
+  expect_match(as.character(second$chunks[[2]]),'second')
+  expect_null(first$chunks[[3]])
+  expect_match(as.character(first$chunks[[1]]),'stable_graphs_3')
+  expect_match(as.character(first$panels[[1]]),'stable_graphs_body')
 })
 
 test_that('scene deltas move every coordinate-bearing layer without resending annotations', {
@@ -132,5 +133,27 @@ test_that('edge requests are limited to the current scene and generation', {
     state$key<-'replacement';session$flushReact();before<-length(sent$messages)
     session$setInputs(gflowui_edge_request=list(generation=1L,key='current',request_id=4))
     expect_length(sent$messages,before)
+  })
+})
+
+
+test_that("changing one panel's control count does not rebuild the accordion", {
+  shiny::testServer(function(input,output,session) {
+    fitted <- shiny::reactiveVal(FALSE)
+    model <- shiny::reactive(structure(list(panels=list(
+      bslib::accordion_panel("Graphs", value="graphs", shiny::tagList(
+        shiny::p("Graph controls"), if(!fitted()) shiny::tagList(shiny::selectInput("metric","Metric",c("a","b")),shiny::p("Extra control")))),
+      bslib::accordion_panel("Local views", value="local", shiny::selectInput("region","Region",c("one","two")))
+    ),open="local"),class="gflowui_workflow_model"))
+    gflowui_stable_workflow_server(output,model,function()"project")
+  }, {
+    session$flushReact()
+    shell <- output$workflow_controls
+    navigation <- output$stable_local_1
+    fitted(TRUE); session$flushReact()
+    expect_identical(output$workflow_controls,shell)
+    expect_identical(output$stable_local_1,navigation)
+    fitted(FALSE); session$flushReact()
+    expect_identical(output$workflow_controls,shell)
   })
 })

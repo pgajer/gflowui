@@ -43,7 +43,7 @@ gflowui_workflow_parts <- function(panels, open) {
       return(unlist(lapply(x, flatten), recursive = FALSE))
     list(x)
   }
-  chunks <- list(); shell <- list(); signature <- list()
+  chunks <- list(); bodies <- list(); shell <- list(); signature <- list()
   for (panel in panels) {
     if (is.null(panel)) next
     id <- panel$attribs[['data-value']]
@@ -53,11 +53,13 @@ gflowui_workflow_parts <- function(panels, open) {
     chunks <- c(chunks, stats::setNames(items, ids))
     # Preserve the original heading and icon; discard only the body.
     title <- panel$children[[1L]]$children[[1L]]$children
-    signature[[id]] <- list(title = as.character(htmltools::tagList(title)), ids = ids)
-    panel$children[[2L]]$children[[1L]]$children <- lapply(ids, shiny::uiOutput)
+    signature[[id]] <- list(title = as.character(htmltools::tagList(title)))
+    body_id <- paste0("stable_", id, "_body")
+    bodies[[body_id]] <- htmltools::tagList(lapply(ids, shiny::uiOutput))
+    panel$children[[2L]]$children[[1L]]$children <- list(shiny::uiOutput(body_id))
     shell[[id]] <- panel
   }
-  list(panels = shell, chunks = chunks, signature = signature, open = open)
+  list(panels = shell, chunks = c(bodies, chunks), signature = signature, open = open)
 }
 
 gflowui_distinct_reactive <- function(compute) {
