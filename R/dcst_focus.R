@@ -111,3 +111,33 @@ gflowui_dcst_table_ui <- function(options, palettes, project, selection = NULL) 
     )
   )
 }
+
+# Match inherited metadata strictly by sample identity, never by row position.
+gflowui_metadata_match_vertices <- function(metadata, vertex_ids, id_column = NULL) {
+  ids <- gflowui_endpoint_ids(vertex_ids)
+  if (!is.data.frame(metadata) || is.null(ids)) return(NULL)
+  if (is.null(id_column)) {
+    candidate <- intersect(c("sample_id", "vertex_id"), names(metadata))
+    if (length(candidate)) id_column <- candidate[1]
+  }
+  if (is.null(id_column) && identical(rownames(metadata), as.character(seq_len(nrow(metadata))))) return(NULL)
+  source_ids <- if (!is.null(id_column)) metadata[[id_column]] else rownames(metadata)
+  source_ids <- gflowui_endpoint_ids(source_ids)
+  if (is.null(source_ids)) return(NULL)
+  at <- match(ids, source_ids)
+  if (anyNA(at)) return(NULL)
+  metadata[at, , drop=FALSE]
+}
+
+# One dCST color choice uses the level control; numeric alternatives stay available.
+gflowui_vertex_color_options <- function(st, requested = NULL, fallback = NULL) {
+  choices <- st$choices %||% c("Vertex Degree"="vertex_degree")
+  has_dcst <- !is.null(gflowui_dcst_options(st$sources))
+  if (has_dcst) choices <- c("dCST"="dcst", choices[!unname(choices) %in% c("dcst_level1", "dcst_level2")])
+  choices <- c("Solid color..."="solid_color", choices)
+  if (has_dcst && (is.null(requested) || requested %in% c("dcst_level1", "dcst_level2"))) requested <- "dcst"
+  if (length(requested) != 1L || is.na(requested) || !requested %in% unname(choices))
+    requested <- if (has_dcst) "dcst" else fallback %||% st$default_key %||% "vertex_degree"
+  if (!requested %in% unname(choices)) requested <- unname(choices)[1]
+  list(choices=choices, selected=requested)
+}

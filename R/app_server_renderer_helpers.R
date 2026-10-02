@@ -315,7 +315,7 @@ gflowui_make_server_renderer_helpers <- function(rv, current_reference_info) {
     out
   }
 
-  collect_reference_metadata_sources <- function(manifest, graph_set, n_vertices) {
+  collect_reference_metadata_sources <- function(manifest, graph_set, n_vertices, vertex_ids = NULL) {
     out <- list()
     if (!is.list(manifest) || !is.list(graph_set) || n_vertices < 1L) {
       return(out)
@@ -347,10 +347,6 @@ gflowui_make_server_renderer_helpers <- function(rv, current_reference_info) {
     root <- scalar_chr(manifest$project_root %||% "", default = "")
     candidates <- .normalize_project_path(color_assets$metadata_file %||% "", root)
     candidates <- unique(candidates[nzchar(candidates)])
-    if (length(candidates) < 1L) {
-      return(out)
-    }
-
     for (path in candidates) {
       if (!file.exists(path)) {
         next
@@ -370,6 +366,9 @@ gflowui_make_server_renderer_helpers <- function(rv, current_reference_info) {
           next
         }
         candidate <- get(obj_name, envir = env, inherits = FALSE)
+        if (isTRUE(color_assets$match_vertex_ids)) {
+          candidate <- gflowui_metadata_match_vertices(candidate, vertex_ids, color_assets$vertex_id_column)
+        }
         if (is.data.frame(candidate) && nrow(candidate) == n_vertices) {
           mt <- candidate
           break
@@ -438,6 +437,13 @@ gflowui_make_server_renderer_helpers <- function(rv, current_reference_info) {
       }
     }
 
+    inherited <- color_assets$inherited_metadata
+    if (is.list(inherited)) {
+      inherited$inherited_metadata <- NULL
+      aligned <- collect_reference_metadata_sources(manifest,
+        list(color_assets = inherited), n_vertices, vertex_ids)
+      out[names(aligned)] <- aligned
+    }
     out
   }
 

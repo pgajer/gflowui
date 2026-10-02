@@ -76,6 +76,24 @@ gflowui_atlas_manifest <- function(manifest, region, view_id = "__preview__", pa
   if (is.na(index)) return(manifest)
   gs <- region$views[[index]]
   if (is.null(gs)) return(manifest)
+  # Dataset annotations follow stable IDs into local fits; local numeric sources
+  # and graph diagnostics remain available alongside the inherited categories.
+  parent_id <- parent_set %||% manifest$defaults$reference_graph_set_id %||% manifest$defaults$graph_set_id
+  parent_index <- match(parent_id, vapply(manifest$graph_sets, `[[`, "", "id"))
+  if (length(parent_index) == 1L && !is.na(parent_index)) {
+    ca <- manifest$graph_sets[[parent_index]]$color_assets
+    columns <- intersect(c("dcst_level1", "dcst_level2", "dcst_level3"),
+      ca$vector_columns %||% ca$preferred_order)
+    if (length(columns) && nzchar(ca$metadata_file %||% "")) {
+      ca$vector_columns <- ca$preferred_order <- columns
+      ca$match_vertex_ids <- TRUE
+      ca$inherited_metadata <- NULL
+      gs$color_assets$inherited_metadata <- ca
+      for (column in columns) {
+        gs$color_assets$categorical_palettes[[column]] <- ca$categorical_palettes[[column]]
+      }
+    }
+  }
   manifest$graph_sets <- list(gs)
   manifest$defaults$reference_graph_set_id <- gs$id
   manifest$defaults$reference_k <- gs$selected_k %||% 1L

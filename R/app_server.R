@@ -8074,7 +8074,8 @@ app_server <- function(input, output, session) {
     meta_sources <- collect_reference_metadata_sources(
       manifest = manifest,
       graph_set = spec$graph_set,
-      n_vertices = n_vertices
+      n_vertices = n_vertices,
+      vertex_ids = vertex.ids
     )
     if (length(meta_sources) > 0L) {
       for (src in meta_sources) {
@@ -10339,16 +10340,13 @@ app_server <- function(input, output, session) {
     requested <- normalize_live_renderer_choice(requested_raw, default = "plotly")
 
     layout_presets <- if (is.list(spec$graph_set$layout_assets$presets)) spec$graph_set$layout_assets$presets else list()
-    src_key_raw <- as.character(
-      input$graph_layout_color_by %||%
-        graph_layout_state$color_by %||%
-        layout_presets$color_by %||%
-        st$default_key %||%
-        ""
-    )
+    color_options <- gflowui_vertex_color_options(st,
+      input$graph_layout_color_by %||% graph_layout_state$color_by,
+      layout_presets$color_by)
+    src_key_raw <- color_options$selected
     dcst <- gflowui_dcst_options(st$sources,
       input$graph_dcst_level %||% "dcst_level1", input$graph_dcst_group %||% "")
-    if (!is.null(dcst)) src_key_raw <- dcst$level
+    if (!is.null(dcst) && identical(src_key_raw, "dcst")) src_key_raw <- dcst$level
     use_solid_color <- identical(src_key_raw, graph_solid_color_key)
     src_key <- src_key_raw
     if (!isTRUE(use_solid_color) && !(src_key %in% names(st$sources %||% list()))) {
@@ -12546,27 +12544,11 @@ app_server <- function(input, output, session) {
     )
 
     solid_vertex_color_choices <- graph_vertex_color_choices()
-    color_choices <- c("Solid color..." = graph_solid_color_key, "Vertex Degree" = "vertex_degree")
-    color_selected <- as.character(
-      input$graph_layout_color_by %||%
-        graph_layout_state$color_by %||%
-        layout_presets$color_by %||%
-        "vertex_degree"
-    )
-    if (is.list(st_use) && length(st_use$choices %||% c()) > 0L) {
-      color_choices <- c("Solid color..." = graph_solid_color_key, st_use$choices)
-      color_selected <- as.character(
-        input$graph_layout_color_by %||%
-          layout_presets$color_by %||%
-          st_use$default_key %||%
-          ""
-      )
-      if (!(color_selected %in% unname(color_choices))) {
-        color_selected <- unname(color_choices)[1]
-      }
-    } else if (!(color_selected %in% unname(color_choices))) {
-      color_selected <- "vertex_degree"
-    }
+    color_options <- gflowui_vertex_color_options(st_use,
+      input$graph_layout_color_by %||% graph_layout_state$color_by,
+      layout_presets$color_by)
+    color_choices <- color_options$choices
+    color_selected <- color_options$selected
     vertex_color_selected <- normalize_palette_choice(
       input$graph_layout_vertex_color %||%
         graph_layout_state$vertex_color %||%
@@ -14585,6 +14567,17 @@ app_server <- function(input, output, session) {
           shiny::h6(class = "gf-graph-layout-head", "Vertex annotations & filtering"),
           gflowui_vertex_hover_controls(graph_ui$manifest,
             shiny::isolate(input$graph_hover_top_n), graph_ui$renderer_selected),
+          shiny::div(
+            class = "gf-graph-row gf-graph-layout-row",
+            shiny::span(class = "gf-graph-row-label", "Color by:"),
+            shiny::selectInput(
+              "graph_layout_color_by",
+              label = NULL,
+              choices = graph_ui$color_choices,
+              selected = graph_ui$color_selected,
+              width = "205px"
+            )
+          ),
           if (!is.null(graph_ui$dcst)) {
             dcst_row <- function(label, control) shiny::div(
               class = "gf-graph-row gf-graph-layout-row",
@@ -14597,18 +14590,8 @@ app_server <- function(input, output, session) {
                 graph_ui$manifest$project_id,
                 shiny::isolate(input$graph_dcst_table_selection))
             )
-          } else shiny::div(
-            class = "gf-graph-row gf-graph-layout-row",
-            shiny::span(class = "gf-graph-row-label", "Color by:"),
-            shiny::selectInput(
-              "graph_layout_color_by",
-              label = NULL,
-              choices = graph_ui$color_choices,
-              selected = graph_ui$color_selected,
-              width = "205px"
-            )
-          ),
-          if (is.null(graph_ui$dcst) && identical(
+          },
+          if (identical(
             as.character(input$graph_layout_color_by %||% graph_ui$color_selected %||% ""),
             graph_solid_color_key
           )) {
@@ -15454,7 +15437,7 @@ app_server <- function(input, output, session) {
     if (length(event$group) != 1L || !event$group %in% valid) return()
     tryCatch({
       payload <- load_or_init_active_manifest(active_project_context())
-      for (key in names(payload$manifest$graph_sets)) {
+      for (key in seq_along(payload$manifest$graph_sets)) {
         palette <- payload$manifest$graph_sets[[key]]$color_assets$categorical_palettes[[event$level]]
         if (is.null(palette) || !event$group %in% names(palette)) next
         palette[event$group] <- event$color
