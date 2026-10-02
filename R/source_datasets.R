@@ -87,7 +87,44 @@ gflowui_pair_coordinates <- function(asset, ids, a, b) {
     if (is.na(pos)) 0 else asset$abundances[[i]][pos]
   },numeric(1))
   xa <- abundance(j[1]); xb <- abundance(j[2]); mass <- xa+xb
-  data.frame(vertex_id=ids,t=ifelse(mass>0,xb/mass,NA_real_),r=pmax(0,1-mass),a=xa,b=xb)
+  # Sum residual squares directly: subtraction from total squared mass loses
+  # precision close to a pure two-phylotype composition.
+  residual <- vapply(at,function(i) {
+    if(is.na(i))return(NA_real_)
+    sqrt(sum(asset$abundances[[i]][!asset$indices[[i]] %in% j]^2))
+  },numeric(1))
+  dominant <- vapply(at,function(i) {
+    if(is.na(i))return(NA_real_)
+    max(asset$abundances[[i]])
+  },numeric(1))
+  data.frame(vertex_id=ids,t=ifelse(mass>0,xb/mass,NA_real_),r=pmax(0,1-mass),a=xa,b=xb,
+    u=ifelse(xa>0,xb/xa,NA_real_),rho=ifelse(xa>0,residual/xa,NA_real_),
+    a_dominant=xa>=dominant)
+}
+
+# Every vertex uses the ordered pair of its level-2 dCST. Keep undefined rows
+# in this intermediate table so the UI can explain exclusions explicitly.
+gflowui_dcst_coordinates <- function(asset, ids, labels, pairs) {
+  stopifnot(length(ids)==length(labels),!anyDuplicated(ids))
+  n<-length(ids)
+  out<-data.frame(vertex_id=ids,t=rep(NA_real_,n),r=rep(NA_real_,n),a=rep(NA_real_,n),b=rep(NA_real_,n),
+    u=rep(NA_real_,n),rho=rep(NA_real_,n),a_dominant=rep(NA,n),
+    dcst=as.character(labels),phylotype_a=rep(NA_character_,n),phylotype_b=rep(NA_character_,n))
+  for(i in seq_len(nrow(pairs))) {
+    at<-which(labels==pairs$group[i])
+    if(!length(at))next
+    d<-gflowui_pair_coordinates(asset,ids[at],pairs$a[i],pairs$b[i])
+    out[at,names(d)]<-d
+    out$phylotype_a[at]<-pairs$a[i];out$phylotype_b[at]<-pairs$b[i]
+  }
+  out
+}
+
+gflowui_within_axes <- function(mode) {
+  if(identical(mode,"homogeneous"))list(x="u",y="rho",cap=Inf,
+    xlabel="xB / xA: position along the B axis",ylabel="Euclidean distance from the B axis")
+  else list(x="t",y="r",cap=1,
+    xlabel="t: fraction of B within the pair",ylabel="r: other-phylotype abundance")
 }
 
 gflowui_source_table_ui <- function(summary,palette,selected,ns) {

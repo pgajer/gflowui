@@ -39,7 +39,7 @@ test_that("linked selections and dataset filters are ID based across views", {
   shiny::testServer(gflowui_source_datasets_server,args=list(manifest=m,view=v,visible=function()1:3,click3d=click,
     level=function()"dcst_level2",save_palette=function(p){mm<-m();mm$metadata$source_datasets$palette<-p;m(mm)}),{
     session$flushReact()
-    session$setInputs(show=TRUE,pair="A → B")
+    session$setInputs(show=TRUE)
     click(2L);session$flushReact();expect_identical(selected(),"y")
     session$setInputs(`plotly_selected-within_dcst`='[{"key":"x"},{"key":"z"}]')
     expect_setequal(selected(),c("x","z"))
@@ -55,5 +55,69 @@ test_that("linked selections and dataset filters are ID based across views", {
     expect_true(input$show)
     expect_true(jsonlite::validate(output$plot))
     session$setInputs(clear_points=1);expect_length(selected(),0)
+  })
+})
+
+test_that("homogeneous charts have the exact binary axis and Euclidean residual norm", {
+  a<-list(sample_ids=c("pure","mixed","same_mass","zero_a","small_a"),taxon_names=c("A","B","C","D"),
+    indices=list(1:2,1:4,1:3,2:3,1:3),
+    abundances=list(c(.8,.2),c(.8,.15,.03,.02),c(.8,.15,.05),c(.5,.5),c(.05,.8,.15)))
+  d<-gflowui_pair_coordinates(a,c(a$sample_ids,"missing"),"A","B")
+  expect_equal(d$u[1],.25);expect_equal(d$rho[1],0)
+  expect_equal(d$u[2:3],rep(.15/.8,2))
+  expect_equal(d$rho[2],sqrt(.03^2+.02^2)/.8)
+  expect_equal(d$rho[3],.05/.8)
+  expect_equal(d$r[2],d$r[3]);expect_gt(d$rho[3],d$rho[2])
+  expect_equal(d$u[1:3],d$t[1:3]/(1-d$t[1:3]))
+  expect_equal(d$t[4],1);expect_true(is.na(d$u[4])&&is.na(d$rho[4]))
+  expect_true(is.na(d$u[6])&&is.na(d$rho[6]))
+  expect_equal(d$u[5],16);expect_false(d$a_dominant[5])
+  expect_equal(gflowui_pair_coordinates(a,"pure","B","A")$u,4)
+  expect_equal(gflowui_within_axes("homogeneous")$cap,Inf)
+})
+
+test_that("multiple dCSTs use their own ordered pairs without dropping graph identities", {
+  a<-list(sample_ids=c("ab","ac","bc","unknown"),taxon_names=c("A","B","C"),
+    indices=rep(list(1:3),4),abundances=list(c(.8,.15,.05),c(.7,.1,.2),c(.1,.6,.3),c(.5,.2,.3)))
+  p<-data.frame(group=c("AB","AC","BC"),a=c("A","A","B"),b=c("B","C","C"))
+  x<-gflowui_dcst_coordinates(a,a$sample_ids,c("AB","AC","BC","other"),p)
+  expect_identical(x$vertex_id,a$sample_ids)
+  expect_equal(x$u[1:3],c(.15/.8,.2/.7,.3/.6))
+  expect_equal(x$rho[1:3],c(.05/.8,.1/.7,.1/.6))
+  expect_identical(x$phylotype_a,c("A","A","B",NA_character_))
+  expect_true(is.na(x$u[4]))
+  expect_equal(nrow(gflowui_dcst_coordinates(a,character(),character(),p)),0)
+})
+
+test_that("2D respects the shared multi-dCST mask and retains selections across coordinate modes", {
+  skip_if_not_installed("plotly")
+  root<-withr::local_tempdir()
+  records<-data.frame(vertex_id=c("x","y","z"),record_id=letters[1:3],dataset="Study")
+  pairs<-data.frame(group=c("AB","AC"),a="A",b=c("B","C"))
+  file<-file.path(root,"sources.rds");saveRDS(list(records=records,pairs=pairs),file)
+  a<-list(sample_ids=c("x","y","z"),taxon_names=c("A","B","C"),
+    indices=list(1:3,c(1L,3L,2L),1:3),abundances=list(c(.8,.15,.05),c(.6,.3,.1),c(.7,.2,.1)))
+  af<-file.path(root,"abundances.rds");saveRDS(a,af)
+  m<-shiny::reactiveVal(list(project_id="test",metadata=list(source_datasets=list(file=file),vertex_hover=list(abundances_file=af))))
+  v<-shiny::reactiveVal(list(vertex_ids=c("x","y","z"),sources=list(dcst_level2=list(values=c("AB","AC","unmapped"))),
+    graph_set=list(color_assets=list(categorical_palettes=list(dcst_level2=c(AB="#112233",AC="#445566"))))))
+  shown<-shiny::reactiveVal(1:3);click<-shiny::reactiveVal(NULL)
+  shiny::testServer(gflowui_source_datasets_server,args=list(manifest=m,view=v,visible=shown,click3d=click,
+    level=function()"dcst_level2",save_palette=function(p)NULL),{
+    session$setInputs(show=TRUE,coordinate_mode="abundance")
+    expect_setequal(visible_coords()$dcst,c("AB","AC"))
+    expect_identical(plot_colors()$colors,c("#112233","#445566"))
+    shown(2L);session$flushReact();expect_identical(visible_coords()$vertex_id,"y")
+    shown(1:2);session$flushReact();expect_setequal(visible_coords()$dcst,c("AB","AC"))
+    session$setInputs(`plotly_selected-within_dcst`='[{"key":"x"},{"key":"y"}]')
+    session$setInputs(coordinate_mode="homogeneous")
+    expect_setequal(selected(),c("x","y"))
+    expect_equal(visible_coords()$plot_x,c(.15/.8,.3/.6))
+    expect_equal(visible_coords()$plot_y,c(.05/.8,.1/.6))
+    expect_true(jsonlite::validate(output$plot))
+    expect_match(output$pair_note,"2 compositions in 2")
+    shown(integer());session$flushReact()
+    expect_equal(nrow(visible_coords()),0)
+    expect_true(jsonlite::validate(output$plot))
   })
 })

@@ -32,35 +32,58 @@ display filters. Clicking a cell adds a dataset–dCST intersection filter; use
 **Clear cross-table cell filter** to remove it. Existing filters still apply.
 The CSV download names its level, count unit and normalization.
 
-In **Within-dCST 2D**, enable **Show linked 2D view** and choose a pair. Its plot
-appears below the 3D graph, with both plots shortened to fit together. The pair
-is ordered as A then B in the displayed dCST label. Using original relative
-abundances, the coordinates are
+In **Within-dCST 2D**, enable **Show linked 2D view**. The plot appears below
+the 3D graph. The dCST checkboxes in Graphs now control both plots: several
+checked groups show their union in both, and no checks shows all groups.
+There is no separate single-pair selector. Level-1 filtering is also respected;
+each plotted point still uses the explicit pair of its level-2 dCST.
+The default 2D colors use the same dCST level and saved palette as Graphs.
+Source-dataset coloring remains an alternative. Legends are descriptive;
+use the shared checkbox table to filter both views.
+
+The pair is ordered as A then B in the dCST label. The **2D coordinates** menu
+provides two descriptions, always calculated from original relative abundances:
 
 \[
-t=\frac{x_B}{x_A+x_B},\qquad r=1-x_A-x_B.
+t=\frac{x_B}{x_A+x_B},\qquad r=1-x_A-x_B
 \]
 
-Here t is the fraction of B within the pair, and r is the combined abundance of
-all other phylotypes. They remain unchanged across graph, metric, homogeneous
-coordinate and embedding choices. These are compositional summaries, not
-metric-dependent arclength and distance from a fitted curve. Different residual
-communities can share the same coordinates.
+in relative-abundance mode, and
 
-The 2D plot shows members of the selected dCST that pass the current display
-filters, colored by source dataset. Its axes initially fit the plotted range;
-Plotly zoom and reset remain available. Click in either Plotly display, or use
-box/lasso selection in 2D. Orange rings identify the same composition IDs in
-both displays. Selection replaces the previous selection unless **Add to
-selection / toggle clicked points** is checked. A 3D click selects that point's
-pair when an explicit pair is available. **Show only linked selection in 3D**
-hides other points; clearing the selection restores the otherwise filtered
-view. Selection is session-local, follows IDs across views, and resets on a
-project change. It does not modify endpoint sets or save a new region.
+\[
+u=\frac{x_B}{x_A},\qquad
+\rho_A=\sqrt{\sum_{j\ne A,B}\left(\frac{x_j}{x_A}\right)^2}
+\]
 
-The coordinate CSV contains IDs, t, r, original A/B abundances, phylotype names,
-dCST label, source category and linked-selection status. Missing abundances and
-zero pair mass are omitted from the plotted/visible-coordinate export.
+in homogeneous-coordinate mode. Here t is the fraction of B within the pair;
+r is the total abundance outside the pair; u is position on the B axis in the
+A-based ratio chart; and rho is Euclidean distance to that axis. The pure pair
+has rho zero and u = t/(1-t). These homogeneous distances use Euclidean geometry
+in the ratio chart; neither description depends on a graph or embedding.
+
+Homogeneous coordinates require positive abundance of A. No pseudocount is
+introduced. Undefined points are counted in the panel and omitted from the 2D
+plot; their 3D membership is unchanged. The chart remains valid when A is not
+dominant, but then it lies outside the A-dominant face; the panel reports this
+case and the axes allow ratios above one. Missing/unsupported pair definitions
+are also counted. Different pairs can be displayed together: each point's hover
+identifies its dCST and its A and B phylotypes. This is a comparison of local
+pair charts, not a single shared taxon coordinate system across all dCSTs.
+
+Click in either Plotly display, or use box/lasso selection in 2D. Orange rings
+identify the same composition IDs. Selection replaces the previous selection
+unless **Add to selection / toggle clicked points** is checked. A 3D click no
+longer changes which dCSTs are included. Point selections survive changes of
+coordinate mode and embedding. **Show only linked selection in 3D** hides other
+points; the 2D plot follows the resulting visibility mask. Clearing the point
+selection restores the otherwise filtered view. Selection is session-local and
+resets on a project change. It does not modify endpoint sets or save a new region.
+
+The coordinate CSV includes IDs, both coordinate descriptions, original A/B
+abundances, phylotype names, dCST, A-dominance status, plotted coordinates, the
+chosen coordinate mode, source category and point-selection status. It contains
+the points currently plottable in the selected mode. Axis ranges initially fit
+the visible groups; Plotly zoom and reset remain available.
 
 There are 65 explicit two-phylotype groups and 14 other merged level-2 groups
 in the whole project. Single-phylotype, longer and unresolved labels are excluded
@@ -99,7 +122,12 @@ reconstruction, shared point selections, filtering, and color persistence.
 Existing dCST focus and atlas-color suites pass. The scene-update and linked-event JavaScript
 regressions pass (including repeated redraws without duplicate click handlers). Full-data server checks verified global HMP filtering (3,613
 vertices), local Li 4000 HMP–Li/Gardnerella intersection (68 vertices), and
-selection persistence across global/local navigation. Browser checks verify
+selection persistence across global/local navigation. The homogeneous extension
+also verifies exact binary-axis coordinates, residual Euclidean norms, zero A,
+ratios above one, pair-specific coordinates and palette matching. In Li 4000,
+selecting Li–Gardnerella and Li–crispatus yields the same 1,378 vertices in both
+plots and both coordinate systems; clearing the dCST filter restores all 4,000.
+Browser checks verify
 rendered tables, 2D point selection and its 3D highlight.
 
 The broader uniform-layout test's compiled-component comparison fails because

@@ -13,12 +13,18 @@ gflowui_source_datasets_ui <- function(id) {
 gflowui_within_dcst_ui <- function(id) {
   ns<-shiny::NS(id)
   shiny::tagList(shiny::checkboxInput(ns("show"),"Show linked 2D view",FALSE),
-    shiny::uiOutput(ns("pair_ui")),
+    shiny::selectInput(ns("coordinate_mode"),"2D coordinates",
+      c("Relative abundance (t, r)"="abundance","Homogeneous (xB/xA, distance to axis)"="homogeneous")),
+    shiny::selectInput(ns("color_mode"),"2D color by",
+      c("dCST (same level as Graphs)"="dcst","Source dataset"="dataset")),
+    shiny::p(class="gf-hint","The dCST checkboxes in Graphs control both plots. No checks shows all groups. Each level-2 dCST uses its own ordered phylotype pair (A, B); hover to identify it."),
+    shiny::textOutput(ns("pair_note")),
+    shiny::textOutput(ns("coordinate_note")),
     shiny::checkboxInput(ns("add"),"Add to selection / toggle clicked points",FALSE),
     shiny::checkboxInput(ns("only_selected"),"Show only linked selection in 3D",FALSE),
     shiny::actionButton(ns("clear_points"),"Clear linked selection"),
     shiny::textOutput(ns("selection_note")),
-    shiny::p(class="gf-hint","Click a point in either display, or box/lasso-select in 2D. Orange rings mark the same composition IDs in both displays. t = B / (A + B); r = 1 − A − B, using original relative abundances."),
+    shiny::p(class="gf-hint","Click a point in either display, or box/lasso-select in 2D. Orange rings mark the same composition IDs in both displays. Coordinates always use original relative abundances."),
     shiny::downloadButton(ns("download"),"Download 2D coordinates"))
 }
 
@@ -94,26 +100,49 @@ gflowui_source_datasets_server <- function(id, manifest, view, visible, click3d,
       counts<-vapply(p$group,function(g)sum(values==g,na.rm=TRUE),integer(1))
       p[order(-counts,p$group),,drop=FALSE]
     })
-    output$pair_ui<-shiny::renderUI({
-      p<-pairs();all<-unique(view()$sources$dcst_level2$values)
-      shiny::tagList(shiny::selectInput(session$ns("pair"),"Level-2 dCST / pair",choices=p$group,
-        selected=shiny::isolate(input$pair) %||% p$group[1]),
-        shiny::p(class="gf-hint",sprintf("%d groups have explicit two-phylotype definitions; %d other groups are unavailable. Only members of the chosen dCST are plotted.",nrow(p),length(setdiff(all,p$group)))))
-    })
-    pair <- shiny::reactive({
-      p<-pairs();at<-match(input$pair,p$group)
-      if(length(at)!=1L || is.na(at))return(NULL)
-      p[at,,drop=FALSE]
-    })
+    axes <- shiny::reactive(gflowui_within_axes(input$coordinate_mode))
     coordinates<-shiny::reactive({
-      p<-pair();shiny::req(!is.null(p))
-      st<-view();ids<-st$vertex_ids[which(st$sources$dcst_level2$values==p$group)]
-      a<-gflowui_vertex_hover_asset(manifest());shiny::req(a)
-      gflowui_pair_coordinates(a,ids,p$a,p$b)
+      st<-view();a<-gflowui_vertex_hover_asset(manifest());shiny::req(a)
+      shiny::req(length(st$sources$dcst_level2$values)==length(st$vertex_ids))
+      gflowui_dcst_coordinates(a,st$vertex_ids,st$sources$dcst_level2$values,pairs())
+    })
+    plot_rows<-shiny::reactive({
+      x<-coordinates();ids<-view()$vertex_ids[visible()]
+      x[x$vertex_id %in% ids,,drop=FALSE]
     })
     visible_coords<-shiny::reactive({
-      x<-coordinates();ids<-view()$vertex_ids[visible()]
-      x[x$vertex_id %in% ids & is.finite(x$t) & is.finite(x$r),,drop=FALSE]
+      x<-plot_rows();ax<-axes()
+      x$plot_x<-x[[ax$x]];x$plot_y<-x[[ax$y]]
+      x[is.finite(x$plot_x) & is.finite(x$plot_y),,drop=FALSE]
+    })
+    output$pair_note<-shiny::renderText({
+      x<-plot_rows();shown<-visible_coords()
+      undefined<-sum(is.na(x$phylotype_a))
+      sprintf("%d compositions in %d level-2 dCSTs shown. Of %d currently visible 3D vertices, %d lack an explicit pair; %d more have undefined coordinates.",
+        nrow(shown),length(unique(shown$dcst)),nrow(x),undefined,nrow(x)-nrow(shown)-undefined)
+    })
+    output$coordinate_note<-shiny::renderText({
+      if(identical(input$coordinate_mode,"homogeneous")) {
+        n<-sum(!visible_coords()$a_dominant,na.rm=TRUE)
+        paste0("Horizontal: xB/xA. Vertical: sqrt(sum of (xj/xA)^2 over j other than A and B). The pure pair is the horizontal axis. xA must be positive; no pseudocount is used.",
+          if(n) sprintf(" %d plotted points lie outside the A-dominant face, but their ratio chart is defined.",n) else "")
+      } else "Horizontal: t = xB/(xA+xB). Vertical: r = 1-xA-xB (other-phylotype abundance). The pair must have positive total abundance."
+    })
+    plot_colors<-shiny::reactive({
+      x<-visible_coords();st<-view()
+      if(identical(input$color_mode,"dataset")) {
+        cats<-gflowui_source_categories(asset()$records,x$vertex_id);p<-palette()
+      } else {
+        l<-level();if(!l %in% names(st$sources))l<-"dcst_level2"
+        cats<-as.character(st$sources[[l]]$values[match(x$vertex_id,st$vertex_ids)])
+        cats[is.na(cats)|!nzchar(cats)]<-"Unclassified"
+        p<-st$graph_set$color_assets$categorical_palettes[[l]]
+        fixed<-gflowui_explicit_categorical_palette(cats,p)
+        if(!is.null(fixed))p<-fixed$colors else {
+          lev<-sort(unique(cats));p<-stats::setNames(grDevices::hcl.colors(length(lev),"Dark 3"),lev)
+        }
+      }
+      list(categories=cats,colors=unname(p[cats]))
     })
     select_ids<-function(ids,toggle=FALSE) {
       ids<-unique(intersect(as.character(ids),view()$vertex_ids))
@@ -127,8 +156,6 @@ gflowui_source_datasets_server <- function(id, manifest, view, visible, click3d,
       if(!isTRUE(input$show))return()
       i<-suppressWarnings(as.integer(click3d()))
       st<-view();if(length(i)!=1L || !is.finite(i) || i<1 || i>length(st$vertex_ids))return()
-      g<-st$sources$dcst_level2$values[i]
-      if(g %in% pairs()$group)shiny::updateSelectInput(session,"pair",selected=g)
       select_ids(st$vertex_ids[i],TRUE)
     },ignoreInit=TRUE)
     for(event in c("plotly_click","plotly_selected")) local({
@@ -144,33 +171,44 @@ gflowui_source_datasets_server <- function(id, manifest, view, visible, click3d,
     })
     output$selection_note<-shiny::renderText({
       ids<-selected();st<-view();present<-sum(ids %in% st$vertex_ids[visible()])
-      sprintf("%d selected compositions; %d visible in this 3D view. Selection follows IDs across embeddings.",length(ids),present)
+      in2d<-if(isTRUE(input$show))sum(ids %in% visible_coords()$vertex_id) else 0L
+      sprintf("%d selected compositions; %d visible in 3D and %d in 2D. Selection follows IDs across embeddings.",length(ids),present,in2d)
     })
     if (requireNamespace("plotly",quietly=TRUE)) output$plot<-plotly::renderPlotly({
-      shiny::req(isTRUE(input$show));x<-visible_coords();p<-pair()
-      cats<-gflowui_source_categories(asset()$records,x$vertex_id)
-      cols<-unname(palette()[cats])
+      shiny::req(isTRUE(input$show));x<-visible_coords();ax<-axes();pc<-plot_colors()
+      cats<-pc$categories;cols<-pc$colors
+      hover<-paste0(htmltools::htmlEscape(x$vertex_id),"<br>dCST: ",htmltools::htmlEscape(x$dcst),
+        "<br>A: ",htmltools::htmlEscape(x$phylotype_a),"<br>B: ",htmltools::htmlEscape(x$phylotype_b),
+        "<br>",htmltools::htmlEscape(cats),"<br>",ax$x,"=",signif(x$plot_x,4),"; ",ax$y,"=",signif(x$plot_y,4))
       z<-plotly::plot_ly(source="within_dcst")
-      z<-plotly::add_trace(z,type="scatter",mode="markers",x=x$t,y=x$r,key=x$vertex_id,customdata=x$vertex_id,
-        text=paste0(x$vertex_id,"<br>",cats,"<br>t=",signif(x$t,4),"; r=",signif(x$r,4)),hoverinfo="text",
-        marker=list(size=6,color=cols),showlegend=FALSE)
-      s<-x[x$vertex_id %in% selected(),,drop=FALSE]
-      if(nrow(s))z<-plotly::add_trace(z,inherit=FALSE,type="scatter",mode="markers",x=s$t,y=s$r,
-        key=s$vertex_id,customdata=s$vertex_id,marker=list(size=11,color="#f97316",symbol="circle-open",line=list(width=2)),
+      lev<-unique(cats)
+      point_type<-if(nrow(x)>3000L)"scattergl" else "scatter"
+      if(!length(lev))z<-plotly::add_trace(z,type="scatter",mode="markers",x=numeric(),y=numeric(),showlegend=FALSE)
+      for(g in lev) {
+        ii<-which(cats==g)
+        z<-plotly::add_trace(z,type=point_type,mode="markers",x=x$plot_x[ii],y=x$plot_y[ii],
+          key=x$vertex_id[ii],customdata=x$vertex_id[ii],name=g,
+          text=hover[ii],hoverinfo="text",marker=list(size=6,color=cols[ii]),showlegend=length(lev)<=8)
+      }
+      ss<-x[x$vertex_id %in% selected(),,drop=FALSE]
+      if(nrow(ss))z<-plotly::add_trace(z,inherit=FALSE,type="scatter",mode="markers",x=ss$plot_x,y=ss$plot_y,
+        key=ss$vertex_id,customdata=ss$vertex_id,marker=list(size=11,color="#f97316",symbol="circle-open",line=list(width=2)),
         hoverinfo="skip",showlegend=FALSE)
-      z<-plotly::layout(z,dragmode="lasso",uirevision=p$group,
-        title=list(text=paste0("Within dCST: ",p$group),font=list(size=13)),
-        xaxis=list(title="t: fraction of B within the pair",range=c(0,min(1,max(.05,x$t,na.rm=TRUE)*1.04))),
-        yaxis=list(title="r: other-phylotype abundance",range=c(0,min(1,max(.05,x$r,na.rm=TRUE)*1.04))))
+      title<-if(identical(input$coordinate_mode,"homogeneous"))"Within-dCST homogeneous coordinates" else "Within-dCST abundance coordinates"
+      z<-plotly::layout(z,dragmode="lasso",uirevision=paste(input$coordinate_mode,view()$project_id,view()$set_id,paste(sort(unique(x$dcst)),collapse="|"),sep="|"),
+        title=list(text=title,font=list(size=13)),
+        legend=list(orientation="h",y=-.25,font=list(size=10),itemclick=FALSE,itemdoubleclick=FALSE),
+        xaxis=list(title=ax$xlabel,range=c(0,min(ax$cap,max(.05,x$plot_x,na.rm=TRUE)*1.04))),
+        yaxis=list(title=ax$ylabel,range=c(0,min(ax$cap,max(.05,x$plot_y,na.rm=TRUE)*1.04))))
       if(!nrow(x))z<-plotly::layout(z,annotations=list(list(x=.5,y=.5,xref="paper",yref="paper",
-        text="No members of this pair pass the current display filters.",showarrow=FALSE)))
+        text="No defined pair coordinates pass the current display filters.",showarrow=FALSE)))
       z<-plotly::event_register(plotly::event_register(z,"plotly_click"),"plotly_selected")
       # Namespace Plotly's event inputs so this module owns the linked selection.
       htmlwidgets::onRender(z,sprintf("function(el){window.gflowuiWithinMount(el,%s);}",jsonlite::toJSON(session$ns(""),auto_unbox=TRUE)))
     })
-    output$download<-shiny::downloadHandler(filename=function()"within-dcst-coordinates.csv",content=function(path){
-      x<-visible_coords();p<-pair();x$phylotype_a<-rep(p$a,nrow(x));x$phylotype_b<-rep(p$b,nrow(x))
-      x$dcst<-rep(p$group,nrow(x));x$selected<-x$vertex_id %in% selected()
+    output$download<-shiny::downloadHandler(filename=function()paste0("within-dcst-",input$coordinate_mode %||% "abundance",".csv"),content=function(path){
+      x<-visible_coords();x$coordinate_mode<-rep(input$coordinate_mode %||% "abundance",nrow(x))
+      x$selected<-x$vertex_id %in% selected()
       x$source_category<-gflowui_source_categories(asset()$records,x$vertex_id)
       utils::write.csv(x,path,row.names=FALSE)
     })
@@ -193,6 +231,6 @@ gflowui_source_datasets_server <- function(id, manifest, view, visible, click3d,
       idx
     },selected=selected,show=shiny::reactive(isTRUE(input$show)),
     only=shiny::reactive(isTRUE(input$show)&&isTRUE(input$only_selected)),
-    coordinates=coordinates,groups=groups,cell=cell)
+    coordinates=coordinates,visible_coordinates=visible_coords,groups=groups,cell=cell)
   })
 }

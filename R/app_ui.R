@@ -107,7 +107,7 @@ app_ui <- function() {
       shiny::uiOutput("workspace_view"),
       if (requireNamespace("plotly",quietly=TRUE)) shiny::conditionalPanel("input['source_datasets-show'] === true",
         shiny::div(class="gf-sidebar-panel",
-          shiny::p("Linked within-dCST coordinates. Points are colored by source dataset. Box/lasso or click to select; use the panel to clear or add to the selection."),
+          shiny::p("Linked within-dCST coordinates. The dCST selection in Graphs filters both views. Box/lasso or click to select points; coordinate and color options are in Within-dCST 2D."),
           plotly::plotlyOutput("source_datasets-plot",height="420px")))
     )
   )
