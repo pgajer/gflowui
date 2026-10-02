@@ -31,6 +31,18 @@ app_server <- function(input, output, session) {
     endpoint_state = shiny::reactive(shared_endpoint_sets$state()))
   active_manifest <- local_atlas$manifest
   output$atlas_context <- shiny::renderText(local_atlas$context())
+  gflowui_dropdown_defaults_server(input,output,session,atlas_base_manifest,
+    region=function()local_atlas$region()$id %||% "",
+    region_label=function()local_atlas$region()$label %||% "",
+    fields=function()current_graph_selection()$selector_fields %||% list(),
+    save=function(entries) {
+      payload<-load_or_init_active_manifest(active_project_context())
+      payload$manifest$defaults$dropdowns<-entries
+      was_dirty<-shiny::isolate(rv$project.dirty)
+      baseline<-shiny::isolate(rv$project.baseline.signature)
+      save_active_manifest(payload)
+      if(isTRUE(was_dirty)){rv$project.baseline.signature<-baseline;rv$project.dirty<-TRUE}
+    })
 
   embedding_comparison_active <- shiny::reactive(gflowui_ec_active(active_manifest()))
   embedding_comparison_state <- if (requireNamespace("plotly", quietly = TRUE) &&
@@ -12815,53 +12827,7 @@ app_server <- function(input, output, session) {
     shiny::showNotification("Method names saved.", type = "message")
   }, ignoreInit = TRUE)
 
-  shiny::observeEvent(input$set_reference_graph_inline, {
-    gs <- graph_structure_state()
-    if (!is.null(gs$error)) {
-      shiny::showNotification(gs$error, type = "error")
-      return()
-    }
 
-    set_id <- as.character(gs$set_id %||% "")
-    ref_k <- suppressWarnings(as.integer(gs$k_selected))
-    if (!nzchar(set_id) || !is.finite(ref_k)) {
-      shiny::showNotification("Select a valid data type and k value.", type = "error")
-      return()
-    }
-
-    ctx <- active_project_context()
-    if (is.null(ctx)) {
-      shiny::showNotification("Active project context not available.", type = "error")
-      return()
-    }
-
-    payload <- load_or_init_active_manifest(ctx)
-    defaults <- payload$manifest$defaults
-    defaults$reference_graph_set_id <- set_id
-    defaults$reference_k <- as.integer(ref_k)
-    defaults$graph_set_id <- set_id
-
-    sel_method <- as.character(input$graph_optimal_method %||% gs$optimal_selected %||% "")
-    lbl_idx <- match(sel_method, unname(gs$optimal_choices))
-    reason <- if (length(lbl_idx) > 0L && is.finite(lbl_idx[[1]])) names(gs$optimal_choices)[lbl_idx[[1]]] else ""
-    defaults$reference_reason <- if (nzchar(reason)) reason else NA_character_
-
-    payload$manifest$defaults <- defaults
-
-    ok <- tryCatch(save_active_manifest(payload), error = function(e) e)
-    if (inherits(ok, "error")) {
-      shiny::showNotification(
-        sprintf("Failed to save reference graph: %s", conditionMessage(ok)),
-        type = "error"
-      )
-      set_run_monitor_note(sprintf("Reference graph update failed: %s", conditionMessage(ok)))
-      return()
-    }
-
-    note <- sprintf("Reference graph set to %s @ k=%d.", set_id, as.integer(ref_k))
-    set_run_monitor_note(note)
-    shiny::showNotification(note, type = "message")
-  }, ignoreInit = TRUE)
 
   shiny::observeEvent(input$graph_optimal_show, {
     gs <- graph_structure_state()
@@ -15301,6 +15267,9 @@ app_server <- function(input, output, session) {
           choices = endpoint_choices,
           selected = settings_default_endpoint_run
         ),
+        shiny::hr(),
+        shiny::h5("Dropdown defaults"),
+        shiny::uiOutput("dropdown_defaults_overview"),
         shiny::hr(),
         shiny::h5("Project documentation"),
         shiny::actionButton("edit_project_provenance","Edit provenance / attach documents",class="btn-light"),

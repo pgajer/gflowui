@@ -1490,3 +1490,12 @@ body.gf-general-inspector-resizing {
 .gf-project-order-status { min-height: 1.5rem; margin-top: 0.6rem; font-size: 0.85rem; }
 
 .gf-project-drop-target { outline: 2px dashed var(--gf-teal); outline-offset: -2px; }
+
+/* Label menus keep default-setting actions beside their controls. */
+.gf-default-label { cursor: pointer; }
+.gf-default-label:hover, .gf-default-label:focus-visible { text-decoration: underline dotted; text-underline-offset: 4px; }
+.gf-default-label:focus-visible { outline: 2px solid #8b6914; outline-offset: 3px; }
+.gf-default-menu { position: fixed; z-index: 11000; min-width: 170px; max-width: min(360px, calc(100vw - 16px)); padding: 6px; background: #fffef8; color: #24363a; border: 1px solid #a9b1aa; border-radius: 9px; box-shadow: 0 5px 20px #0003; }
+.gf-default-menu-caption { padding: 5px 9px; font-size: .85em; overflow-wrap: anywhere; color: #58645b; }
+.gf-default-menu button { display: block; width: 100%; text-align: left; border: 0; border-radius: 5px; padding: 8px 10px; background: transparent; color: inherit; }
+.gf-default-menu button:hover, .gf-default-menu button:focus-visible { background: #f0eddc; outline: none; }

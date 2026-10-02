@@ -5,7 +5,7 @@ test_that("graphs without a neighbor parameter hide k controls but retain state"
   expect_match(html, 'id="graph_k"', fixed = TRUE)
   expect_match(html, 'display: none;', fixed = TRUE)
   expect_match(html, 'aria-hidden="true"', fixed = TRUE)
-  expect_match(html, 'Set Reference', fixed = TRUE)
+  expect_false(grepl('Set Reference',html,fixed=TRUE))
   expect_false(grepl('>k:</span>', html, fixed = TRUE))
   expect_false(grepl('Optimal k:', html, fixed = TRUE))
   expect_false(grepl('graph_optimal_method', html, fixed = TRUE))

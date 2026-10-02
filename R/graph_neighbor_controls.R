@@ -16,10 +16,7 @@ gflowui_graph_neighbor_controls <- function(graph_ui, show_reference = TRUE) {
     shiny::div(
       class = "gf-graph-row gf-graph-row-tight gf-graph-row-k",
       if (enabled) shiny::span(class = "gf-graph-row-label", "k:"),
-      if (enabled) selector else shiny::div(style = "display: none;", `aria-hidden` = "true", selector),
-      if (show_reference) shiny::actionButton("set_reference_graph_inline", "Set Reference",
-        title = "Save the selected graph as the project reference and default graph set.",
-        class = "btn-light btn-sm gf-btn-inline")
+      if (enabled) selector else shiny::div(style = "display: none;", `aria-hidden` = "true", selector)
     ),
     if (enabled) shiny::div(
       class = "gf-graph-row gf-graph-row-tight gf-graph-row-optimal",

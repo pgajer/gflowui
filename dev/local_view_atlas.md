@@ -89,3 +89,27 @@ existing 10D routes can be imported, but new jobs currently fit directly in 3D.
 Validation: `tests/testthat/test-local-view-atlas.R`, with related endpoint-set,
 dCST-focus, graph-neighbor-control and project-Trash tests. The research design
 and registration script maintain the concrete comb-V3V4-tx deployment.
+
+## Dropdown defaults
+
+Click a persistent dropdown's label to open Set as Default / Cancel. Defaults are
+saved immediately in the registered project's `defaults$dropdowns`, separately
+from reference-graph settings. Local-region choices have their own scope; saving
+Data region itself applies at project level. Graph selector dependencies come
+from the generic selector schema, so defaults only apply in compatible contexts.
+Invalid or unavailable saved choices are skipped. Settings → Dropdown defaults
+lists overrides and can reset one or all without changing current selections.
+The explicit reference graph remains configurable in Settings.
+
+The generic client discovers labeled dropdowns in the workflow. Temporary job,
+revision-parent and anchor-from-endpoint selectors are excluded. A manifest may
+add exclusions with `metadata$dropdown_defaults$exclude` or declare additional
+input-ID dependencies with `metadata$dropdown_defaults$dependencies`. No project
+name or filesystem path is used. Defaults apply once per project/region/dependency
+context in a session; normal subsequent selection remains under user control.
+Labels support keyboard activation; Escape or Cancel closes the menu.
+
+Defaults validation: focused storage/scope/reset tests, existing startup and graph
+control tests, and a live save → fresh-session restore → Settings reset cycle.
+The cycle restored a different embedding and preserved the reference graph and
+all pre-existing defaults; its temporary override was removed afterward.
