@@ -17,7 +17,11 @@ test_that("Endpoint Layout is nested in Endpoints and retains its open state on 
     open_project("layout")
     session$flushReact()
     panels <- function() {
-      html <- htmltools::renderTags(output$workflow_controls)$html
+      # The mounted shell contains stable output slots; inspect their source
+      # controls rather than requiring every control in the shell markup.
+      model <- workflow_controls_model()
+      html <- htmltools::renderTags(do.call(bslib::accordion,
+        c(model$panels, list(open=model$open))))$html
       strsplit(html, '<div class="accordion-item"', fixed = TRUE)[[1L]][-1L]
     }
     panel <- function(id) {

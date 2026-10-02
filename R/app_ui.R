@@ -90,6 +90,7 @@ app_ui <- function() {
       shiny::includeScript(system.file("app/www/project-order.js", package = "gflowui")),
       shiny::includeScript(system.file("app/www/dropdown-defaults.js", package = "gflowui")),
       shiny::includeScript(system.file("app/www/graph-selection.js", package = "gflowui")),
+      shiny::includeScript(system.file("app/www/lazy-edges.js", package = "gflowui")),
       shiny::includeScript(system.file("app/www/scene-updates.js", package = "gflowui")),
       if (nzchar(embedding.css.path)) shiny::includeCSS(embedding.css.path),
       if (nzchar(embedding.js.path)) shiny::includeScript(embedding.js.path),

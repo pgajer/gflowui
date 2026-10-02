@@ -101,8 +101,36 @@ test_that("browser selection and scene protocols reject stale events", {
   node <- Sys.which("node")
   skip_if(!nzchar(node), "Node is unavailable")
   withr::local_dir(test_path("..", ".."))
-  for (script in c("graph-selection-regression.js", "scene-updates-regression.js")) {
+  for (script in c("graph-selection-regression.js", "scene-updates-regression.js", "lazy-edges-regression.js")) {
     result <- system2(node, file.path("tests", "testthat", script), stdout=TRUE, stderr=TRUE)
     expect_null(attr(result, "status"), info=paste(result, collapse="\n"))
   }
+})
+
+
+test_that('edge requests are limited to the current scene and generation', {
+  shiny::testServer(function(input,output,session){
+    state<-shiny::reactiveValues(key='current',scope='a')
+    sent<-new.env();sent$messages<-list()
+    session$sendCustomMessage<-function(type,message){sent$messages[[length(sent$messages)+1L]]<-list(type=type,message=message)}
+    widget<-shiny::reactive(plotly::plot_ly(x=1,y=1,z=1,type='scatter3d',mode='lines',
+      meta=list(gflowui_edges=list(key=state$key))))
+    registry<-list(get=function(key)matrix(c(1L,2L),ncol=2))
+    gflowui_scene_server(input,output,session,widget,
+      function()list(scope=state$scope,selection_seq=0,set_id='g'),edges=registry)
+  },{
+    session$flushReact()
+    session$setInputs(gflowui_edge_request=list(generation=1L,key='unknown',request_id=1))
+    expect_length(sent$messages,0)
+    session$setInputs(gflowui_edge_request=list(generation=99L,key='current',request_id=2))
+    expect_length(sent$messages,0)
+    session$setInputs(gflowui_edge_request=list(generation=1L,key='current',request_id=3))
+    expect_equal(sent$messages[[1]]$type,'gflowuiEdgeData')
+    expect_equal(sent$messages[[1]]$message$a,1L)
+    expect_equal(sent$messages[[1]]$message$b,2L)
+    session$setInputs(gflowui_scene_mounted=list(generation=1L,revision=1L))
+    state$key<-'replacement';session$flushReact();before<-length(sent$messages)
+    session$setInputs(gflowui_edge_request=list(generation=1L,key='current',request_id=4))
+    expect_length(sent$messages,before)
+  })
 })

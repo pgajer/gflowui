@@ -27,7 +27,7 @@ gflowui_scene_delta <- function(old, new) {
   list(kind='full',data=new$data,layout=new$layout,config=new$config)
 }
 
-gflowui_scene_server <- function(input,output,session,widget,context) {
+gflowui_scene_server <- function(input,output,session,widget,context,edges=NULL) {
   boot <- shiny::reactiveVal(NULL); generation <- 0L; revision <- 0L
   active_scope <- NULL; previous <- NULL; sent_revision <- 0L
   pending <- NULL
@@ -63,7 +63,7 @@ gflowui_scene_server <- function(input,output,session,widget,context) {
         scope=ctx$scope,selection_seq=ctx$selection_seq,set_id=ctx$set_id)))
       previous <<- snap;sent_revision <<- revision;pending <<- NULL
     }
-  })
+  }, priority=-1000)
   shiny::observeEvent(input$gflowui_scene_mounted,{
     m<-input$gflowui_scene_mounted
     if(!identical(as.integer(m$generation),generation))return()
@@ -77,6 +77,17 @@ gflowui_scene_server <- function(input,output,session,widget,context) {
       previous<<-pending$snapshot;sent_revision<<-pending$revision;pending<<-NULL
     }
   })
+  shiny::observeEvent(input$gflowui_edge_request, {
+    m <- input$gflowui_edge_request
+    if(!is.list(m) || !identical(as.integer(m$generation),generation) ||
+       is.null(edges) || length(m$key)!=1L || !is.character(m$key) ||
+       !m$key %in% gflowui_scene_edge_keys(previous)) return()
+    pairs <- edges$get(m$key)
+    response <- list(generation=generation,key=m$key,request_id=m$request_id)
+    if(is.null(pairs)) response$error <- "Edge data expired; select the layout again."
+    else {response$a<-as.integer(pairs[,1]);response$b<-as.integer(pairs[,2])}
+    session$sendCustomMessage('gflowuiEdgeData',response)
+  })
   shiny::observeEvent(input$gflowui_scene_resync,{
     m<-input$gflowui_scene_resync
     if(!identical(as.integer(m$generation),generation)||is.null(previous))return()
@@ -85,4 +96,9 @@ gflowui_scene_server <- function(input,output,session,widget,context) {
       list(generation=generation,revision=revision,scope=active_scope,
         selection_seq=ctx$selection_seq,set_id=ctx$set_id)))
   })
+}
+
+# Keys are checked against the current scene, not accepted as asset paths.
+gflowui_scene_edge_keys <- function(snapshot) {
+  unique(unlist(lapply(snapshot$data,function(t)t$meta$gflowui_edges$key),use.names=FALSE))
 }

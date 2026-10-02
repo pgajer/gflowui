@@ -1,0 +1,40 @@
+const fs=require('fs'),vm=require('vm'),assert=require('assert');
+const handlers={},requests=[];let queue=Promise.resolve();
+const vertices={meta:{gflowui_vertices:true},type:'scatter3d',mode:'markers',customdata:[1,2,3],x:[10,20,30],y:[11,21,31],z:[12,22,32]};
+const labels={type:'scatter3d',mode:'markers+text',customdata:[1],x:[999],y:[999],z:[999]};
+const edge={type:'scatter3d',mode:'lines',meta:{gflowui_edges:{key:'graph-a'}},visible:'legendonly',x:[10],y:[11],z:[12]};
+const plot={data:[vertices,labels,edge],isConnected:true,dataset:{},on:(k,f)=>handlers[k]=f,removeListener:()=>{}};
+const state={plot,generation:1,camera:{eye:{x:2,y:3,z:4}}};
+const sandbox={window:{},Shiny:{setInputValue:(k,v)=>requests.push(v)},
+ Plotly:{update:async(p,d,l,indices)=>indices.forEach((ix,j)=>Object.keys(d).forEach(k=>{p.data[ix][k]=d[k][j];}))}};
+vm.runInNewContext(fs.readFileSync('inst/app/www/lazy-edges.js','utf8'),sandbox);
+const lib=sandbox.window.gflowuiLazyEdges;
+const controller=lib.create(()=>state,fn=>{queue=queue.then(fn);});
+(async()=>{
+ controller.mount(plot,1);await queue;assert.equal(requests.length,0);
+ assert.deepEqual(Array.from(lib.points(plot.data).get(1)),[10,11,12]);
+ assert.equal(lib.points([labels]).size,0);
+ assert.equal(JSON.parse(plot.dataset.edgeLayers)[0].segments,0);
+ assert.equal(handlers.plotly_legendclick({curveNumber:2}),false);await queue;
+ assert.equal(requests.length,1);assert.equal(edge.x.length,1);
+ controller.receive({generation:1,key:'graph-a',request_id:1,a:[1,2],b:[2,3]});await queue;
+ assert.deepEqual(Array.from(edge.x),[10,20,null,20,30,null]);
+ let indices=[0],coords=[{x:[100,200,300],y:[101,201,301],z:[102,202,302]}];
+ controller.patch(plot.data,indices,coords);assert.deepEqual(indices,[0,2]);
+ assert.deepEqual(Array.from(coords[1].x),[100,200,null,200,300,null]);assert.equal(requests.length,1);
+ const filtered=controller.prepare([{...vertices,customdata:[1,2],x:[10,20],y:[11,21],z:[12,22]}, {...edge}]);
+ assert.deepEqual(Array.from(filtered[1].x),[10,20,null]);assert.equal(filtered[1].visible,true);
+ handlers.plotly_legendclick({curveNumber:2});await queue;
+ assert.equal(edge.visible,'legendonly');assert.equal(edge.x.length,1);
+ handlers.plotly_legendclick({curveNumber:2});await queue;assert.equal(requests.length,1);
+ // Graph replacement requires different pairs. A late response cannot reveal a hidden layer.
+ plot.data[2]={...edge,meta:{gflowui_edges:{key:'graph-b'}},visible:'legendonly'};
+ controller.prepare(plot.data);controller.after();handlers.plotly_legendclick({curveNumber:2});await queue;
+ assert.equal(requests.length,2);handlers.plotly_legendclick({curveNumber:2});await queue;
+ controller.receive({generation:1,key:'graph-b',request_id:2,a:[1],b:[3]});await queue;
+ assert.equal(plot.data[2].visible,'legendonly');assert.equal(plot.data[2].x.length,1);
+ state.generation=2;controller.mount(plot,2);await queue;
+ controller.receive({generation:1,key:'graph-b',request_id:2,a:[2],b:[3]});await queue;
+ assert.equal(plot.data[2].visible,'legendonly');
+ console.log('Lazy edge regression passed');
+})().catch(e=>{console.error(e);process.exitCode=1;});

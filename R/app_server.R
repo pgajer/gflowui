@@ -550,6 +550,7 @@ app_server <- function(input, output, session) {
   graph_selector_intent <- shiny::reactiveVal(NULL)
   view_asset_cache <- gflowui_lru_cache(8L, 96 * 1024^2)
   view_hover_cache <- gflowui_hover_cache()
+  view_edge_registry <- gflowui_edge_registry()
   current_graph_selection <- shiny::reactive({
     if (!isTRUE(rv$project.active)) {
       return(list(
@@ -10902,6 +10903,7 @@ app_server <- function(input, output, session) {
             z = plot_data$z,
             key = plot_data$vertex,
             customdata = plot_data$vertex,
+            meta = list(gflowui_vertices=TRUE),
             text = sprintf("vertex=%d", plot_data$vertex),
             hoverinfo = "text",
             marker = list(
@@ -10970,6 +10972,7 @@ app_server <- function(input, output, session) {
               z = plot_data$z[sel],
               key = plot_data$vertex[sel],
               customdata = plot_data$vertex[sel],
+              meta = list(gflowui_vertices=TRUE),
               name = lvl,
               legendgroup = lvl,
               text = sprintf("vertex=%d<br>%s=%s", plot_data$vertex[sel], src$label, lvl),
@@ -11045,6 +11048,7 @@ app_server <- function(input, output, session) {
             z = plot_data$z,
             key = plot_data$vertex,
             customdata = plot_data$vertex,
+            meta = list(gflowui_vertices=TRUE),
             text = sprintf(
               "vertex=%d<br>%s=%s",
               plot_data$vertex,
@@ -11477,7 +11481,8 @@ app_server <- function(input, output, session) {
       }
 
       p <- gflowui_add_saved_edge_overlays(
-        p, coords, idx, st$graph_set$layout_assets$edge_overlays_file)
+        p, coords, idx, st$graph_set$layout_assets$edge_overlays_file,
+        registry=view_edge_registry, vertex_ids=st$vertex_ids)
 
       subject_rows <- if (is.data.frame(subject_overlay$rows)) subject_overlay$rows else empty_subject_sample_rows()
       if (nrow(subject_rows) > 0L) {
@@ -11618,6 +11623,7 @@ app_server <- function(input, output, session) {
       p
     })
     gflowui_scene_server(input,output,session,reference_plot_widget,
+      edges=view_edge_registry,
       context=function()list(scope=graph_selector_scope(),
         selection_seq=graph_selector_intent()$seq %||% 0,
         set_id=current_graph_selection()$set_id %||% ""))

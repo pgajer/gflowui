@@ -2,6 +2,8 @@
   'use strict';
   let plot=null, generation=0, revision=0, chain=Promise.resolve(), currentIntent=null, resyncPending=false, timedIntent=null, sceneCamera=null;
   const array=x=>Array.isArray(x)?x:x==null?[]:[x];
+  const enqueue=fn=>{chain=chain.catch(()=>{}).then(fn);};
+  const edges=window.gflowuiLazyEdges&&window.gflowuiLazyEdges.create(()=>({plot:plot,generation:generation,camera:sceneCamera||(plot&&plot._fullLayout&&plot._fullLayout.scene&&plot._fullLayout.scene.camera)}),enqueue);
   document.addEventListener('gflowui:selection',e=>{currentIntent=e.detail;});
   function finished(m,kind,start) {
     if(!plot||generation!==m.generation)return;
@@ -32,9 +34,12 @@
     });
     if(!document.getElementById('gflowui_scene_timing')){const node=document.createElement('script');node.type='application/json';node.id='gflowui_scene_timing';document.body.appendChild(node);}
     Shiny.setInputValue('gflowui_scene_mounted',m,{priority:'event'});
+    if(edges)edges.mount(el,m.generation);
     finished(m,'initial',performance.now());
   }};
-  $(function(){Shiny.addCustomMessageHandler('gflowuiSceneUpdate',function(m){
+  $(function(){
+    if(edges)Shiny.addCustomMessageHandler('gflowuiEdgeData',edges.receive);
+    Shiny.addCustomMessageHandler('gflowuiSceneUpdate',function(m){
     // Serialize Plotly promises. Coordinates carry a base revision: never apply
     // them to the wrong trace structure after a full update or canvas remount.
     chain=chain.catch(()=>{}).then(async function(){
@@ -51,15 +56,19 @@
       try {
         if(m.kind==='coordinates') {
           const coords=array(m.coordinates),indices=array(m.indices);
+          if(edges)edges.patch(target.data,indices,coords);
           if(indices.length)await Plotly.update(target,{x:coords.map(t=>array(t.x)),y:coords.map(t=>array(t.y)),z:coords.map(t=>array(t.z))},camera?{'scene.camera':JSON.parse(JSON.stringify(camera))}:{},indices);
         } else if(m.kind==='full') {
           const layout=m.layout||{};
           if(camera){layout.scene=layout.scene||{};layout.scene.camera=JSON.parse(JSON.stringify(camera));}
           const data=array(m.data).map(t=>{['x','y','z'].forEach(k=>{if(k in t)t[k]=array(t[k]);});return t;});
+          if(edges)edges.prepare(data);
           await Plotly.react(target,data,layout,m.config);
         }
         if(target!==plot||m.generation!==generation)return;
-        revision=m.revision;finished(m,m.kind,start);
+        revision=m.revision;
+        if(edges)edges.after();
+        finished(m,m.kind,start);
       } catch(error) {
         console.warn('gflowui scene update failed; requesting a complete scene.',error);
         Shiny.setInputValue('gflowui_scene_resync',{generation:generation,revision:m.revision},{priority:'event'});
