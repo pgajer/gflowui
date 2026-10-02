@@ -4209,13 +4209,15 @@ app_server <- function(input, output, session) {
     if (!is.list(ctx)) {
       return("")
     }
-    sprintf("%s|%s", ctx$project_id, ctx$graph_set_id)
+    shared <- shared_endpoint_sets$state()
+    paste(ctx$project_id, ctx$graph_set_id, shared$info$scope$key, shared$set$id, sep="|")
   })
 
+  last_endpoint_context_key <- NULL
   shiny::observeEvent(endpoint_context_key(), {
-    if (!nzchar(endpoint_context_key())) {
-      return()
-    }
+    key <- endpoint_context_key()
+    if (!nzchar(key) || identical(key,last_endpoint_context_key)) return()
+    last_endpoint_context_key <<- key
     endpoint_overlay_selection(character(0))
     endpoint_autoselect_done(FALSE)
     endpoint_dataset_load_counts(structure(integer(0), names = character(0)))
@@ -4616,6 +4618,12 @@ app_server <- function(input, output, session) {
       return(invisible(FALSE))
     }
 
+    r <- local_atlas$region()
+    if(!is.null(r) && !reference_view_state()$vertex_ids[vid] %in% r$vertex_ids) {
+      shiny::showNotification("Choose a vertex within this region's saved membership.",type="warning")
+      return(invisible(FALSE))
+    }
+
     st <- endpoint_panel_state()
     suggestion <- endpoint_label_profile_suggestion(vid, panel_state = st)
     suggested_label <- as.character(suggestion$label %||% "")
@@ -4633,7 +4641,7 @@ app_server <- function(input, output, session) {
       source_type = "manual",
       source_dataset_id = source_dataset_id
     )
-    save_working_endpoint_state(updated, ctx = ctx)
+    if (!isTRUE(save_working_endpoint_state(updated, ctx = ctx))) return(invisible(FALSE))
     endpoint_overlay_selection(character(0))
     endpoint_show_working_set(TRUE)
 
@@ -5069,6 +5077,19 @@ app_server <- function(input, output, session) {
   endpoint_ids_cache <- new.env(parent = emptyenv())
   shared_endpoint_sets <- gflowui_endpoint_sets_server("shared_endpoint_sets",
     context = current_endpoint_graph_context, manifest = active_manifest,
+    region=local_atlas$region, regions=local_atlas$regions,
+    style_inputs=shiny::reactive(list(
+      label_size=parse_scale_multiplier(input$endpoint_label_size %||% 1,default=1),
+      label_offset=as.character(input$endpoint_label_offset %||% "1x"),
+      marker_size=as.character(input$endpoint_marker_size %||% "1x"),
+      marker_color=as.character(input$endpoint_marker_color %||% "#ef4444"))),
+    apply_style=function(x) {
+      for(id in c("endpoint_label_size","endpoint_label_offset","endpoint_marker_size","endpoint_marker_color")) shiny::freezeReactiveValue(input,id)
+      shiny::updateSliderInput(session,"endpoint_label_size",value=x$label_size)
+      shiny::updateSelectInput(session,"endpoint_label_offset",selected=x$label_offset)
+      shiny::updateSelectInput(session,"endpoint_marker_size",selected=x$marker_size)
+      shiny::updateSelectInput(session,"endpoint_marker_color",selected=x$marker_color)
+    },
     view = function() reference_view_state(),
     visible_vertices = function() reference_renderer_state()$keep_idx %||%
       seq_along(reference_view_state()$vertex_ids),
@@ -5093,7 +5114,9 @@ app_server <- function(input, output, session) {
   load_working_endpoint_state <- function(ctx) shared_endpoint_sets$load(ctx)
   save_working_endpoint_state <- function(state, ctx) {
     state$last_session_id <- endpoint_session_id
-    shared_endpoint_sets$save(state, ctx)
+    tryCatch(shared_endpoint_sets$save(state, ctx),error=function(e) {
+      shiny::showNotification(conditionMessage(e),type="error"); invisible(FALSE)
+    })
   }
 
   working_endpoint_state_from_dataset <- function(row_df) {
@@ -5164,6 +5187,16 @@ app_server <- function(input, output, session) {
   }
 
   save_working_endpoint_snapshot <- function() {
+    if (!is.null(local_atlas$region())) {
+      return(tryCatch({
+        snapshot <- shared_endpoint_sets$snapshot()
+        shiny::showNotification("Saved a regional snapshot in the Endpoint set selector.",type="message")
+        snapshot
+      }, error=function(e) {
+        shiny::showNotification(conditionMessage(e),type="warning")
+        list(ok=FALSE)
+      }))
+    }
     st <- endpoint_panel_state()
     working <- if (is.list(st)) st$working else NULL
     ctx <- current_endpoint_graph_context()
@@ -5267,6 +5300,7 @@ app_server <- function(input, output, session) {
       rows <- rows[!duplicated(as.character(rows$dataset_id)), , drop = FALSE]
     }
 
+    if (!is.null(local_atlas$region())) rows <- data.frame()
     meta <- read_endpoint_dataset_meta(ctx)
     working <- load_working_endpoint_state(ctx = ctx)
     working_state_exists <- isTRUE(attr(working, "state_exists", exact = TRUE))
@@ -6074,6 +6108,8 @@ app_server <- function(input, output, session) {
 
     vertices_all <- sort(unique(suppressWarnings(as.integer(vertices_all))))
     vertices_all <- vertices_all[is.finite(vertices_all) & vertices_all > 0L]
+    r <- local_atlas$region()
+    if(!is.null(r)) vertices_all <- intersect(vertices_all,which(reference_view_state()$vertex_ids %in% r$vertex_ids))
     list(vertices = vertices_all, labels = label_lookup)
   })
 
@@ -10361,15 +10397,15 @@ app_server <- function(input, output, session) {
     if (!component_mode %in% c("all", "lcc")) {
       component_mode <- "all"
     }
-    endpoint_label_size <- parse_scale_multiplier(input$endpoint_label_size %||% "1x", default = 1)
+    endpoint_label_size <- parse_scale_multiplier(shared_endpoint_sets$display()$label_size %||% "1x", default = 1)
     if (!is.finite(endpoint_label_size) || endpoint_label_size <= 0) {
       endpoint_label_size <- 1
     }
-    endpoint_label_offset <- parse_scale_multiplier(input$endpoint_label_offset %||% "1x", default = 1)
+    endpoint_label_offset <- parse_scale_multiplier(shared_endpoint_sets$display()$label_offset %||% "1x", default = 1)
     if (!is.finite(endpoint_label_offset) || endpoint_label_offset < 0) {
       endpoint_label_offset <- 1
     }
-    endpoint_marker_size <- parse_scale_multiplier(input$endpoint_marker_size %||% "1x", default = 1)
+    endpoint_marker_size <- parse_scale_multiplier(shared_endpoint_sets$display()$marker_size %||% "1x", default = 1)
     if (!is.finite(endpoint_marker_size) || endpoint_marker_size <= 0) {
       endpoint_marker_size <- 1
     }
@@ -10384,7 +10420,7 @@ app_server <- function(input, output, session) {
       "Pink" = "#ec4899",
       "Black" = "#111827"
     )
-    endpoint_marker_color <- tolower(trimws(as.character(input$endpoint_marker_color %||% "#ef4444")))
+    endpoint_marker_color <- tolower(trimws(as.character(shared_endpoint_sets$display()$marker_color %||% "#ef4444")))
     palette_values <- tolower(unname(endpoint_marker_palette))
     if (!(endpoint_marker_color %in% palette_values)) {
       endpoint_marker_color <- "#ef4444"
@@ -11209,31 +11245,13 @@ app_server <- function(input, output, session) {
           )
       }
 
+      endpoint_annotations <- list()
       label_idx <- which(nzchar(ep_label_text))
       if (length(label_idx) > 0L) {
-        label_xyz <- endpoint_label_positions(
-          coords = coords,
-          endpoint_idx = ep[label_idx],
-          offset_mult = endpoint_label_offset
-        )
-        if (!is.matrix(label_xyz) || nrow(label_xyz) != length(label_idx)) {
-          label_xyz <- coords[ep[label_idx], 1:3, drop = FALSE]
-        }
-        p <- p %>%
-          plotly::add_trace(
-            type = "scatter3d",
-            mode = "text",
-            x = label_xyz[, 1],
-            y = label_xyz[, 2],
-            z = label_xyz[, 3],
-            key = ep[label_idx],
-            customdata = ep[label_idx],
-            text = ep_label_text[label_idx],
-            textposition = "top center",
-            hoverinfo = "skip",
-            showlegend = FALSE,
-            textfont = list(size = max(8, 12 * endpoint_label_size), color = "#111827")
-          )
+        label_xyz <- endpoint_label_positions(coords,ep[label_idx],endpoint_label_offset)
+        if (!is.matrix(label_xyz) || nrow(label_xyz) != length(label_idx))
+          label_xyz <- coords[ep[label_idx],1:3,drop=FALSE]
+        endpoint_annotations <- gflowui_endpoint_annotations(label_xyz,ep_label_text[label_idx],endpoint_label_size)
       }
 
       arm_overlay <- arm_overlay_active()
@@ -11592,6 +11610,7 @@ app_server <- function(input, output, session) {
           scene = {
             sc <- list(
               uirevision = "reference-scene",
+              annotations = endpoint_annotations,
               aspectmode = if (identical(
                 st$graph_set$layout_assets$coordinate_normalization, "uniform"
               )) "data" else "auto",
@@ -13150,6 +13169,9 @@ app_server <- function(input, output, session) {
       current <- gflowui_embedding_endpoint_frame(reference_renderer_state()$st)
       if (is.null(current) || !identical(current$key, detection$key))
         stop("The embedding changed. Detect candidates again.")
+      r <- local_atlas$region()
+      if (!is.null(r) && any(!reference_view_state()$vertex_ids[vertices] %in% r$vertex_ids))
+        stop("Some candidates are outside this region. Select candidates within its saved membership.")
       panel <- endpoint_panel_state()
       working <- panel$working %||% empty_working_endpoint_state(ctx=ctx)
       existing <- working$rows$vertex
@@ -13166,7 +13188,7 @@ app_server <- function(input, output, session) {
           working$rows$manually_added[hit] <- FALSE
         }
       }
-      save_working_endpoint_state(working,ctx=ctx)
+      if (!isTRUE(save_working_endpoint_state(working,ctx=ctx))) stop("The endpoint set could not be saved.")
       endpoint_show_working_set(TRUE)
     })
 
@@ -14677,7 +14699,7 @@ app_server <- function(input, output, session) {
                     label = NULL,
                     min = 0.4,
                     max = 3.0,
-                    value = parse_scale_multiplier(input$endpoint_label_size %||% 1, default = 1),
+                    value = parse_scale_multiplier(shared_endpoint_sets$display()$label_size %||% 1, default = 1),
                     step = 0.1,
                     width = "205px"
                   ),
@@ -14685,7 +14707,7 @@ app_server <- function(input, output, session) {
                     class = "gf-graph-dims",
                     sprintf(
                       "%.1fx",
-                      parse_scale_multiplier(input$endpoint_label_size %||% 1, default = 1)
+                      parse_scale_multiplier(shared_endpoint_sets$display()$label_size %||% 1, default = 1)
                     )
                   )
                 ),
@@ -14705,7 +14727,7 @@ app_server <- function(input, output, session) {
                         "3.50x", "4x", "4.50x", "5x"
                       )
                     ),
-                    selected = as.character(input$endpoint_label_offset %||% "1x"),
+                    selected = as.character(shared_endpoint_sets$display()$label_offset %||% "1x"),
                     width = "170px"
                   )
                 ),
@@ -14719,7 +14741,7 @@ app_server <- function(input, output, session) {
                       c("0.75x", "1x", "1.25x", "1.50x", "2x", "2.50x", "3x"),
                       c("0.75x", "1x", "1.25x", "1.50x", "2x", "2.50x", "3x")
                     ),
-                    selected = as.character(input$endpoint_marker_size %||% "1x"),
+                    selected = as.character(shared_endpoint_sets$display()$marker_size %||% "1x"),
                     width = "170px"
                   )
                 ),
@@ -14740,7 +14762,7 @@ app_server <- function(input, output, session) {
                       "Pink" = "#ec4899",
                       "Black" = "#111827"
                     ),
-                    selected = as.character(input$endpoint_marker_color %||% "#ef4444"),
+                    selected = as.character(shared_endpoint_sets$display()$marker_color %||% "#ef4444"),
                     width = "170px"
                   )
                 )

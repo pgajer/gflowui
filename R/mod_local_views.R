@@ -266,7 +266,7 @@ gflowui_local_views_server <- function(id, manifest, view_state, selected_vertex
       },error=function(e)status(conditionMessage(e)))
     })
     list(form=shiny::reactive({v<-shiny::reactiveValuesToList(input);v$calculation<-calculation$form();v}), manifest=shiny::reactive(gflowui_atlas_manifest(manifest(),region(),view_id(),parent_set())),
-         region=region, preview=shiny::reactive(if(identical(view_id(),"__preview__")) region() else NULL),
+         region=region, regions=regions, preview=shiny::reactive(if(identical(view_id(),"__preview__")) region() else NULL),
          only_members=shiny::reactive(isTRUE(input$only_members)), context=shiny::reactive({
            r<-region(); if(is.null(r)) "Whole dataset" else paste(r$label, if(identical(view_id(),"__preview__")) "— parent preview" else "— local fitted view")
          }))

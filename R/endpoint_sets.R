@@ -55,6 +55,8 @@ gflowui_endpoint_set_update <- function(set, state, ids) {
   if (anyNA(rows$vertex) || any(rows$vertex < 1L | rows$vertex > length(ids)))
     stop("An endpoint does not belong to the current graph.")
   rows$vertex_id <- ids[rows$vertex]
+  if (!is.null(set$membership_ids) && any(!rows$vertex_id %in% set$membership_ids))
+    stop("Choose endpoints within this region's saved membership.")
   old <- set$state$rows
   absent <- old[!old$vertex_id %in% ids, , drop = FALSE]
   # Edits to a subset cannot discard endpoints outside that subset.
@@ -108,4 +110,55 @@ gflowui_endpoint_sets_migrate <- function(store, entries) {
     store$migrated <- c(store$migrated, entry$key)
   }
   store
+}
+
+# A region revision owns annotations independently of its current graph or fit.
+gflowui_endpoint_region_scope <- function(dataset_scope, region) {
+  if (is.null(region)) return(dataset_scope)
+  list(key=digest::digest(list("region",dataset_scope$namespace,region$id,
+      region$membership_fingerprint),algo="sha256"),
+    label=paste0(region$label," · revision ",region$revision %||% 1L),
+    namespace=dataset_scope$namespace, region_id=region$id,
+    membership_fingerprint=region$membership_fingerprint)
+}
+
+gflowui_endpoint_region_ensure <- function(store, dataset_scope, region, regions,
+    empty_state, provenance=list()) {
+  if (is.null(region)) return(store)
+  scope <- gflowui_endpoint_region_scope(dataset_scope,region)
+  if (!is.null(store$active[[scope$key]])) return(store)
+  parent_scope <- dataset_scope
+  parent <- regions[[region$parent_id %||% ""]]
+  if (!is.null(parent)) {
+    store <- gflowui_endpoint_region_ensure(store,dataset_scope,parent,regions,empty_state,provenance)
+    parent_scope <- gflowui_endpoint_region_scope(dataset_scope,parent)
+  }
+  source <- store$sets[[store$active[[parent_scope$key]] %||% ""]]
+  state <- if(is.null(source)) empty_state else gflowui_endpoint_set_project(source,region$vertex_ids)
+  state$is_modified <- FALSE
+  state$base_dataset_id <- state$base_dataset_label <- NA_character_
+  state$last_snapshot_id <- state$last_snapshot_label <- NA_character_
+  set <- gflowui_endpoint_set_new(paste(scope$label,"— Endpoints"),state,
+    region$vertex_ids,scope,provenance)
+  set$region_id <- region$id
+  set$membership_ids <- region$vertex_ids
+  set$membership_fingerprint <- region$membership_fingerprint
+  set$inherited_from <- list(set_id=source$id,revision=source$revision,scope=parent_scope$key,
+    at=.gflowui_now(),vertex_ids=set$state$rows$vertex_id)
+  set$row_provenance <- source$row_provenance[intersect(names(source$row_provenance),set$state$rows$vertex_id)]
+  set$display <- source$display %||% gflowui_endpoint_display_defaults()
+  store$sets[[set$id]] <- set
+  store$active[[scope$key]] <- set$id
+  store
+}
+
+gflowui_endpoint_display_defaults <- function() list(label_size=1,label_offset="1x",
+  marker_size="1x",marker_color="#ef4444")
+
+# Screen-space annotations keep long and short labels at the same font size,
+# independently of depth in the 3D scene.
+gflowui_endpoint_annotations <- function(xyz, labels, size) {
+  lapply(seq_along(labels),function(i) list(x=xyz[i,1],y=xyz[i,2],z=xyz[i,3],
+    text=as.character(htmltools::htmlEscape(labels[i])),showarrow=FALSE,
+    xanchor="center",yanchor="bottom",font=list(size=max(8,12*size),color="#111827")))
 }
