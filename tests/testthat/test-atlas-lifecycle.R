@@ -1,0 +1,67 @@
+test_that("revisions and import refresh preserve prior views and retirement", {
+  r<-gflowui_atlas_region("original",letters[1:5],letters,list(type="import",source_project="s",anchor="a"))
+  r$views<-list(list(id="computed",file="original")); regions<-setNames(list(r),r$id)
+  regions<-gflowui_atlas_lifecycle(regions,r$id,"retire")
+  imported<-r;imported$vertex_ids<-rev(r$vertex_ids);imported$id<-"changed-source-metadata";imported$views<-list(list(id="import",file="shared"))
+  merged<-gflowui_atlas_merge(regions,list(imported))
+  expect_identical(merged[[r$id]]$vertex_ids,r$vertex_ids)
+  expect_length(merged,1);expect_true(merged[[r$id]]$retired)
+  expect_setequal(vapply(merged[[r$id]]$views,`[[`,"","id"),c("computed","import"))
+  draft<-gflowui_atlas_region("draft",letters[2:6],letters,list(type="test"))
+  revised<-gflowui_atlas_revision(merged,r$id,draft,"revision")
+  expect_equal(revised$region$revision,2L);expect_length(revised$region$views,0)
+  expect_identical(revised$regions[[r$id]],merged[[r$id]])
+  expect_identical(revised$region$parent_id,r$id)
+  restored<-gflowui_atlas_lifecycle(revised$regions,r$id,"restore")
+  expect_false(restored[[r$id]]$retired)
+  bad<-r;bad$membership_fingerprint<-"different"
+  expect_error(gflowui_atlas_merge(merged,list(bad)),"create a revision")
+})
+
+test_that("atlas transactions protect live owners and recover stale locks", {
+  root<-tempfile();dir.create(root);on.exit(unlink(root,recursive=TRUE))
+  path<-file.path(root,"atlas.rds");lock<-paste0(path,".lock");dir.create(lock)
+  saveRDS(list(pid=Sys.getpid()),file.path(lock,"owner.rds"))
+  expect_error(gflowui_atlas_update(path,identity),"being updated")
+  unlink(lock,recursive=TRUE);dir.create(lock);Sys.setFileTime(lock,Sys.time()-120)
+  expect_identical(gflowui_atlas_update(path,identity),list())
+  expect_false(dir.exists(lock))
+})
+
+test_that("exported bundle replays in a fresh process after relocation", {
+  root<-tempfile();dir.create(root);on.exit(unlink(root,recursive=TRUE))
+  folder<-file.path(root,"original");dir.create(folder)
+  set.seed(12);X<-matrix(runif(60),10,6);X<-X/rowSums(X)
+  rownames(X)<-paste0("id",1:10);colnames(X)<-letters[1:6]
+  data<-list(X=X,region=list(id="region",label="portable"))
+  saveRDS(data,file.path(folder,"input.rds"))
+  spec<-list(input_file=file.path(folder,"input.rds"),input_hash=digest::digest(data,algo="sha256"),
+    parameters=gflowui_atlas_parameters(list(inner="fermat",power=1.5,iterations=3,mode="landmarks",landmarks=4),10),
+    key="portable",region_id="region",namespace="fixture")
+  gflowui_atlas_compute(spec,folder)
+  archive<-file.path(root,"bundle.zip");gflowui_atlas_export_bundle(folder,archive)
+  moved<-file.path(root,"moved");dir.create(moved);utils::unzip(archive,exdir=moved)
+  expected<-readRDS(file.path(folder,"layout.rds"));targets<-readRDS(file.path(folder,"targets.rds"))
+  unlink(folder,recursive=TRUE)
+  output<-file.path(root,"replayed")
+  result<-processx::run(file.path(R.home("bin"),"Rscript"),c(file.path(moved,"reproduce.R"),output),error_on_status=FALSE)
+  expect_equal(result$status,0,info=paste(result$stdout,result$stderr))
+  expect_equal(readRDS(file.path(output,"layout.rds")),expected,tolerance=1e-12)
+  expect_equal(readRDS(file.path(output,"targets.rds")),targets)
+  expect_silent(gflowui_atlas_verify_bundle(output))
+  writeLines("stop('must not execute corrupted source')",file.path(moved,"atlas-source.R"))
+  bad<-processx::run(file.path(R.home("bin"),"Rscript"),c(file.path(moved,"reproduce.R"),file.path(root,"bad")),error_on_status=FALSE)
+  expect_match(bad$stderr,"source checksum verification failed")
+  expect_false(grepl("must not execute",bad$stderr))
+  saveRDS("damaged",file.path(moved,"input.rds"))
+  expect_error(gflowui_atlas_verify_bundle(moved),"checksum")
+})
+
+
+test_that("frozen input retains region revision lineage", {
+  asset<-list(sample_ids=letters[1:4],taxon_names=c("a","b"),indices=rep(list(1:2),4),abundances=rep(list(c(.6,.4)),4))
+  r<-list(id="r2",vertex_ids=letters[1:4],family_id="r1",parent_id="r1",revision=2L,history=list(list(action="revision")))
+  frozen<-gflowui_atlas_input(asset,r)
+  expect_identical(frozen$region$parent_id,"r1")
+  expect_identical(frozen$region$history,r$history)
+})

@@ -98,3 +98,24 @@ gflowui_atlas_save <- function(regions, path) {
   if (!file.rename(tmp, path)) stop("Could not save the atlas.")
   invisible(regions)
 }
+
+# Short transaction lock: prevents independent sessions/jobs losing each other's updates.
+gflowui_atlas_update <- function(path, update) {
+  dir.create(dirname(path),recursive=TRUE,showWarnings=FALSE)
+  lock<-paste0(path,".lock")
+  if(!dir.create(lock,showWarnings=FALSE)) {
+    owner_file<-file.path(lock,"owner.rds")
+    owner<-if(file.exists(owner_file))tryCatch(readRDS(owner_file),error=function(e)NULL) else NULL
+    age<-as.numeric(difftime(Sys.time(),file.info(lock)$mtime,units="secs"))
+    alive<-!is.null(owner) && isTRUE(tryCatch(tools::pskill(owner$pid,signal=0L),error=function(e)FALSE))
+    if(alive || is.na(age) || (is.null(owner)&&age<30))stop("Atlas is being updated; retry shortly.")
+    unlink(lock,recursive=TRUE)
+    if(!dir.create(lock,showWarnings=FALSE))stop("Atlas is being updated; retry shortly.")
+  }
+  saveRDS(list(pid=Sys.getpid(),created=Sys.time()),file.path(lock,"owner.rds"))
+  on.exit(unlink(lock,recursive=TRUE))
+  regions<-if(file.exists(path))readRDS(path)$regions else list()
+  next_regions<-update(regions)
+  if(!identical(next_regions,regions))gflowui_atlas_save(next_regions,path)
+  next_regions
+}

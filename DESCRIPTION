@@ -25,6 +25,7 @@ Imports:
     jsonlite,
     zip
 Suggests:
+    callr,
     FNN,
     ivue (>= 0.1.0),
     geosmooth,
@@ -35,6 +36,7 @@ Suggests:
     lifecycle,
     pkgload,
     plotly,
+    processx,
     rmarkdown,
     rgl,
     testthat (>= 3.0.0),

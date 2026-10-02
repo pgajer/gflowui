@@ -1,6 +1,7 @@
 gflowui_local_views_ui <- function(id, values = list()) {
   ns <- shiny::NS(id)
   shiny::tagList(
+    shiny::checkboxInput(ns("show_retired"),"Include retired regions",values$show_retired %||% FALSE),
     shiny::uiOutput(ns("navigation")),
     shiny::textOutput(ns("context")),
     shiny::checkboxInput(ns("only_members"), "Show only region members in parent preview", values$only_members %||% FALSE),
@@ -25,8 +26,10 @@ gflowui_local_views_ui <- function(id, values = list()) {
     shiny::actionButton(ns("clear"), "Clear preview"),
     shiny::downloadButton(ns("members"), "Download membership"),
     shiny::textOutput(ns("status")),
+    shiny::uiOutput(ns("lifecycle")),
+    shiny::downloadButton(ns("bundle"),"Download view reproducibility bundle"),
     shiny::hr(),
-    shiny::p("New fits will recompute distances within the region. This stage supports membership previews and existing fitted views; new computation jobs are the next stage.", class="gf-hint"),
+    gflowui_atlas_calculation_ui(ns("compute"),ns("region"),values$calculation %||% list()),
     shiny::uiOutput(ns("import_ui")))
 }
 
@@ -45,13 +48,31 @@ gflowui_local_views_server <- function(id, manifest, view_state, selected_vertex
       p <- path(); regions(if (file.exists(p)) readRDS(p)$regions else list())
       drafts(list()); region_id(""); view_id("__preview__"); parent_set(NULL); status("")
     })
+    calculation <- gflowui_atlas_calculation_server("compute",manifest,shiny::reactive(region()),path,
+      publish=function(folder,spec) {
+        target_path<-file.path(dirname(dirname(folder)),"atlas.rds")
+        existing<-if(file.exists(target_path))readRDS(target_path)$regions else list()
+        r<-existing[[spec$region_id]]
+        if(is.null(r))stop("Original region revision is missing; result kept unregistered.")
+        id<-paste0("atlas_",spec$key)
+        if(id %in% vapply(r$views,`[[`,"","id") &&
+           identical(r$views[[id]]$graph_file,file.path(folder,"graph.rds")))return(invisible(NULL))
+        result<-gflowui_atlas_job_result(folder)
+        if(is.null(result))stop("Job assets failed checksum validation.")
+        latest<-gflowui_atlas_update(target_path,function(rs) {
+          rs[[spec$region_id]]$views[[id]]<-result$graph_set;rs
+        })
+        gflowui_atlas_atomic(list(atlas_path=target_path,region_id=spec$region_id,view_id=id),file.path(folder,"publication.rds"))
+        if(identical(target_path,path()))regions(latest)
+      })
     region <- shiny::reactive({
       if (identical(region_id(), "__draft__")) return(if(length(drafts())) drafts()[[1L]] else NULL)
       regions()[[region_id()]]
     })
     output$navigation <- shiny::renderUI({
       if (!isTRUE(config()$enabled)) return(shiny::p("Local views require a dataset abundance source in the project configuration."))
-      choices <- c("Whole dataset"="", stats::setNames(names(regions()), vapply(regions(), `[[`, "", "label")))
+      visible<-Filter(function(r)!isTRUE(r$retired)||isTRUE(input$show_retired),regions())
+      choices <- c("Whole dataset"="", stats::setNames(names(visible), vapply(visible,gflowui_atlas_region_label,"")))
       if (length(drafts())) choices <- c(choices, "Unsaved membership preview"="__draft__")
       r <- region(); views <- r$views %||% list()
       vc <- c("Locate in parent embedding (preview)"="__preview__", stats::setNames(
@@ -73,7 +94,7 @@ gflowui_local_views_server <- function(id, manifest, view_state, selected_vertex
       r <- region(); if (is.null(r)) return("Context: whole dataset.")
       st <- view_state(); present <- sum(r$vertex_ids %in% st$vertex_ids)
       sprintf("%s — %s members; %s present in this graph. %s", r$label, length(r$vertex_ids), present,
-        if (identical(view_id(), "__preview__")) "Parent embedding preview: coordinates and distances unchanged. Existing display filters still apply." else "Saved local fit: paths and coordinates belong to this region.")
+        if (identical(view_id(), "__preview__")) "Parent embedding preview: coordinates and distances unchanged. Existing display filters still apply." else if(length(st$graph_set$atlas$excluded_ids)) sprintf("Local chart fit: %d of %d members retained; %d excluded by the explicit chart policy. Saved region membership is unchanged.",present,length(r$vertex_ids),length(st$graph_set$atlas$excluded_ids)) else "Saved local fit: paths and coordinates belong to this region.")
     })
     output$status <- shiny::renderText(status())
     output$endpoint_ui <- shiny::renderUI({
@@ -142,10 +163,56 @@ gflowui_local_views_server <- function(id, manifest, view_state, selected_vertex
     shiny::observeEvent(input$save, {
       tryCatch({
         ds <- drafts(); if(!length(ds)) stop("Preview membership before saving.")
-        rs <- regions(); for(r in ds) rs[[r$id]] <- r
-        gflowui_atlas_save(rs,path()); regions(rs); region_id(ds[[1]]$id); drafts(list())
+        rs<-gflowui_atlas_update(path(),function(current)gflowui_atlas_merge(current,ds))
+        regions(rs); region_id(ds[[1]]$id); drafts(list())
         status("Region membership saved. Existing views and dataset endpoint annotations remain available.")
       },error=function(e)status(conditionMessage(e)))
+    })
+    output$lifecycle<-shiny::renderUI({
+      rs<-regions();if(!length(rs))return(NULL)
+      shiny::tagList(shiny::hr(),shiny::h6("Region history"),
+        shiny::selectInput(session$ns("revision_parent"),"Revise saved region",stats::setNames(names(rs),vapply(rs,gflowui_atlas_region_label,"")),
+          selected=if(region_id()%in%names(rs))region_id() else shiny::isolate(input$revision_parent)),
+        shiny::actionButton(session$ns("revise"),"Save single preview as new revision"),
+        shiny::textInput(session$ns("rename_label"),"Saved region name",region()$label %||% ""),
+        shiny::actionButton(session$ns("rename"),"Rename selected region"),
+        shiny::actionButton(session$ns("retire"),"Retire selected region"),
+        shiny::actionButton(session$ns("restore"),"Restore selected region"),
+        shiny::p("Revisions retain old membership and fitted views. Retirement hides a region without deleting assets; running jobs may finish into its history.",class="gf-hint"))
+    })
+    shiny::observeEvent(input$revise,{
+      tryCatch({
+        ds<-drafts();if(length(ds)!=1L)stop("Preview exactly one membership set before creating a revision.")
+        new_id<-NULL
+        rs<-gflowui_atlas_update(path(),function(current) {
+          revised<-gflowui_atlas_revision(current,input$revision_parent,ds[[1]],input$rename_label)
+          new_id<<-revised$region$id;revised$regions
+        })
+        regions(rs);region_id(new_id);drafts(list());view_id("__preview__")
+        status("New membership revision saved; earlier views remain with their original revision.")
+      },error=function(e)status(conditionMessage(e)))
+    })
+    for(action in c("rename","retire","restore"))local({
+      act<-action
+      shiny::observeEvent(input[[act]],{
+        tryCatch({
+          id<-region_id()
+          rs<-gflowui_atlas_update(path(),function(current)gflowui_atlas_lifecycle(current,id,act,input$rename_label))
+          regions(rs)
+          if(act=="retire"){region_id("");view_id("__preview__")}
+          status(paste("Region",act,"saved; existing assets retained."))
+        },error=function(e)status(conditionMessage(e)))
+      })
+    })
+    shiny::observeEvent(input$show_retired,{
+      if(!isTRUE(input$show_retired)&&isTRUE(region()$retired)){region_id("");view_id("__preview__")}
+    })
+    output$bundle<-shiny::downloadHandler(filename=function()"local-view-reproducibility.zip",content=function(file) {
+      r<-region();i<-match(view_id(),vapply(r$views,`[[`,"","id"))
+      if(is.na(i))stop("Choose a completed fitted view before downloading its bundle.")
+      gs<-r$views[[i]]
+      if(is.null(gs$atlas$bundle_path))stop("This imported legacy view retains its original provenance; replay bundles are available for newly computed atlas views.")
+      gflowui_atlas_export_bundle(gs$atlas$bundle_path,file)
     })
     output$members <- shiny::downloadHandler(filename=function() "region-membership.csv", content=function(file) {
       r <- region(); utils::write.csv(data.frame(vertex_id=r$vertex_ids %||% character()),file,row.names=FALSE)
@@ -166,12 +233,12 @@ gflowui_local_views_server <- function(id, manifest, view_state, selected_vertex
           registered$metadata$local_views$asset_paths,
           gflowui_project_asset_references(source)))
         gflowui_write_manifest(registered,mp)
-        rs <- regions(); rs[names(imported)] <- imported
-        gflowui_atlas_save(rs,path()); regions(rs)
+        rs<-gflowui_atlas_update(path(),function(current)gflowui_atlas_merge(current,imported))
+        regions(rs)
         status(sprintf("Imported %d regions with %d shared views. Existing asset files were not copied.",length(imported),sum(vapply(imported,function(r)length(r$views),1L))))
       },error=function(e)status(conditionMessage(e)))
     })
-    list(form=shiny::reactive(shiny::reactiveValuesToList(input)), manifest=shiny::reactive(gflowui_atlas_manifest(manifest(),region(),view_id(),parent_set())),
+    list(form=shiny::reactive({v<-shiny::reactiveValuesToList(input);v$calculation<-calculation$form();v}), manifest=shiny::reactive(gflowui_atlas_manifest(manifest(),region(),view_id(),parent_set())),
          region=region, preview=shiny::reactive(if(identical(view_id(),"__preview__")) region() else NULL),
          only_members=shiny::reactive(isTRUE(input$only_members)), context=shiny::reactive({
            r<-region(); if(is.null(r)) "Whole dataset" else paste(r$label, if(identical(view_id(),"__preview__")) "— parent preview" else "— local fitted view")
