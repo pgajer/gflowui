@@ -35,7 +35,9 @@ test_that("snapshot toggles preserve the sidebar and do not redraw an already vi
     }
     expect_equal(counts$overlay,initial_overlay)
     # With working arms hidden, the saved snapshot must still show/hide normally.
-    session$setInputs(arm_show_working_set=FALSE)
+    session$setInputs(arm_show_working_set_intent=FALSE)
+    # A stale input binding echo must not undo a deliberate visibility choice.
+    session$setInputs(arm_show_working_set=TRUE)
     expect_length(arm_overlay_active()$arms,0L)
     session$setInputs(arm_dataset_toggle=list(dataset_id=snap$dataset_id,checked=TRUE))
     expect_length(arm_overlay_active()$arms,1L)

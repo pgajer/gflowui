@@ -86,6 +86,9 @@
         label.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();openMenu(document.getElementById(label.dataset.gfDefaultFor),label);});
         label.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openMenu(document.getElementById(label.dataset.gfDefaultFor),label);}});
       }
+      // updateSelectInput can recreate Selectize's input without recreating its label.
+      select.setAttribute('aria-labelledby',label.id);
+      if(select.selectize)select.selectize.$control_input.attr('aria-labelledby',label.id);
       catalog.push({id:select.id,label:label.textContent.trim().replace(/:$/,''),choices:available(select),multiple:select.multiple});
     }
     const encoded=JSON.stringify(catalog);
@@ -104,6 +107,8 @@
       applying=true;
       if(select.selectize)select.selectize.setValue(select.multiple?wanted:wanted[0]);
       else {$(select).val(select.multiple?wanted:wanted[0]).trigger('change');}
+      if(select.closest('#gf_grouped_selectors') && window.gflowuiGraphSelection)
+        window.gflowuiGraphSelection.select(select.id,wanted[0]);
       applying=false;schedule();break;
     }
   }

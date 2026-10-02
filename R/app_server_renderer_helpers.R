@@ -1222,6 +1222,7 @@ gflowui_make_server_renderer_helpers <- function(rv, current_reference_info) {
     NULL
   }
 
+  layout_asset_cache <- gflowui_lru_cache(8L, 32 * 1024^2)
   grip_layout_matrix_for_graph_set <- function(graph_set, k_ref = NA_integer_) {
     if (!is.list(graph_set)) {
       return(NULL)
@@ -1263,7 +1264,8 @@ gflowui_make_server_renderer_helpers <- function(rv, current_reference_info) {
     }
 
     for (ii in idx_order) {
-      mat <- tryCatch(readRDS(entries[[ii]]$path), error = function(e) NULL)
+      mat <- tryCatch(layout_asset_cache(gflowui_file_version(entries[[ii]]$path),
+        function() readRDS(entries[[ii]]$path)), error = function(e) NULL)
       if (is.data.frame(mat)) {
         mat <- as.matrix(mat)
       } else {

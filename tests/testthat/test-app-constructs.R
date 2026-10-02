@@ -266,6 +266,10 @@ test_that("grouped selector graph selection ignores unrelated inputs", {
     args[[as.character(spec$input_id %||% "")]] <- alt_choice[[1L]]
     do.call(session$setInputs, args)
     session$flushReact()
+    expect_equal(invalidations, 0L) # Rebinding is not a user choice.
+    session$setInputs(graph_selector_intent=list(scope=graph_selector_scope(),
+      seq=1,id=spec$input_id,value=alt_choice[[1L]]))
+    session$flushReact()
     expect_gte(invalidations, 1L)
   })
 })
@@ -302,9 +306,9 @@ test_that("default sidebar control values do not keep re-invalidating the app", 
       subject_edge_width = "2",
       subject_label_mode = "none",
       subject_label_size = "1.0",
-      endpoint_show_working_set = FALSE,
+      endpoint_show_working_set_intent = FALSE,
       endpoint_datasets_open = FALSE,
-      arm_show_working_set = FALSE,
+      arm_show_working_set_intent = FALSE,
       arm_datasets_open = FALSE,
       arm_preview_layout_open = FALSE
     )
@@ -1124,10 +1128,8 @@ test_that("basin server invalidates changed fields and graph identities", {
 
     if (requireNamespace("plotly", quietly = TRUE)) {
       trace.names <- function() {
-        payload <- jsonlite::fromJSON(
-          as.character(output$reference_plot),
-          simplifyVector = FALSE
-        )
+        # The mounted widget stays unchanged; subsequent scenes use deltas.
+        payload <- plotly::plotly_build(reference_plot_widget())
         vapply(
           payload$x$data %||% list(),
           function(trace) as.character(trace$name %||% ""),

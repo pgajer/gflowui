@@ -545,6 +545,11 @@ app_server <- function(input, output, session) {
     gflowui_project_open_defaults(manifest)
   }
 
+  graph_selector_scope <- gflowui_distinct_reactive(function() paste(rv$project.id %||% "",
+    local_atlas$region()$id %||% "", sep="|"))
+  graph_selector_intent <- shiny::reactiveVal(NULL)
+  view_asset_cache <- gflowui_lru_cache(8L, 96 * 1024^2)
+  view_hover_cache <- gflowui_hover_cache()
   current_graph_selection <- shiny::reactive({
     if (!isTRUE(rv$project.active)) {
       return(list(
@@ -599,7 +604,9 @@ app_server <- function(input, output, session) {
           next
         }
         ## Only depend on the grouped selector inputs for the active project.
-        selector_input_values[[input_id]] <- input[[input_id]]
+        intent <- graph_selector_intent()
+        if (identical(intent$scope, graph_selector_scope()))
+          selector_input_values[[input_id]] <- intent$values[[input_id]]
       }
     }
     resolved <- resolve_graph_selection(
@@ -617,6 +624,41 @@ app_server <- function(input, output, session) {
     resolved$manifest <- manifest
     resolved$graph_sets <- graph_sets
     resolved
+  })
+
+  shiny::observeEvent(input$graph_selector_intent, {
+    fields <- current_graph_selection()$selector_fields %||% list()
+    old <- graph_selector_intent()
+    previous <- if(identical(old$scope,graph_selector_scope())) old$seq else -1
+    next_value <- gflowui_selection_patch(input$graph_selector_intent,
+      graph_selector_scope(), fields, previous)
+    if (!is.null(next_value)) graph_selector_intent(next_value)
+  }, priority=200)
+  graph_selector_structure <- gflowui_distinct_reactive(function()
+    list(scope=graph_selector_scope(),fields=lapply(current_graph_selection()$selector_fields,
+      function(x)x[c("input_id","label","field")])))
+  output$graph_grouped_selectors <- shiny::bindCache(shiny::renderUI({
+    fields <- current_graph_selection()$selector_fields %||% list()
+    shiny::div(id="gf_grouped_selectors", `data-scope`=graph_selector_scope(),
+      lapply(fields,function(spec) shiny::div(
+        id=paste0(spec$input_id,"_row"),class=paste("gf-graph-row gf-graph-selector-row",
+          if(identical(spec$field,"graph_method"))"gf-graph-method-row" else ""),
+        style=if(identical(spec$visible,FALSE))"display:none;" else NULL,
+        `aria-hidden`=if(identical(spec$visible,FALSE))"true" else NULL,
+        shiny::span(class="gf-graph-row-label",paste0(spec$label,":")),
+        shiny::selectInput(spec$input_id,NULL,spec$choices,selected=spec$selected,width="100%"),
+        if(identical(spec$field,"graph_method"))shiny::actionButton("graph_method_edit_names","Edit names…",class="btn-light btn-sm gf-btn-inline"))))
+  }), graph_selector_structure(), cache="session")
+  shiny::observe({
+    input$graph_selectors_mounted
+    sel <- current_graph_selection()
+    fields <- sel$selector_fields %||% list()
+    session$sendCustomMessage("gflowuiSelectorState",list(scope=graph_selector_scope(),
+      seq=graph_selector_intent()$seq %||% 0,
+      fields=lapply(fields,function(x)c(x[c("input_id","selected","visible")],
+        list(options=lapply(seq_along(x$choices),function(i)list(
+          value=unname(x$choices[[i]]),label=if(is.null(names(x$choices)))unname(x$choices[[i]]) else names(x$choices)[[i]]))))),
+      set_id=sel$set_id %||% ""))
   })
 
   shiny::observeEvent(current_graph_selection(), {
@@ -4252,7 +4294,7 @@ app_server <- function(input, output, session) {
   }
 
   shiny::observe({
-    vv <- input$endpoint_show_working_set
+    vv <- input$endpoint_show_working_set_intent
     if (!is.null(vv)) {
       set_reactive_val_if_changed(endpoint_show_working_set, isTRUE(vv))
     }
@@ -7010,7 +7052,7 @@ app_server <- function(input, output, session) {
   }, ignoreInit = TRUE)
 
   shiny::observe({
-    vv <- input$arm_show_working_set
+    vv <- input$arm_show_working_set_intent
     if (!is.null(vv)) {
       set_reactive_val_if_changed(arm_show_working_set, isTRUE(vv))
     }
@@ -7798,7 +7840,7 @@ app_server <- function(input, output, session) {
       return(list(error = "Reference graph file is missing."))
     }
 
-    graph_obj <- tryCatch(readRDS(graph_file), error = function(e) e)
+    graph_obj <- tryCatch(view_asset_cache(gflowui_file_version(graph_file), function() readRDS(graph_file)), error = function(e) e)
     if (inherits(graph_obj, "error")) {
       return(list(error = sprintf("Could not read graph file: %s", conditionMessage(graph_obj))))
     }
@@ -10744,7 +10786,8 @@ app_server <- function(input, output, session) {
         )
     })
 
-    output$reference_plot <- plotly::renderPlotly({
+    reference_plot_widget <- shiny::reactive({
+      if(!identical(reference_renderer_state()$effective,"plotly"))return(NULL)
       rr <- reference_renderer_state()
       st <- rr$st
       req(is.null(st$error))
@@ -11568,12 +11611,16 @@ app_server <- function(input, output, session) {
       }
       p <- gflowui_add_embedding_endpoint_preview(p, coords, endpoint_detector$preview(), keep_idx)
       hover_asset <- gflowui_vertex_hover_asset(active_manifest())
-      p <- gflowui_add_vertex_hover(p, gflowui_vertex_hover_text(
+      p <- gflowui_add_vertex_hover(p, view_hover_cache(
         st$vertex_ids, hover_asset, input$graph_hover_top_n))
       p <- plotly::event_register(p, "plotly_click")
       p <- attach_reference_plotly_camera_preserver(p)
       p
     })
+    gflowui_scene_server(input,output,session,reference_plot_widget,
+      context=function()list(scope=graph_selector_scope(),
+        selection_seq=graph_selector_intent()$seq %||% 0,
+        set_id=current_graph_selection()$set_id %||% ""))
   }
 
   if (requireNamespace("rgl", quietly = TRUE)) {
@@ -13233,7 +13280,7 @@ app_server <- function(input, output, session) {
     build_arm_dataset_table(arm_panel_state()$rows)
   })
 
-  output$workflow_controls <- shiny::renderUI({
+  workflow_controls_model <- shiny::reactive({
     if (!isTRUE(rv$project.active)) {
       return(NULL)
     }
@@ -13509,6 +13556,7 @@ app_server <- function(input, output, session) {
           shiny::tags$input(
             type = "checkbox",
             id = "endpoint_show_working_set",
+            onchange = "Shiny.setInputValue('endpoint_show_working_set_intent', this.checked, {priority: 'event'})",
             checked = if (isTRUE(show_working_checked)) "checked" else NULL
           ),
           shiny::tags$span("Show Working Set")
@@ -13982,6 +14030,7 @@ app_server <- function(input, output, session) {
           shiny::tags$input(
             type = "checkbox",
             id = "arm_show_working_set",
+            onchange = "Shiny.setInputValue('arm_show_working_set_intent', this.checked, {priority: 'event'})",
             checked = if (isTRUE(arm_show_working_set_effective(working_state))) "checked" else NULL
           ),
           shiny::tags$span("Show Working Set")
@@ -14420,28 +14469,7 @@ app_server <- function(input, output, session) {
 
         selector_rows <- if (isTRUE(graph_ui$grouped_selector_enabled) &&
             length(graph_ui$selector_fields %||% list()) > 0L) {
-          rows <- lapply(graph_ui$selector_fields, function(spec) {
-            is_method <- identical(spec$field, "graph_method")
-            shiny::div(
-              class = if (is_method) "gf-graph-row gf-graph-selector-row gf-graph-method-row" else "gf-graph-row gf-graph-selector-row",
-              style = if (identical(spec$visible, FALSE)) "display: none;" else NULL,
-              `aria-hidden` = if (identical(spec$visible, FALSE)) "true" else NULL,
-              shiny::span(class = "gf-graph-row-label", paste0(as.character(spec$label %||% "Selector"), ":")),
-              shiny::selectInput(
-                as.character(spec$input_id %||% ""),
-                label = NULL,
-                choices = spec$choices %||% c(),
-                selected = as.character(spec$selected %||% ""),
-                width = "100%"
-              ),
-              if (is_method) shiny::actionButton(
-                "graph_method_edit_names", "Edit names\u2026",
-                class = "btn-light btn-sm gf-btn-inline"
-              )
-            )
-          })
-
-          rows
+          shiny::uiOutput("graph_grouped_selectors")
         } else {
           list(
             shiny::div(
@@ -15064,17 +15092,9 @@ app_server <- function(input, output, session) {
       }
     }
 
-    shiny::div(
-      class = "gf-sidebar-panel gf-accordion-wrap",
-      do.call(
-        bslib::accordion,
-        c(
-          list(id = "workflow_accordion", open = if (length(open.panels)) open.panels else FALSE, multiple = TRUE),
-          panels
-        )
-      )
-    )
+    structure(list(panels=panels,open=open.panels),class="gflowui_workflow_model")
   })
+  gflowui_stable_workflow_server(output,workflow_controls_model,graph_selector_scope)
 
   output$run_monitor_panel <- shiny::renderUI({
     if (!isTRUE(rv$project.active) || !isTRUE(rv$run.monitor.visible)) {
@@ -15539,6 +15559,19 @@ app_server <- function(input, output, session) {
     sprintf("Job: %s", note.msg)
   })
 
+  output$reference_view_note <- shiny::renderText({
+    rr <- reference_renderer_state()
+    paste(unique(Filter(nzchar,c(rr$mode_note,rr$component_note))),collapse=" ")
+  })
+  workspace_structure <- gflowui_distinct_reactive(function() {
+    if(isTRUE(embedding_comparison_active()))return(list(kind="comparison"))
+    if(isTRUE(quadform_project_active()))return(quadform_view_state())
+    rr<-reference_renderer_state()
+    if(!identical(rr$effective,"plotly"))return(list(rr=rr,gen=rgl_gen()))
+    list(kind="plotly",error=rr$st$error,ready=rr$plotly_ready,
+      atlas=isTRUE(atlas_base_manifest()$metadata$local_views$enabled),
+      inspector_width=basin_display_settings$inspector_width)
+  })
   output$workspace_view <- shiny::renderUI({
     if (isTRUE(embedding_comparison_active())) {
       if (is.null(embedding_comparison_state)) return(shiny::p("Embedding viewer requires plotly and htmlwidgets."))
@@ -15876,7 +15909,7 @@ app_server <- function(input, output, session) {
           if (isTRUE(atlas_base_manifest()$metadata$local_views$enabled))
             shiny::textOutput("atlas_context", container=shiny::tags$strong),
           view_body,
-          note.body
+          shiny::textOutput("reference_view_note",container=function(...)shiny::p(class="gf-mode-note",...))
         ),
         shiny::div(
           id = "gf_general_inspector_resize",
@@ -15909,5 +15942,5 @@ app_server <- function(input, output, session) {
       )
     )
     }
-  })
+  }) |> shiny::bindCache(graph_selector_scope(),workspace_structure(),cache="session")
 }
