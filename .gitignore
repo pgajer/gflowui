@@ -37,3 +37,6 @@ tmp/
 /dev/regional-endpoints/README.html
 
 /dev/atlas-colors/README.html
+
+# Generated source-dataset usage companion
+/dev/source-datasets/*.html
