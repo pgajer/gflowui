@@ -597,3 +597,16 @@ accepted_hidden_working_arm_rows <- function(working_state) {
   keep[is.na(keep)] <- FALSE
   rows_df[keep, , drop = FALSE]
 }
+
+# Display each identical arm once, even when it occurs in a working set and
+# several snapshots. Source membership is persistence metadata, not geometry.
+gflowui_arm_display_union <- function(arms) {
+  arms <- lapply(Filter(is.list, arms), function(arm) {
+    arm[c("source_dataset_id", "is_working")] <- NULL
+    arm
+  })
+  if (!length(arms)) return(list())
+  keys <- vapply(arms, digest::digest, "", algo = "sha256")
+  keep <- !duplicated(keys)
+  unname(arms[which(keep)[order(keys[keep])]])
+}

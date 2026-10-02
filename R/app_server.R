@@ -1573,9 +1573,6 @@ app_server <- function(input, output, session) {
   shiny::observeEvent(endpoint_overlay_selection(), {
     rgl_gen(shiny::isolate(rgl_gen()) + 1L)
   }, ignoreInit = TRUE)
-  shiny::observeEvent(list(arm_overlay_selection(), arm_show_working_set(), arm_preview_revision()), {
-    rgl_gen(shiny::isolate(rgl_gen()) + 1L)
-  }, ignoreInit = TRUE)
 
   shiny::observeEvent(input$workflow_accordion, {
     if (!isTRUE(rv$project.active) || is.null(input$workflow_accordion)) {
@@ -6753,7 +6750,6 @@ app_server <- function(input, output, session) {
     }
     if (is.data.frame(rows) && nrow(rows) > 0L) {
       rows$is_default <- as.character(rows$dataset_id) == as.character(meta$default_dataset_id %||% "")
-      rows$selected <- as.character(rows$dataset_id) %in% arm_overlay_selection()
       rows$is_working_source <- as.character(rows$dataset_id) == as.character(working$base_dataset_id %||% "")
       current_k <- suppressWarnings(as.integer(ctx$k %||% NA_integer_))
       ord <- order(
@@ -6888,7 +6884,7 @@ app_server <- function(input, output, session) {
     TRUE
   }
 
-  arm_overlay_active <- shiny::reactive({
+  arm_overlay_candidate <- shiny::reactive({
     st <- arm_panel_state()
     rows <- if (is.list(st) && is.data.frame(st$rows)) st$rows else empty_arm_candidate_rows()
     working <- if (is.list(st)) st$working else empty_working_arm_state()
@@ -6947,6 +6943,7 @@ app_server <- function(input, output, session) {
       preview$is_preview <- TRUE
       arms[[idx_out]] <- preview
     }
+    arms <- gflowui_arm_display_union(arms)
     builder_markers <- arm_builder_virtual_markers()
     if (is.list(builder_markers) && length(builder_markers) > 0L) {
       for (mm in builder_markers) {
@@ -6976,6 +6973,19 @@ app_server <- function(input, output, session) {
       preview_id = if (is.list(preview)) as.character(preview$arm_id %||% "") else ""
     )
   })
+
+  # Publish only actual display changes. A duplicate snapshot checkbox must not
+  # invalidate the full WebGL scene or allocate another copy of its arm traces.
+  arm_overlay_active <- shiny::reactiveVal(list(arms = list(), virtual_markers = list(),
+    selected_id = "", preview_id = ""))
+  shiny::observe({
+    set_reactive_val_if_changed(arm_overlay_active, arm_overlay_candidate())
+  }, priority = 10)
+  shiny::observeEvent(arm_overlay_active(), {
+    rr <- shiny::isolate(reference_renderer_state())
+    if (identical(rr$effective, "rglwidget"))
+      rgl_gen(shiny::isolate(rgl_gen()) + 1L)
+  }, ignoreInit = TRUE)
 
   shiny::observe({
     vv <- input$arm_show_working_set
@@ -7191,7 +7201,7 @@ app_server <- function(input, output, session) {
     } else {
       setdiff(prev, dataset_id)
     }
-    arm_overlay_selection(next_sel)
+    set_reactive_val_if_changed(arm_overlay_selection, next_sel)
   }, ignoreInit = TRUE)
 
   shiny::observeEvent(input$arm_dataset_rename_confirm, {
@@ -13127,6 +13137,114 @@ app_server <- function(input, output, session) {
     build_endpoint_candidate_metrics_ui(endpoint_panel_state())
   })
 
+  build_arm_dataset_table <- function(rows_df) {
+    if (!is.data.frame(rows_df) || nrow(rows_df) < 1L) {
+      return(shiny::p(class = "gf-hint", "No saved arm datasets found for the current graph set."))
+    }
+
+    rows_df$selected <- as.character(rows_df$dataset_id) %in% arm_overlay_selection()
+    head_row <- shiny::tags$tr(
+      shiny::tags$th("show"),
+      shiny::tags$th("loaded"),
+      shiny::tags$th("dataset"),
+      shiny::tags$th("method"),
+      shiny::tags$th("k"),
+      shiny::tags$th("n"),
+      shiny::tags$th("origin"),
+      shiny::tags$th("actions")
+    )
+    body_rows <- lapply(seq_len(nrow(rows_df)), function(ii) {
+      rr <- rows_df[ii, , drop = FALSE]
+      dataset_id <- as.character(rr$dataset_id[[1]] %||% "")
+      loaded_mark <- if (isTRUE(rr$is_working_source[[1]])) "\u2713" else ""
+      default_badge <- if (isTRUE(rr$is_default[[1]])) {
+        shiny::tags$span(class = "badge bg-secondary", "default")
+      } else {
+        NULL
+      }
+      shiny::tags$tr(
+        shiny::tags$td(
+          shiny::tags$input(
+            type = "checkbox",
+            checked = if (isTRUE(rr$selected[[1]])) "checked" else NULL,
+            onclick = sprintf(
+              "Shiny.setInputValue('arm_dataset_toggle',{dataset_id:'%s',checked:this.checked},{priority:'event'})",
+              dataset_id
+            )
+          )
+        ),
+        shiny::tags$td(class = "gf-endpoint-loaded-col", loaded_mark),
+        shiny::tags$td(
+          shiny::div(as.character(rr$label[[1]] %||% "")),
+          default_badge
+        ),
+        shiny::tags$td(as.character(rr$method[[1]] %||% "")),
+        shiny::tags$td(as.character(rr$k_display[[1]] %||% "")),
+        shiny::tags$td(as.character(rr$n_arms[[1]] %||% "")),
+        shiny::tags$td(as.character(rr$origin[[1]] %||% "")),
+        shiny::tags$td(
+          class = "gf-endpoint-table-actions-cell",
+          if (isTRUE(rr$can_load[[1]])) shiny::tags$button(
+            type = "button",
+            class = "btn btn-light btn-sm gf-btn-inline",
+            onclick = sprintf(
+              "Shiny.setInputValue('arm_dataset_action',{action:'load',dataset_id:'%s'},{priority:'event'})",
+              dataset_id
+            ),
+            "Load"
+          ),
+          if (isTRUE(rr$can_rename[[1]])) shiny::tags$button(
+            type = "button",
+            class = "btn btn-light btn-sm gf-btn-inline",
+            onclick = sprintf(
+              "Shiny.setInputValue('arm_dataset_action',{action:'rename',dataset_id:'%s'},{priority:'event'})",
+              dataset_id
+            ),
+            "Rename"
+          ),
+          if (isTRUE(rr$can_delete[[1]])) shiny::tags$button(
+            type = "button",
+            class = "btn btn-light btn-sm gf-btn-inline",
+            onclick = sprintf(
+              "Shiny.setInputValue('arm_dataset_action',{action:'delete',dataset_id:'%s'},{priority:'event'})",
+              dataset_id
+            ),
+            "Delete"
+          ),
+          if (isTRUE(rr$can_set_default[[1]]) && !isTRUE(rr$is_default[[1]])) shiny::tags$button(
+            type = "button",
+            class = "btn btn-light btn-sm gf-btn-inline",
+            onclick = sprintf(
+              "Shiny.setInputValue('arm_dataset_action',{action:'default',dataset_id:'%s'},{priority:'event'})",
+              dataset_id
+            ),
+            "Set Default"
+          )
+        )
+      )
+    })
+
+    shiny::tagList(
+      shiny::div(
+        class = "gf-hint",
+        "Saved arm sets live here. Checkboxes control graph overlays; actions load or manage datasets."
+      ),
+      shiny::div(
+        class = "table-responsive gf-endpoint-table-scroll",
+        shiny::tags$table(
+          class = "table table-sm gf-asset-table",
+          shiny::tags$thead(head_row),
+          shiny::tags$tbody(body_rows)
+        )
+      )
+    )
+  }
+
+  # Toggling a saved overlay replaces only this table, not every sidebar input.
+  output$arm_dataset_table <- shiny::renderUI({
+    build_arm_dataset_table(arm_panel_state()$rows)
+  })
+
   output$workflow_controls <- shiny::renderUI({
     if (!isTRUE(rv$project.active)) {
       return(NULL)
@@ -13845,108 +13963,6 @@ app_server <- function(input, output, session) {
               },
               width = "180px"
             )
-          )
-        )
-      )
-    }
-
-    build_arm_dataset_table <- function(rows_df) {
-      if (!is.data.frame(rows_df) || nrow(rows_df) < 1L) {
-        return(shiny::p(class = "gf-hint", "No saved arm datasets found for the current graph set."))
-      }
-
-      head_row <- shiny::tags$tr(
-        shiny::tags$th("show"),
-        shiny::tags$th("loaded"),
-        shiny::tags$th("dataset"),
-        shiny::tags$th("method"),
-        shiny::tags$th("k"),
-        shiny::tags$th("n"),
-        shiny::tags$th("origin"),
-        shiny::tags$th("actions")
-      )
-      body_rows <- lapply(seq_len(nrow(rows_df)), function(ii) {
-        rr <- rows_df[ii, , drop = FALSE]
-        dataset_id <- as.character(rr$dataset_id[[1]] %||% "")
-        loaded_mark <- if (isTRUE(rr$is_working_source[[1]])) "\u2713" else ""
-        default_badge <- if (isTRUE(rr$is_default[[1]])) {
-          shiny::tags$span(class = "badge bg-secondary", "default")
-        } else {
-          NULL
-        }
-        shiny::tags$tr(
-          shiny::tags$td(
-            shiny::tags$input(
-              type = "checkbox",
-              checked = if (isTRUE(rr$selected[[1]])) "checked" else NULL,
-              onclick = sprintf(
-                "Shiny.setInputValue('arm_dataset_toggle',{dataset_id:'%s',checked:this.checked},{priority:'event'})",
-                dataset_id
-              )
-            )
-          ),
-          shiny::tags$td(class = "gf-endpoint-loaded-col", loaded_mark),
-          shiny::tags$td(
-            shiny::div(as.character(rr$label[[1]] %||% "")),
-            default_badge
-          ),
-          shiny::tags$td(as.character(rr$method[[1]] %||% "")),
-          shiny::tags$td(as.character(rr$k_display[[1]] %||% "")),
-          shiny::tags$td(as.character(rr$n_arms[[1]] %||% "")),
-          shiny::tags$td(as.character(rr$origin[[1]] %||% "")),
-          shiny::tags$td(
-            class = "gf-endpoint-table-actions-cell",
-            if (isTRUE(rr$can_load[[1]])) shiny::tags$button(
-              type = "button",
-              class = "btn btn-light btn-sm gf-btn-inline",
-              onclick = sprintf(
-                "Shiny.setInputValue('arm_dataset_action',{action:'load',dataset_id:'%s'},{priority:'event'})",
-                dataset_id
-              ),
-              "Load"
-            ),
-            if (isTRUE(rr$can_rename[[1]])) shiny::tags$button(
-              type = "button",
-              class = "btn btn-light btn-sm gf-btn-inline",
-              onclick = sprintf(
-                "Shiny.setInputValue('arm_dataset_action',{action:'rename',dataset_id:'%s'},{priority:'event'})",
-                dataset_id
-              ),
-              "Rename"
-            ),
-            if (isTRUE(rr$can_delete[[1]])) shiny::tags$button(
-              type = "button",
-              class = "btn btn-light btn-sm gf-btn-inline",
-              onclick = sprintf(
-                "Shiny.setInputValue('arm_dataset_action',{action:'delete',dataset_id:'%s'},{priority:'event'})",
-                dataset_id
-              ),
-              "Delete"
-            ),
-            if (isTRUE(rr$can_set_default[[1]]) && !isTRUE(rr$is_default[[1]])) shiny::tags$button(
-              type = "button",
-              class = "btn btn-light btn-sm gf-btn-inline",
-              onclick = sprintf(
-                "Shiny.setInputValue('arm_dataset_action',{action:'default',dataset_id:'%s'},{priority:'event'})",
-                dataset_id
-              ),
-              "Set Default"
-            )
-          )
-        )
-      })
-
-      shiny::tagList(
-        shiny::div(
-          class = "gf-hint",
-          "Saved arm sets live here. Checkboxes control graph overlays; actions load or manage datasets."
-        ),
-        shiny::div(
-          class = "table-responsive gf-endpoint-table-scroll",
-          shiny::tags$table(
-            class = "table table-sm gf-asset-table",
-            shiny::tags$thead(head_row),
-            shiny::tags$tbody(body_rows)
           )
         )
       )
@@ -14747,7 +14763,7 @@ app_server <- function(input, output, session) {
                   open = if (isTRUE(arm_datasets_open())) "open" else NULL,
                   ontoggle = "Shiny.setInputValue('arm_datasets_open', this.open, {priority: 'event'})",
                   shiny::tags$summary(sprintf("Arm Datasets (%d)", as.integer(nrow(arm_rows)))),
-                  build_arm_dataset_table(arm_rows)
+                  shiny::uiOutput("arm_dataset_table")
                 )
               ),
               shiny::div(

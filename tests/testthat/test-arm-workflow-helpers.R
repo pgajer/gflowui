@@ -152,3 +152,15 @@ testthat::test_that("working arm state sanitizes and preserves visible rows", {
   testthat::expect_equal(visible$label[[1]], "Arm A")
   testthat::expect_equal(gflowui:::decode_arm_integer_json(visible$path_vertices_json[[1]]), c(1L, 2L, 3L))
 })
+
+test_that("display union preserves distinct geometry and preview styling", {
+  arm <- list(arm_id="a",path_vertices=1:3,arm_vertices=1:4,label="Li–Lc",is_preview=FALSE)
+  working <- arm; working$is_working <- TRUE; working$source_dataset_id <- "original"
+  snapshot <- arm; snapshot$source_dataset_id <- "snapshot"
+  expect_identical(gflowui_arm_display_union(list(working,snapshot)),list(arm))
+  expect_identical(gflowui_arm_display_union(list(snapshot,working)),list(arm))
+  changed <- arm; changed$arm_vertices <- 1:5
+  preview <- arm; preview$is_preview <- TRUE
+  expect_length(gflowui_arm_display_union(list(working,snapshot,changed,preview)),3L)
+  expect_identical(gflowui_arm_display_union(list()),list())
+})
