@@ -22,6 +22,16 @@ app_server <- function(input, output, session) {
   )
   list2env(project_helpers, envir = environment())
 
+  # Keep the registered manifest intact; local navigation only changes the session view.
+  atlas_base_manifest <- active_manifest
+  local_atlas <- gflowui_local_views_server("local_atlas", atlas_base_manifest,
+    view_state = shiny::reactive(reference_view_state()),
+    selected_vertex = shiny::reactive(selected_endpoint_vertex()),
+    dcst_selection = shiny::reactive(input$graph_dcst_table_selection),
+    endpoint_state = shiny::reactive(shared_endpoint_sets$state()))
+  active_manifest <- local_atlas$manifest
+  output$atlas_context <- shiny::renderText(local_atlas$context())
+
   embedding_comparison_active <- shiny::reactive(gflowui_ec_active(active_manifest()))
   embedding_comparison_state <- if (requireNamespace("plotly", quietly = TRUE) &&
                                     requireNamespace("htmlwidgets", quietly = TRUE)) {
@@ -10352,6 +10362,10 @@ app_server <- function(input, output, session) {
       component_note <- trimws(paste(component_note, focused$note))
     }
 
+    atlas_preview <- local_atlas$preview()
+    if (!is.null(atlas_preview) && local_atlas$only_members())
+      keep_idx <- intersect(keep_idx, which(st$vertex_ids %in% atlas_preview$vertex_ids))
+
     plotly_ready <- requireNamespace("plotly", quietly = TRUE)
     rgl_ready <- requireNamespace("rgl", quietly = TRUE)
     effective <- requested
@@ -11532,6 +11546,14 @@ app_server <- function(input, output, session) {
             sc
           }
         )
+      atlas_preview <- local_atlas$preview()
+      if (!is.null(atlas_preview)) {
+        ai <- intersect(keep_idx, which(st$vertex_ids %in% atlas_preview$vertex_ids))
+        if (length(ai)) p <- plotly::add_trace(p, x=coords[ai,1], y=coords[ai,2], z=coords[ai,3],
+          type="scatter3d", mode="markers", inherit=FALSE, name="Region membership",
+          marker=list(size=3, color="#f97316", opacity=0.9),
+          text=st$vertex_ids[ai], customdata=ai, hoverinfo="text", showlegend=FALSE)
+      }
       p <- gflowui_add_embedding_endpoint_preview(p, coords, endpoint_detector$preview(), keep_idx)
       hover_asset <- gflowui_vertex_hover_asset(active_manifest())
       p <- gflowui_add_vertex_hover(p, gflowui_vertex_hover_text(
@@ -14477,7 +14499,7 @@ app_server <- function(input, output, session) {
             build_html_table(graph_ui$metadata_tbl, empty_text = "No graph metadata available.", show_header = FALSE)
           ),
           selector_rows,
-          gflowui_graph_neighbor_controls(graph_ui),
+          gflowui_graph_neighbor_controls(graph_ui, show_reference = is.null(local_atlas$region()) || !is.null(local_atlas$preview())),
           if (!identical(graph_ui$manifest$metadata$project_controls$graph_update, FALSE)) shiny::actionButton(
             "graph_update_placeholder",
             "Update / Expand Graphs...",
@@ -14989,6 +15011,8 @@ app_server <- function(input, output, session) {
               )
             )
           ),
+          if (isTRUE(atlas_base_manifest()$metadata$local_views$enabled))
+            bslib::accordion_panel("Local views", value = "workflow_local_views", gflowui_local_views_ui("local_atlas", shiny::isolate(local_atlas$form()))),
           bslib::accordion_panel("Analysis", value = "workflow_analysis", shiny::div(
             class = "gf-analysis-placeholder",
             shiny::p("Analysis tools section placeholder."),
@@ -15036,6 +15060,7 @@ app_server <- function(input, output, session) {
           if (isTRUE(occupation_panel$has_assets)) "workflow_occupation_density" else character(0),
           "workflow_condexp_structure",
           "workflow_basin_structure",
+          "workflow_local_views",
           "workflow_analysis"
         )
       } else {
@@ -15879,6 +15904,8 @@ app_server <- function(input, output, session) {
         ),
         shiny::div(
           class = "gf-reference-graph-pane",
+          if (isTRUE(atlas_base_manifest()$metadata$local_views$enabled))
+            shiny::textOutput("atlas_context", container=shiny::tags$strong),
           view_body,
           note.body
         ),

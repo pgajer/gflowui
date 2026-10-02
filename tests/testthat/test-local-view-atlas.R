@@ -1,0 +1,60 @@
+test_that("anchor membership is deterministic, metric specific and includes the anchor", {
+  a <- list(sample_ids=c("b","a","c"),taxon_names=c("x","y"),indices=list(1L,1L,1:2),abundances=list(1,1,c(.5,.5)))
+  for(m in c("hellinger","euclidean","jensen_shannon")) {
+    x<-gflowui_atlas_anchor(a,"b",2,m)
+    expect_identical(x$ids,c("b","a")); expect_equal(x$radius,0)
+  }
+  expect_equal(gflowui_atlas_anchor(a,"b",3,"hellinger")$radius,sqrt(1-sqrt(.5)))
+  expect_equal(gflowui_atlas_anchor(a,"b",3,"euclidean")$radius,sqrt(.5))
+  expect_error(gflowui_atlas_anchor(a,"unknown",2),"anchor")
+  expect_error(gflowui_atlas_anchor(a,"b",4),"size")
+})
+
+test_that("regions persist stable identities and reject foreign membership", {
+  r<-gflowui_atlas_region("test",c("b","a","b"),c("a","b"),list(type="dcst",level=1))
+  expect_equal(length(r$vertex_ids),2)
+  expect_identical(r$distance_scope,"within_region")
+  expect_error(gflowui_atlas_region("bad","z",c("a","b"),list()),"known")
+  p<-tempfile(); on.exit(unlink(p))
+  gflowui_atlas_save(list(r),p); expect_identical(readRDS(p)$regions[[1]],r)
+})
+
+test_that("imports validate all views, share files, and leave parent untouched", {
+  p<-tempfile(fileext=".rds"); on.exit(unlink(p))
+  saveRDS(list(vertex_ids=c("a","b")),p)
+  gs<-list(id="fit",anchor="A",neighborhood="2",graph_file=p)
+  src<-list(project_id="source",graph_sets=list(gs),metadata=list())
+  rs<-gflowui_atlas_import(src,c("a","b","c"),"dataset")
+  r<-rs[[1]]; expect_identical(r$views[[1]]$graph_file,p)
+  expect_identical(r$views[[1]]$endpoint_vertex_namespace,"dataset")
+  expect_identical(names(gflowui_atlas_import(src,c("a","b","c"),"dataset")),names(rs))
+  parent<-list(graph_sets=list(list(id="whole")),defaults=list(),metadata=list())
+  expect_identical(gflowui_atlas_manifest(parent,r),parent)
+  expect_identical(gflowui_atlas_manifest(parent,r,"missing"),parent)
+  expect_identical(gflowui_atlas_manifest(parent,r,"fit")$graph_sets[[1]]$id,"fit")
+  expect_error(gflowui_atlas_import(src,"a","dataset"),"known")
+})
+
+test_that("module previews anchor and dCST regions, saves them and returns to parent", {
+  base<-tempfile(); dir.create(base); on.exit(unlink(base,recursive=TRUE))
+  withr::local_options(gflowui.projects_data_dir=base)
+  af<-file.path(base,"abundance.rds")
+  asset<-list(sample_ids=c("a","b","c"),taxon_names=c("x","y"),indices=list(1L,2L,1:2),abundances=list(1,1,c(.5,.5)))
+  saveRDS(asset,af)
+  m<-list(project_id="test",graph_sets=list(),metadata=list(local_views=list(enabled=TRUE),vertex_hover=list(abundances_file=af)))
+  st<-list(vertex_ids=asset$sample_ids,set_id="parent",sources=list(dcst_level1=list(values=c("A","B","A"))))
+  shiny::testServer(gflowui_local_views_server,args=list(manifest=shiny::reactive(m),view_state=shiny::reactive(st),
+    selected_vertex=shiny::reactive(2L),dcst_selection=shiny::reactive(list(level="dcst_level1",groups="A"))), {
+    session$flushReact()
+    session$setInputs(selection="anchor",anchor="a",sizes="1, 2",metric="hellinger",preview=1)
+    expect_length(drafts(),2); expect_equal(region()$vertex_ids,"a")
+    session$setInputs(save=1); expect_length(regions(),2)
+    expect_length(readRDS(path())$regions,2)
+    session$setInputs(whole=1); expect_null(region())
+    session$setInputs(selection="dcst",level="dcst_level1",groups=c("A","B"),separate=TRUE,preview=2)
+    expect_length(drafts(),2); expect_equal(drafts()[[1]]$vertex_ids,c("a","c"))
+    session$setInputs(separate=FALSE,preview=3); expect_length(drafts(),1)
+    expect_setequal(region()$vertex_ids,asset$sample_ids)
+    session$setInputs(clear=1); expect_null(region()); expect_length(drafts(),0)
+  })
+})

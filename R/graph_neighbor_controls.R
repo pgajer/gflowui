@@ -5,7 +5,7 @@ gflowui_has_neighbor_parameter <- function(graph_set) {
 
 # Keep the graph asset selector bound for selection/reference state even when
 # its internal key does not represent a scientifically meaningful k parameter.
-gflowui_graph_neighbor_controls <- function(graph_ui) {
+gflowui_graph_neighbor_controls <- function(graph_ui, show_reference = TRUE) {
   enabled <- gflowui_has_neighbor_parameter(graph_ui)
   selector <- shiny::selectInput(
     "graph_k", label = NULL, choices = graph_ui$k_choices,
@@ -17,7 +17,7 @@ gflowui_graph_neighbor_controls <- function(graph_ui) {
       class = "gf-graph-row gf-graph-row-tight gf-graph-row-k",
       if (enabled) shiny::span(class = "gf-graph-row-label", "k:"),
       if (enabled) selector else shiny::div(style = "display: none;", `aria-hidden` = "true", selector),
-      shiny::actionButton("set_reference_graph_inline", "Set Reference",
+      if (show_reference) shiny::actionButton("set_reference_graph_inline", "Set Reference",
         title = "Save the selected graph as the project reference and default graph set.",
         class = "btn-light btn-sm gf-btn-inline")
     ),
