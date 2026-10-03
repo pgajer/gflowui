@@ -210,14 +210,20 @@ body {
 
 .gf-graph-selector-row .selectize-control.single .selectize-input {
   padding-right: 32px;
-  white-space: nowrap;
+  white-space: normal;
+  height: auto;
 }
 
 .gf-graph-selector-row .selectize-input .item {
   max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow-wrap: anywhere;
   vertical-align: middle;
+}
+
+.gf-graph-selector-row .selectize-dropdown .option {
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .gf-graph-selector-row > .gf-btn-inline {
