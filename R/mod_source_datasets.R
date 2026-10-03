@@ -60,7 +60,7 @@ gflowui_source_datasets_server <- function(id, manifest, view, visible, click3d,
     },ignoreInit=TRUE)
     shiny::observeEvent(input$cross,{
       shiny::showModal(shiny::modalDialog(title="Source dataset × dCST",size="l",easyClose=TRUE,
-        shiny::selectInput(session$ns("cross_level"),"dCST level",c("Level 1"="dcst_level1","Level 2"="dcst_level2"),selected=level()),
+        shiny::selectInput(session$ns("cross_level"),"dCST level",gflowui_dcst_levels(view()$sources),selected=level()),
         shiny::selectInput(session$ns("unit"),"Count",c("Source records"="records","Distinct vertices per dataset"="vertices")),
         shiny::selectInput(session$ns("display"),"Display",c("Counts"="count","% within each dataset"="row","% within each dCST"="column")),
         shiny::p("All current-region members, before display filters. Shared compositions count in each contributing dataset. Click a cell to filter both displays; this intersects existing filters."),

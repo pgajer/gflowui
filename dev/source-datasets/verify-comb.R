@@ -39,6 +39,15 @@ shiny::testServer(gflowui:::app_server,{
     isTRUE(all.equal(plot$u,plot$b/plot$a)),setequal(plot$vertex_id,st$vertex_ids[both]))
   session$setInputs(graph_dcst_table_selection=list(project=m$project_id,level='dcst_level2',groups=character()))
   stopifnot(nrow(source_datasets$visible_coordinates())==4000)
+  level3 <- gflowui:::gflowui_dcst_options(st$sources,'dcst_level3')
+  selected3 <- head(level3$groups,2)
+  session$setInputs(graph_dcst_level='dcst_level3',graph_layout_color_by='dcst',
+    graph_dcst_table_selection=list(project=m$project_id,level='dcst_level3',groups=selected3))
+  expected3 <- which(st$sources$dcst_level3$values %in% selected3)
+  stopifnot(identical(reference_renderer_state()$keep_idx,expected3),
+    identical(reference_renderer_state()$src_key,'dcst_level3'),
+    setequal(source_datasets$visible_coordinates()$vertex_id,st$vertex_ids[expected3]))
+  cat('PASS: level 3 local filtering and linked 2D/3D IDs:',length(expected3),'vertices in two groups.\n')
   cat('PASS: two selected Li4000 dCSTs share 1378 vertices across 2D/3D in both coordinate systems; clearing selects all 4000.\n')
   cat('PASS: global HMP 3613; local Li4000 HMP+dCST intersection',length(expected),'; stable selection and original-abundance coordinates.\n')
 })

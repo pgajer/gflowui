@@ -1,7 +1,12 @@
-# Dedicated controls are available when both merged dominant CST levels exist.
+# Offer only the dCST levels actually supplied by the current view.
+gflowui_dcst_levels <- function(sources) {
+  keys <- intersect(paste0("dcst_level", 1:3), names(sources))
+  if (!length(keys)) return(character())
+  stats::setNames(keys, paste("Level", sub("dcst_level", "", keys)))
+}
 gflowui_dcst_options <- function(sources, level = "dcst_level1", group = "") {
-  keys <- c("dcst_level1", "dcst_level2")
-  if (!all(keys %in% names(sources))) return(NULL)
+  keys <- unname(gflowui_dcst_levels(sources))
+  if (!length(keys)) return(NULL)
   if (length(level) != 1L || !level %in% keys) level <- keys[[1L]]
   values <- as.character(sources[[level]]$values)
   groups <- sort(unique(values[!is.na(values) & nzchar(values)]))
@@ -14,7 +19,7 @@ gflowui_dcst_options <- function(sources, level = "dcst_level1", group = "") {
   choices <- c("All dCSTs" = "__all__", stats::setNames(ids,
     sprintf("%s (%s vertices)", groups, format(counts, big.mark = ",", trim = TRUE))))
   if (length(group) != 1L || !group %in% ids) group <- "__all__"
-  list(level = level, group = group, choices = choices, groups = groups, counts = counts,
+  list(level = level, levels = gflowui_dcst_levels(sources), group = group, choices = choices, groups = groups, counts = counts,
        selected_label = if (group %in% ids) groups[match(group, ids)] else NULL)
 }
 
@@ -133,9 +138,9 @@ gflowui_metadata_match_vertices <- function(metadata, vertex_ids, id_column = NU
 gflowui_vertex_color_options <- function(st, requested = NULL, fallback = NULL) {
   choices <- st$choices %||% c("Vertex Degree"="vertex_degree")
   has_dcst <- !is.null(gflowui_dcst_options(st$sources))
-  if (has_dcst) choices <- c("dCST"="dcst", choices[!unname(choices) %in% c("dcst_level1", "dcst_level2")])
+  if (has_dcst) choices <- c("dCST"="dcst", choices[!unname(choices) %in% unname(gflowui_dcst_levels(st$sources))])
   choices <- c("Solid color..."="solid_color", choices)
-  if (has_dcst && (is.null(requested) || requested %in% c("dcst_level1", "dcst_level2"))) requested <- "dcst"
+  if (has_dcst && (is.null(requested) || requested %in% unname(gflowui_dcst_levels(st$sources)))) requested <- "dcst"
   if (length(requested) != 1L || is.na(requested) || !requested %in% unname(choices))
     requested <- if (has_dcst) "dcst" else fallback %||% st$default_key %||% "vertex_degree"
   if (!requested %in% unname(choices)) requested <- unname(choices)[1]

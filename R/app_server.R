@@ -14616,7 +14616,7 @@ app_server <- function(input, output, session) {
               shiny::span(class = "gf-graph-row-label", label), control)
             shiny::tagList(
               dcst_row("dCST level:", shiny::selectInput("graph_dcst_level", NULL,
-                choices = c("Level 1" = "dcst_level1", "Level 2" = "dcst_level2"),
+                choices = graph_ui$dcst$levels,
                 selected = graph_ui$dcst$level, width = "205px")),
               gflowui_dcst_table_ui(graph_ui$dcst, graph_ui$dcst_palettes,
                 graph_ui$manifest$project_id,
@@ -15055,7 +15055,7 @@ app_server <- function(input, output, session) {
             )
           ),
           if (isTRUE(atlas_base_manifest()$metadata$local_views$enabled))
-            bslib::accordion_panel("Local views", value = "workflow_local_views", gflowui_local_views_ui("local_atlas", shiny::isolate(local_atlas$form()))),
+            bslib::accordion_panel("Local views", value = "workflow_local_views", gflowui_local_views_ui("local_atlas", shiny::isolate(local_atlas$form()), levels=graph_ui$dcst$levels)),
           bslib::accordion_panel("Analysis", value = "workflow_analysis", shiny::div(
             class = "gf-analysis-placeholder",
             shiny::p("Analysis tools section placeholder."),
@@ -15469,7 +15469,7 @@ app_server <- function(input, output, session) {
     event <- input$graph_dcst_table_color
     manifest <- active_manifest()
     if (!is.list(event) || !identical(event$project, manifest$project_id) ||
-        !event$level %in% c("dcst_level1", "dcst_level2") ||
+        !event$level %in% unname(graph_structure_state()$dcst$levels) ||
         length(event$color) != 1L || !grepl("^#[0-9a-fA-F]{6}$", event$color)) return()
     valid <- graph_structure_state()$dcst$groups
     if (length(event$group) != 1L || !event$group %in% valid) return()

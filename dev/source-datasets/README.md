@@ -26,7 +26,7 @@ unknown identities use **Unknown source**. Dataset counts overlap for shared
 vertices and should not be summed as a count of distinct graph vertices.
 
 **Dataset × dCST** opens a horizontally scrollable cross-table. Choose dCST
-level 1 or 2, source records or distinct vertices per dataset, and counts or row/
+level 1, 2 or 3 (when available), source records or distinct vertices per dataset, and counts or row/
 column percentages. Denominators use all members of the current graph before
 display filters. Clicking a cell adds a dataset–dCST intersection filter; use
 **Clear cross-table cell filter** to remove it. Existing filters still apply.
@@ -39,6 +39,9 @@ checked groups show their union in both, and no checks shows all groups.
 There is no separate single-pair selector. Level-1 filtering is also respected;
 each plotted point still uses the explicit pair of its level-2 dCST.
 The default 2D colors use the same dCST level and saved palette as Graphs.
+Level 3 is available for all 25,042 comb-V3V4-tx compositions (137 groups)
+and inherited by local views. Level-3 filtering and colors apply to both plots;
+the 2D coordinates continue to describe each point’s level-2 phylotype pair.
 Source-dataset coloring remains an alternative. Legends are descriptive;
 use the shared checkbox table to filter both views.
 

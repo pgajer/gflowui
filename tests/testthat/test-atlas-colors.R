@@ -1,12 +1,12 @@
 test_that("atlas views inherit dataset dCST metadata and edited palettes by ID", {
   root <- withr::local_tempdir()
   parent_table <- data.frame(sample_id=c("a","b","c","d"),
-    dcst_level1=c("A","B","A","C"),dcst_level2=c("AA","BB","AB","CC"))
+    dcst_level1=c("A","B","A","C"),dcst_level2=c("AA","BB","AB","CC"),dcst_level3=c("AAA","BBB","AAB","CCC"))
   local_table <- data.frame(Li=c(.9,.8,.7))
   save(parent_table,file=file.path(root,"parent.rda"))
   save(local_table,file=file.path(root,"local.rda"))
   ca <- list(metadata_file=file.path(root,"parent.rda"),metadata_object="parent_table",
-    vector_columns=c("dcst_level1","dcst_level2"),
+    vector_columns=c("dcst_level1","dcst_level2","dcst_level3"),
     categorical_palettes=list(dcst_level1=c(A="#112233",B="#445566",C="#778899")))
   local <- list(id="local",color_assets=list(metadata_file=file.path(root,"local.rda"),
     metadata_object="local_table",vector_columns="Li"))
@@ -19,6 +19,7 @@ test_that("atlas views inherit dataset dCST metadata and edited palettes by ID",
   sources <- helper$collect_reference_metadata_sources(merged,merged$graph_sets[[1]],3L,c("d","a","c"))
   expect_identical(sources$dcst_level1$values,c("C","A","A"))
   expect_identical(sources$dcst_level2$values,c("CC","AA","AB"))
+  expect_identical(sources$dcst_level3$values,c("CCC","AAA","AAB"))
   expect_equal(sources$li$values,c(.9,.8,.7))
   expect_identical(region$views[[1]],local)
   expect_null(local$color_assets$inherited_metadata)

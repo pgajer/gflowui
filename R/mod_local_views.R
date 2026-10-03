@@ -1,4 +1,4 @@
-gflowui_local_views_ui <- function(id, values = list()) {
+gflowui_local_views_ui <- function(id, values = list(), levels = c("Level 1"="dcst_level1", "Level 2"="dcst_level2")) {
   ns <- shiny::NS(id)
   shiny::tagList(
     shiny::checkboxInput(ns("show_retired"),"Include retired regions",values$show_retired %||% FALSE),
@@ -17,7 +17,7 @@ gflowui_local_views_ui <- function(id, values = list()) {
       shiny::textInput(ns("sizes"), "Neighborhood sizes (including anchor)", values$sizes %||% "500"),
       shiny::selectInput(ns("metric"), "Neighborhood metric", c("Hellinger"="hellinger", "Euclidean abundance"="euclidean", "Jensen–Shannon"="jensen_shannon"), selected=values$metric %||% "hellinger")),
     shiny::conditionalPanel(sprintf("input['%s'] === 'dcst'", ns("selection")),
-      shiny::selectInput(ns("level"), "dCST level", c("Level 1"="dcst_level1", "Level 2"="dcst_level2"), selected=values$level %||% "dcst_level1"),
+      shiny::selectInput(ns("level"), "dCST level", levels, selected=values$level %||% "dcst_level1"),
       shiny::uiOutput(ns("groups_ui")),
       shiny::actionButton(ns("table_groups"), "Use checked dCSTs from Graphs"),
       shiny::checkboxInput(ns("separate"), "Create one region per dCST", values$separate %||% FALSE)),
