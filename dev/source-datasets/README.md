@@ -32,8 +32,9 @@ display filters. Clicking a cell adds a dataset–dCST intersection filter; use
 **Clear cross-table cell filter** to remove it. Existing filters still apply.
 The CSV download names its level, count unit and normalization.
 
-In **Within-dCST 2D**, enable **Show linked 2D view**. The plot appears below
-the 3D graph. The dCST checkboxes in Graphs now control both plots: several
+In **Within-dCST 2D**, enable **Show linked 2D view**. The 3D graph appears on the left and the linked 2D plot on the right
+when the available viewer width exceeds 900 pixels. Narrower viewing areas stack
+the plots, with 3D above 2D. Both plots resize when the sidebar changes width. The dCST checkboxes in Graphs now control both plots: several
 checked groups show their union in both, and no checks shows all groups.
 There is no separate single-pair selector. Level-1 filtering is also respected;
 each plotted point still uses the explicit pair of its level-2 dCST.

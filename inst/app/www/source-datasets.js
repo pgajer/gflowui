@@ -7,6 +7,19 @@
       if (el && el.data && el.clientWidth && el.clientHeight) window.Plotly.Plots.resize(el);
     });
   }
+  // The sidebar can change available width without a window resize.
+  $(document).on('shiny:connected', function () {
+    var stage = document.querySelector('.gf-viewer-stage');
+    if (!stage || !window.ResizeObserver || stage.gfLinkedResizeObserver) return;
+    var lastWidth;
+    stage.gfLinkedResizeObserver = new window.ResizeObserver(function (entries) {
+      var width = entries[0].contentRect.width;
+      if (width === lastWidth) return;
+      lastWidth = width;
+      window.requestAnimationFrame(resize);
+    });
+    stage.gfLinkedResizeObserver.observe(stage);
+  });
   $(document).on('shiny:inputchanged', function (event) {
     if (event.name === 'source_datasets-show') setTimeout(resize, 180);
   });
