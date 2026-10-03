@@ -159,11 +159,13 @@ gflowui_atlas_compute <- function(spec,folder,progress=function(stage,fraction)N
     progress("Fitting 3D metric-MDS",0.65)
     fit<-withCallingHandlers({
       if(p$mode=="full") grip::metric.mds(distance.matrix=distances/scale,dim=3,backend="sgd",init="random",
-        max.iter=p$iterations,seed=p$seed,pair.weights="inverse_squared",diagnostics=FALSE)
+        max.iter=p$iterations,seed=p$seed,pair.weights="inverse_squared",diagnostics=FALSE,
+        sgd.control=list(max.workspace.bytes=p$memory_mb*1024^2))
       else {
         constraints<-grip::landmark.mds.constraints(distances/scale,landmarks=sources,weighting="uniform")
         grip::metric.mds(n=n,constraints=constraints,approximation="sparse",dim=3,backend="sgd",init="random",
-          max.iter=p$iterations,seed=p$seed,diagnostics=FALSE)
+          max.iter=p$iterations,seed=p$seed,diagnostics=FALSE,
+          sgd.control=list(max.workspace.bytes=p$memory_mb*1024^2))
       }
     },warning=function(w){warnings<<-c(warnings,conditionMessage(w));invokeRestart("muffleWarning")})
     coords<-fit$coords*scale

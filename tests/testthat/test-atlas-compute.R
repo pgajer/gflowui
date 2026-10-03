@@ -85,3 +85,18 @@ test_that("only the replacement attempt wins successive publication polls", {
   expect_identical(gflowui_atlas_winners(folders),folders[2])
   expect_identical(gflowui_atlas_job_status(folders[1])$state,"superseded")
 })
+
+test_that("atlas memory allowance reaches both metric-MDS fitting modes", {
+  original <- grip::metric.mds
+  budgets <- numeric()
+  testthat::local_mocked_bindings(metric.mds=function(...) {
+    args <- list(...)
+    budgets <<- c(budgets,args$sgd.control$max.workspace.bytes)
+    do.call(original,args)
+  }, .package="grip")
+  for(mode in c("full","landmarks")) {
+    x <- atlas_compute_fixture(list(inner="ambient",metric="euclidean",mode=mode,landmarks=4,memory_mb=768))
+    unlink(x$folder,recursive=TRUE)
+  }
+  expect_equal(budgets,rep(768*1024^2,2))
+})
