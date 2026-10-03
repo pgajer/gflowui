@@ -7,7 +7,7 @@
     Array.from(select.selectedOptions).map(o => o.value)).map(String);
   const equal = (a,b) => JSON.stringify(array(a)) === JSON.stringify(array(b));
   function labelFor(select) {
-    const own = document.querySelector('label[for="' + CSS.escape(select.id) + '"]');
+    const own = document.querySelector('label[for="' + CSS.escape(select.id) + '"], label[for="' + CSS.escape(select.id + '-selectized') + '"]');
     if (own && own.textContent.trim()) return own;
     const row = select.closest('.gf-graph-row');
     return row && row.querySelector('.gf-graph-row-label');
@@ -38,7 +38,7 @@
     });
     return context;
   }
-  const scope = select => select.id === 'local_atlas-region' ? '' : state.region || '';
+  const scope = select => (select.id === 'local_atlas-region' || select.closest('[data-gf-atlas-navigation]')) ? '' : state.region || '';
   const keyFor = select => JSON.stringify([select.id, scope(select), contextFor(select)]);
   function closeMenu(focus) {
     if (!menu) return;

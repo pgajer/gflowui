@@ -1531,3 +1531,13 @@ body:has(#source_datasets-show:checked) #source_datasets-plot { height: calc(78v
   body:has(#source_datasets-show:checked) #reference_plot { height: calc(44vh - 32px) !important; min-height: 260px; }
   body:has(#source_datasets-show:checked) #source_datasets-plot { height: 38vh !important; min-height: 310px; }
 }
+
+/* Long taxon and membership names remain readable in atlas navigation. */
+.gf-atlas-browser .selectize-input,
+.gf-atlas-browser .selectize-input .item,
+.gf-atlas-browser .selectize-dropdown .option {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  height: auto;
+}
+.gf-atlas-browser .selectize-control.single .selectize-input { padding-right: 32px; }

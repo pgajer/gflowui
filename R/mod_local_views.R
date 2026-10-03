@@ -38,6 +38,8 @@ gflowui_local_views_server <- function(id, manifest, view_state, selected_vertex
     regions <- shiny::reactiveVal(list()); drafts <- shiny::reactiveVal(list())
     region_id <- shiny::reactiveVal(""); view_id <- shiny::reactiveVal("__preview__")
     parent_set <- shiny::reactiveVal(NULL)
+    nav_state <- shiny::reactiveVal(list(family="whole"))
+    nav_memory <- list(); view_memory <- list(); nav_token <- 0L; nav_sent <- shiny::reactiveVal(NULL)
     status <- shiny::reactiveVal("")
     loaded_project <- NULL
     config <- shiny::reactive(manifest()$metadata$local_views)
@@ -47,6 +49,7 @@ gflowui_local_views_server <- function(id, manifest, view_state, selected_vertex
       loaded_project <<- manifest()$project_id
       p <- path(); regions(if (file.exists(p)) readRDS(p)$regions else list())
       drafts(list()); region_id(""); view_id("__preview__"); parent_set(NULL); status("")
+      nav_state(list(family="whole")); nav_memory <<- list(); view_memory <<- list(); nav_sent(NULL)
     })
     calculation <- gflowui_atlas_calculation_server("compute",manifest,shiny::reactive(region()),path,
       publish=function(folder,spec) {
@@ -80,16 +83,69 @@ gflowui_local_views_server <- function(id, manifest, view_state, selected_vertex
       c("Locate in parent embedding (preview)"="__preview__", stats::setNames(
         vapply(views, `[[`, "", "id"), vapply(views, function(gs) gs$label %||% gs$id, "")))
     })
+    nav_catalog <- shiny::reactive(gflowui_atlas_catalog(regions(),isTRUE(input$show_retired)))
+    nav_model <- shiny::reactive(gflowui_atlas_navigation_resolve(nav_catalog(),nav_state(),length(drafts())>0L))
+    remember_navigation <- function() {
+      id<-shiny::isolate(region_id()); model<-shiny::isolate(nav_model())
+      state<-if(identical(model$target,id))model$state else gflowui_atlas_navigation_state(shiny::isolate(nav_catalog()),id)
+      nav_memory[[state$family]] <<- state
+      view_memory[[if(nzchar(id))id else "__whole__"]] <<- shiny::isolate(view_id())
+    }
+    navigate_region <- function(id, remember=TRUE) {
+      if(identical(id,shiny::isolate(region_id())))return(invisible(NULL))
+      if(remember)remember_navigation()
+      views<-shiny::isolate(regions())[[id]]$views %||% list()
+      remembered<-view_memory[[if(nzchar(id))id else "__whole__"]] %||% "__preview__"
+      if(!remembered %in% c("__preview__",vapply(views,`[[`,"","id")))remembered<-"__preview__"
+      if(remembered!="__preview__" && identical(shiny::isolate(view_id()),"__preview__"))parent_set(shiny::isolate(view_state())$set_id)
+      region_id(id);view_id(remembered)
+    }
+    # External actions (save/revise/import/defaults) also select the matching family.
+    shiny::observeEvent(region_id(), {
+      id<-region_id()
+      if(!identical(shiny::isolate(nav_model())$target,id))nav_state(gflowui_atlas_navigation_state(nav_catalog(),id))
+    },ignoreNULL=FALSE,priority=150)
     output$navigation <- shiny::renderUI({
       manifest()$project_id
       if (!isTRUE(config()$enabled)) return(shiny::p("Local views require a dataset abundance source in the project configuration."))
-      # Keep both inputs mounted while navigating. Recreating a select can emit
-      # its previous/default value and undo a selection already accepted here.
+      # Controls remain mounted; one versioned browser event records user intent.
       shiny::isolate(shiny::tagList(
-        shiny::selectInput(session$ns("region"), "Data region", region_choices(), selected=region_id()),
+        shiny::div(id=session$ns("browser"),class="gf-atlas-browser", `data-gf-atlas-navigation`=session$ns("nav_choice"),
+          lapply(names(gflowui_atlas_navigation_fields()),function(key)
+            shiny::div(id=session$ns(paste0("nav_",key,"_row")),
+              shiny::selectInput(session$ns(paste0("nav_",key)),gflowui_atlas_navigation_fields()[[key]],c("Choose…"=""),width="100%")))),
+        shiny::textOutput(session$ns("navigation_hint")),
+        shiny::div(style="display:none",`aria-hidden`="true",
+          shiny::selectInput(session$ns("region"), "Data region", region_choices(), selected=region_id())),
         shiny::conditionalPanel(sprintf("input['%s'] !== ''", session$ns("region")),
           shiny::selectInput(session$ns("view"), "Region view", view_choices(), selected=view_id()))))
     })
+    output$navigation_hint<-shiny::renderText({
+      if(is.null(nav_model()$target))"Choose a region above. The current display stays unchanged until the selection is complete."
+    })
+    shiny::observe({
+      model<-nav_model(); input$nav_mounted
+      nav_token <<- nav_token+1L
+      nav_sent(list(token=nav_token,project=manifest()$project_id,model=model))
+      session$sendCustomMessage("gflowuiAtlasNavigation",list(container=session$ns("browser"),input=session$ns("nav_choice"),
+        token=nav_token,project=manifest()$project_id,fields=lapply(names(gflowui_atlas_navigation_fields()),function(key){
+          spec<-model$controls[[key]]
+          list(id=session$ns(paste0("nav_",key)),key=key,label=spec$label %||% gflowui_atlas_navigation_fields()[[key]],
+            selected=spec$selected %||% "",visible=isTRUE(spec$visible),
+            options=lapply(seq_along(spec$choices),function(i)list(value=unname(spec$choices[i]),label=names(spec$choices)[i])))
+        })))
+    })
+    shiny::observeEvent(input$nav_choice, {
+      e<-input$nav_choice;sent<-nav_sent()
+      if(is.null(sent)||!identical(as.character(e$project),sent$project)||!identical(as.integer(e$token),sent$token))return()
+      key<-e$key;spec<-sent$model$controls[[key]]
+      if(is.null(spec)||!isTRUE(spec$visible)||length(e$value)!=1L||!e$value%in%unname(spec$choices)||identical(e$value,spec$selected))return()
+      remember_navigation()
+      state<-if(key=="family")nav_memory[[e$value]] %||% list(family=e$value) else gflowui_atlas_navigation_change(sent$model$state,key,e$value)
+      model<-gflowui_atlas_navigation_resolve(nav_catalog(),state,length(drafts())>0L)
+      nav_state(model$state)
+      if(!is.null(model$target))navigate_region(model$target,remember=FALSE)
+    },ignoreInit=TRUE,priority=200)
     shiny::observe({
       choices <- region_choices(); selected <- region_id()
       shiny::freezeReactiveValue(input, "region")
@@ -103,7 +159,7 @@ gflowui_local_views_server <- function(id, manifest, view_state, selected_vertex
     shiny::observeEvent(input$region, {
       if (!input$region %in% unname(region_choices())) return()
       if (!identical(input$region, region_id())) {
-        region_id(input$region); view_id("__preview__")
+        navigate_region(input$region)
       }
     }, ignoreNULL=TRUE, priority=100)
     shiny::observeEvent(input$view, {
@@ -115,8 +171,8 @@ gflowui_local_views_server <- function(id, manifest, view_state, selected_vertex
         view_id(input$view)
       }
     }, ignoreNULL=TRUE)
-    shiny::observeEvent(input$whole, { region_id(""); view_id("__preview__") })
-    shiny::observeEvent(input$clear, { drafts(list()); region_id(""); view_id("__preview__") })
+    shiny::observeEvent(input$whole, { remember_navigation(); nav_state(list(family="whole")); region_id(""); view_id("__preview__") })
+    shiny::observeEvent(input$clear, { remember_navigation(); drafts(list()); nav_state(list(family="whole")); region_id(""); view_id("__preview__") })
     output$context <- shiny::renderText({
       r <- region(); if (is.null(r)) return("Context: whole dataset.")
       st <- view_state(); present <- sum(r$vertex_ids %in% st$vertex_ids)

@@ -27,6 +27,10 @@ gflowui_dropdown_defaults_config <- function(fields = list(), extra = list()) {
   }
   deps[["graph_k"]]<-unique(c(previous,"graph_data_type"))
   deps[["graph_optimal_method"]]<-previous
+  previous_nav<-character()
+  for(key in names(gflowui_atlas_navigation_fields())) {
+    id<-paste0("local_atlas-nav_",key);deps[[id]]<-previous_nav;previous_nav<-c(previous_nav,id)
+  }
   deps[["local_atlas-view"]]<-"local_atlas-region"
   deps[["local_atlas-compute-metric"]]<-"local_atlas-compute-coordinates"
   deps[["local_atlas-compute-inner"]]<-c("local_atlas-compute-method","local_atlas-compute-coordinates")
@@ -73,7 +77,7 @@ gflowui_dropdown_defaults_server <- function(input,output,session,manifest,regio
       request<-input$dropdown_default_save;m<-manifest()
       if(!identical(request$project_id,m$project_id))stop("The project changed. Open the label menu again.")
       entry<-request$entry
-      expected<-if(identical(entry$id,"local_atlas-region"))"" else region() %||% ""
+      expected<-if((identical(entry$id,"local_atlas-region") || startsWith(entry$id,"local_atlas-nav_")))"" else region() %||% ""
       next_manifest<-gflowui_dropdown_default_store(m,entry,catalog(),expected,if(nzchar(expected))region_label() else "Whole dataset")
       # Pass only defaults to the writer; never persist a local effective manifest.
       save(next_manifest$defaults$dropdowns)
