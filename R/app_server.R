@@ -634,7 +634,10 @@ app_server <- function(input, output, session) {
       preferred_default_set_id = project_defaults$set_id,
       preferred_default_k = project_defaults$k,
       sticky_set_id = isolate(graph_selection_state$set_id),
-      sticky_k = isolate(graph_selection_state$k)
+      sticky_k = isolate(graph_selection_state$k),
+      initial_selector_defaults = if (!identical(graph_selector_intent()$scope,
+        graph_selector_scope())) manifest$defaults$dropdowns %||% list() else list(),
+      selector_region = local_atlas$region()$id %||% ""
     )
     resolved$error <- NULL
     resolved$manifest <- manifest

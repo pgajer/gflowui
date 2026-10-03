@@ -1,3 +1,18 @@
+# Resolve saved graph choices before loading the initial layout. The browser
+# still owns later user changes and defaults for other kinds of controls.
+gflowui_initial_selector_default <- function(entries, id, region, context, choices) {
+  for (entry in entries %||% list()) {
+    if (!identical(entry$id, id) || !identical(entry$region %||% "", region)) next
+    dependencies <- entry$context %||% list()
+    if (!all(vapply(names(dependencies), function(key) {
+      identical(as.character(context[[key]]), as.character(dependencies[[key]]))
+    }, logical(1)))) next
+    value <- as.character(entry$value)
+    if (length(value) == 1L && !is.na(value) && value %in% choices) return(value)
+  }
+  ""
+}
+
 # User defaults are separate from reference graphs and registered graph inventories.
 gflowui_dropdown_default_key <- function(id, region = "", context = list()) {
   if(length(context))context<-context[order(names(context),method="radix")]

@@ -54,3 +54,37 @@ test_that("empty multi-selection can be a default but invalid scalar values cann
   catalog$groups$multiple<-FALSE
   expect_error(gflowui_dropdown_default_store(list(),e,catalog),"available")
 })
+
+test_that("first graph resolution applies the whole saved selector chain", {
+  helpers <- gflowui_make_server_graph_structure_helpers(new.env())
+  sets <- list(
+    list(id="old", metric="euclidean", construction="knn", route="direct", k_values=1L),
+    list(id="ambient", metric="euclidean", construction="ambient", route="direct", k_values=1L),
+    list(id="refined", metric="euclidean", construction="ambient", route="refined", k_values=1L),
+    list(id="other", metric="hellinger", construction="knn", route="direct", k_values=1L))
+  fields <- lapply(c("metric","construction","route"),function(x)list(id=x,field=x,label=x))
+  m <- list(defaults=list(graph_set_id="old",reference_graph_set_id="old",reference_k=1L),
+    metadata=list(graph_selector_schema=list(fields=fields)),graph_sets=sets)
+  entries <- list(
+    list(id="graph_selector_construction",region="",value="ambient",context=list(graph_selector_metric="euclidean")),
+    list(id="graph_selector_route",region="",value="refined",context=list(graph_selector_metric="euclidean",graph_selector_construction="ambient")))
+  resolve <- function(...) helpers$resolve_graph_selection(m,sets,...)
+  expect_identical(resolve()$set_id,"old")
+  initial <- resolve(initial_selector_defaults=entries)
+  expect_identical(initial$set_id,"refined")
+  # Browser mounting echoes these already-resolved values, with no second graph.
+  values <- setNames(lapply(initial$selector_fields,`[[`,"selected"),
+    vapply(initial$selector_fields,`[[`,"","input_id"))
+  expect_identical(resolve(input_selector_values=values,sticky_set_id=initial$set_id)$set_id,"refined")
+  expect_identical(resolve(initial_selector_defaults=entries,selector_region="local")$set_id,"old")
+  expect_identical(resolve(initial_selector_defaults=entries,
+    input_selector_values=list(graph_selector_metric="hellinger"))$set_id,"other")
+  entries[[1]]$value <- "removed"
+  expect_identical(resolve(initial_selector_defaults=entries)$set_id,"old")
+  # Explicit user intent wins over saved defaults.
+  entries[[1]]$value <- "ambient"
+  expect_identical(resolve(initial_selector_defaults=entries,
+    input_selector_values=list(graph_selector_construction="knn"))$set_id,"old")
+  entries[[1]]$region <- "local"
+  expect_identical(resolve(initial_selector_defaults=entries,selector_region="local")$set_id,"ambient")
+})

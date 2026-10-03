@@ -535,7 +535,9 @@ gflowui_make_server_graph_structure_helpers <- function(rv) {
       preferred_default_set_id = "",
       preferred_default_k = NA_integer_,
       sticky_set_id = "",
-      sticky_k = NA_integer_) {
+      sticky_k = NA_integer_,
+      initial_selector_defaults = list(),
+      selector_region = "") {
     if (!is.list(manifest) || !is.list(graph_sets) || length(graph_sets) < 1L) {
       return(list(
         set_id = "",
@@ -604,6 +606,7 @@ gflowui_make_server_graph_structure_helpers <- function(rv) {
       default_set_id <- resolve_set_id_from_choices(unname(all_choices))
       default_graph_set <- graph_set_by_id(graph_sets, default_set_id)
       candidate_sets <- graph_sets
+      selected_values <- list()
 
       for (field_spec in selector_schema$fields) {
         field_name <- field_spec$field
@@ -620,6 +623,10 @@ gflowui_make_server_graph_structure_helpers <- function(rv) {
           input_selector_values[[field_spec$id]] %||% input_selector_values[[field_spec$input_id]],
           default = ""
         )
+        if (!nzchar(input_val)) {
+          input_val <- gflowui_initial_selector_default(initial_selector_defaults,
+            field_spec$input_id, selector_region, selected_values, unname(choice_vec))
+        }
         default_val <- graph_set_field_value(default_graph_set, field_name)
         if (!(input_val %in% unname(choice_vec))) {
           if (default_val %in% unname(choice_vec)) {
@@ -629,6 +636,7 @@ gflowui_make_server_graph_structure_helpers <- function(rv) {
           }
         }
 
+        selected_values[[field_spec$input_id]] <- input_val
         selector_fields[[length(selector_fields) + 1L]] <- c(field_spec, list(
           choices = choice_vec,
           selected = input_val
