@@ -1541,3 +1541,17 @@ body:has(#source_datasets-show:checked) #source_datasets-plot { height: calc(78v
   height: auto;
 }
 .gf-atlas-browser .selectize-control.single .selectize-input { padding-right: 32px; }
+
+/* State families are separate from the sample workspace and use their own camera. */
+.gf-state-pane { display:none; min-width:0; border-left:1px solid var(--gf-line); }
+body[data-state-mode="states"] .gf-state-pane,
+body[data-state-mode="linked"] .gf-state-pane { display:block; }
+body[data-state-mode="states"] #workspace_view,
+body[data-state-mode="states"] .gf-sample-controls,
+body[data-state-mode="states"] .gf-sample-metadata,
+body[data-state-mode="states"] .gf-linked-2d-pane,
+body[data-state-mode="linked"] .gf-linked-2d-pane { display:none !important; }
+body[data-state-mode="states"] .gf-viewer-stage { display:block !important; }
+body[data-state-mode="linked"] .gf-viewer-stage { display:grid !important; grid-template-columns:minmax(0,1fr) minmax(0,1fr); align-items:start; }
+body[data-state-mode="linked"] .gf-viewer-stage > * { min-width:0; }
+@media(max-width:1000px) { body[data-state-mode="linked"] .gf-viewer-stage {grid-template-columns:minmax(0,1fr);} }

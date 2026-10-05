@@ -71,6 +71,22 @@ app_server <- function(input, output, session) {
       save_active_manifest(payload)
     })
 
+  state_graphs <- gflowui_state_graphs_server("state_graphs", atlas_base_manifest,
+    view=function()reference_view_state(), visible=function()reference_renderer_state()$keep_idx,
+    sample_selected=function()source_datasets$selected(),
+    sample_click=shiny::reactive({
+      raw<-input[["plotly_click-reference_plot_source"]]
+      d<-tryCatch(if(is.character(raw))jsonlite::fromJSON(raw) else raw,error=function(e)NULL)
+      extract_plotly_clicked_vertex_id(d)
+    }),
+    save=function(state){
+      payload<-load_or_init_active_manifest(active_project_context())
+      payload$manifest$defaults$state_graphs<-state
+      was_dirty<-shiny::isolate(rv$project.dirty);baseline<-shiny::isolate(rv$project.baseline.signature)
+      save_active_manifest(payload)
+      if(isTRUE(was_dirty)){rv$project.baseline.signature<-baseline;rv$project.dirty<-TRUE}
+    },open_region=function(label,ids,definition)local_atlas$open_membership(label,ids,definition))
+
   embedding_comparison_active <- shiny::reactive(gflowui_ec_active(active_manifest()))
   embedding_comparison_state <- if (requireNamespace("plotly", quietly = TRUE) &&
                                     requireNamespace("htmlwidgets", quietly = TRUE)) {
@@ -10489,6 +10505,7 @@ app_server <- function(input, output, session) {
 
     keep_idx <- classifications$filter(st, keep_idx)
     keep_idx <- source_datasets$filter(st, keep_idx)
+    keep_idx <- state_graphs$filter(st, keep_idx)
     if (source_datasets$only() && length(source_datasets$selected()))
       keep_idx <- intersect(keep_idx, which(st$vertex_ids %in% source_datasets$selected()))
 
@@ -10526,6 +10543,10 @@ app_server <- function(input, output, session) {
           collapse = " "
         )
       }
+    }
+    if (isTRUE(plotly_ready) && state_graphs$mode() == "linked") {
+      effective <- "plotly"
+      if (requested != "plotly") note <- "Linked state/sample selection uses Plotly; the saved sample renderer is retained for Samples view."
     }
     note <- trimws(gsub("\\s+", " ", as.character(note %||% "")))
 
@@ -11636,6 +11657,7 @@ app_server <- function(input, output, session) {
       p <- p %>%
         plotly::layout(
           margin = list(l = 0, r = 0, b = 0, t = 10),
+          showlegend = state_graphs$mode() != "linked",
           legend = if (identical(src$type, "categorical")) {
             if (identical(st$graph_set$layout_assets$presets$legend_position, "bottom")) {
               list(orientation = "h", x = 0, y = -0.02, xanchor = "left",
@@ -11686,6 +11708,14 @@ app_server <- function(input, output, session) {
           x=coords[si,1],y=coords[si,2],z=coords[si,3],customdata=si,key=si,
           name="Linked 2D selection",showlegend=FALSE,
           marker=list(size=point_size+4,color="#f97316",symbol="circle-open",line=list(width=3)),
+          text=st$vertex_ids[si],hoverinfo="text")
+      }
+      if (state_graphs$enabled() && state_graphs$mode()=="linked") {
+        si <- intersect(keep_idx,which(st$vertex_ids %in% state_graphs$highlight()))
+        if(length(si))p<-plotly::add_trace(p,inherit=FALSE,type="scatter3d",mode="markers",
+          x=coords[si,1],y=coords[si,2],z=coords[si,3],customdata=si,key=si,
+          name="State / witness members",showlegend=FALSE,
+          marker=list(size=point_size+3,color="#f97316",symbol="circle-open"),
           text=st$vertex_ids[si],hoverinfo="text")
       }
       p <- gflowui_add_embedding_endpoint_preview(p, coords, endpoint_detector$preview(), keep_idx)
@@ -14558,9 +14588,11 @@ app_server <- function(input, output, session) {
 
         shiny::tagList(
           shiny::div(
-            class = "gf-graph-metadata",
+            class = "gf-graph-metadata gf-sample-metadata",
             build_html_table(graph_ui$metadata_tbl, empty_text = "No graph metadata available.", show_header = FALSE)
           ),
+          state_graphs$controls(),
+          shiny::div(class="gf-sample-controls",
           classifications$controls(reference_view_state()),
           selector_rows,
           gflowui_graph_neighbor_controls(graph_ui, show_reference = is.null(local_atlas$region()) || !is.null(local_atlas$preview())),
@@ -14671,6 +14703,7 @@ app_server <- function(input, output, session) {
           } else {
             NULL
           }
+          )
         )
       }
 

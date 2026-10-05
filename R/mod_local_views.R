@@ -323,7 +323,16 @@ gflowui_local_views_server <- function(id, manifest, view_state, selected_vertex
         status(sprintf("Imported %d regions with %d shared views. Existing asset files were not copied.",length(imported),sum(vapply(imported,function(r)length(r$views),1L))))
       },error=function(e)status(conditionMessage(e)))
     })
-    list(form=shiny::reactive({v<-shiny::reactiveValuesToList(input);v$calculation<-calculation$form();v}), manifest=shiny::reactive(gflowui_atlas_manifest(manifest(),region(),view_id(),parent_set())),
+    open_membership <- function(label, ids, definition) {
+      if(!isTRUE(config()$enabled))stop("Local regions are not configured for this project.")
+      universe<-gflowui_vertex_hover_asset(manifest())$sample_ids
+      r<-gflowui_atlas_region(label,ids,universe,definition)
+      rs<-gflowui_atlas_update(path(),function(current)gflowui_atlas_merge(current,list(r)))
+      regions(rs);region_id(r$id);drafts(list());view_id("__preview__")
+      status("Saved state-witness region; membership is fixed to the reference sample IDs.")
+      invisible(r$id)
+    }
+    list(open_membership=open_membership,form=shiny::reactive({v<-shiny::reactiveValuesToList(input);v$calculation<-calculation$form();v}), manifest=shiny::reactive(gflowui_atlas_manifest(manifest(),region(),view_id(),parent_set())),
          region=region, regions=regions, preview=shiny::reactive(if(identical(view_id(),"__preview__")) region() else NULL),
          only_members=shiny::reactive(isTRUE(input$only_members)), context=shiny::reactive({
            r<-region(); if(is.null(r)) "Whole dataset" else paste(r$label, if(identical(view_id(),"__preview__")) "— parent preview" else "— local fitted view")

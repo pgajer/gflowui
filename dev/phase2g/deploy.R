@@ -1,0 +1,24 @@
+args<-commandArgs(TRUE);stopifnot(length(args)==2L)
+copy<-normalizePath(args[1]);backup<-args[2]
+pkgload::load_all('/Users/pgajer/current_projects/gflowui-fermat-palettes',quiet=TRUE)
+live<-gflowui_projects_data_dir();id<-'comb_fermat_embeddings_01_oct_2026'
+mf<-gflowui_manifest_path(id);before<-readRDS(mf)
+stopifnot(is.null(before$metadata$state_graphs),!dir.exists(backup))
+dir.create(backup,recursive=TRUE)
+stopifnot(file.copy(mf,file.path(backup,'manifest.rds')),file.copy(file.path(live,'registry.rds'),file.path(backup,'registry.rds')),
+ file.copy(file.path(live,'projects',id),backup,recursive=TRUE))
+target<-file.path(live,'projects',id,'state_graphs');stopifnot(!dir.exists(target));dir.create(target)
+stopifnot(file.copy(file.path(copy,'projects',id,'state_graphs/catalogue.rds'),file.path(target,'catalogue.rds')))
+stopifnot(identical(readRDS(mf),before))
+after<-before;after$metadata$state_graphs<-list(file=file.path(target,'catalogue.rds'),cache_dir=file.path(target,'fits'),version=1L)
+after$defaults$state_graphs<-gflowui_state_graph_default()
+after$updated_at<-format(Sys.time(),tz='UTC',usetz=TRUE)
+gflowui_write_manifest(after,mf);readback<-readRDS(mf)
+check<-readback;check$metadata$state_graphs<-NULL;check$defaults$state_graphs<-NULL;check$updated_at<-before$updated_at
+stopifnot(identical(check,before))
+a<-gflowui_state_graph_asset(readback)
+receipt<-list(project_id=id,manifest=mf,backup=normalizePath(backup),deployed_at=after$updated_at,
+ before_sha256=digest::digest(before,algo='sha256'),after_sha256=digest::digest(readback,algo='sha256'),
+ asset_sha256=digest::digest(file=file.path(target,'catalogue.rds'),algo='sha256'),
+ preserved_all_other_fields=TRUE,cached_variants=length(a$fits),reference_samples=nrow(a$template$membership),live_url='http://127.0.0.1:3874/')
+jsonlite::write_json(receipt,file.path(backup,'deployment.json'),pretty=TRUE,auto_unbox=TRUE);print(receipt)

@@ -94,6 +94,7 @@ app_ui <- function() {
       shiny::includeScript(system.file("app/www/lazy-edges.js", package = "gflowui")),
       shiny::includeScript(system.file("app/www/scene-updates.js", package = "gflowui")),
       shiny::includeScript(system.file("app/www/source-datasets.js", package = "gflowui")),
+      shiny::includeScript(system.file("app/www/state-graphs.js", package = "gflowui")),
       if (nzchar(embedding.css.path)) shiny::includeCSS(embedding.css.path),
       if (nzchar(embedding.js.path)) shiny::includeScript(embedding.js.path),
       if (nzchar(density.state.js.path)) {
@@ -106,6 +107,8 @@ app_ui <- function() {
     shiny::div(
       class = "gf-viewer-stage",
       shiny::uiOutput("workspace_view"),
+      if (requireNamespace("plotly",quietly=TRUE)) shiny::div(class="gf-state-pane",
+        plotly::plotlyOutput("state_graphs-plot",height="78vh")),
       if (requireNamespace("plotly",quietly=TRUE)) shiny::conditionalPanel("input['source_datasets-show'] === true",
         class="gf-linked-2d-pane",
         shiny::div(class="gf-linked-2d-card",
