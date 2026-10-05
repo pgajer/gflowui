@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>Classification catalogues and coverage presets</title>
+  <style>
+    html {
+      color: #1a1a1a;
+      background-color: #fdfdfd;
+    }
+    body {
+      margin: 0 auto;
+      max-width: 36em;
+      padding-left: 50px;
+      padding-right: 50px;
+      padding-top: 50px;
+      padding-bottom: 50px;
+      hyphens: auto;
+      overflow-wrap: break-word;
+      text-rendering: optimizeLegibility;
+      font-kerning: normal;
+    }
+    @media (max-width: 600px) {
+      body {
+        font-size: 0.9em;
+        padding: 12px;
+      }
+      h1 {
+        font-size: 1.8em;
+      }
+    }
+    @media print {
+      html {
+        background-color: white;
+      }
+      body {
+        background-color: transparent;
+        color: black;
+        font-size: 12pt;
+      }
+      p, h2, h3 {
+        orphans: 3;
+        widows: 3;
+      }
+      h2, h3, h4 {
+        page-break-after: avoid;
+      }
+    }
+    p {
+      margin: 1em 0;
+    }
+    a {
+      color: #1a1a1a;
+    }
+    a:visited {
+      color: #1a1a1a;
+    }
+    img {
+      max-width: 100%;
+    }
+    svg {
+      height: auto;
+      max-width: 100%;
+    }
+    h1, h2, h3, h4, h5, h6 {
+      margin-top: 1.4em;
+    }
+    h5, h6 {
+      font-size: 1em;
+      font-style: italic;
+    }
+    h6 {
+      font-weight: normal;
+    }
+    ol, ul {
+      padding-left: 1.7em;
+      margin-top: 1em;
+    }
+    li > ol, li > ul {
+      margin-top: 0;
+    }
+    blockquote {
+      margin: 1em 0 1em 1.7em;
+      padding-left: 1em;
+      border-left: 2px solid #e6e6e6;
+      color: #606060;
+    }
+    code {
+      font-family: Menlo, Monaco, Consolas, 'Lucida Console', monospace;
+      font-size: 85%;
+      margin: 0;
+      hyphens: manual;
+    }
+    pre {
+      margin: 1em 0;
+      overflow: auto;
+    }
+    pre code {
+      padding: 0;
+      overflow: visible;
+      overflow-wrap: normal;
+    }
+    .sourceCode {
+     background-color: transparent;
+     overflow: visible;
+    }
+    hr {
+      border: none;
+      border-top: 1px solid #1a1a1a;
+      height: 1px;
+      margin: 1em 0;
+    }
+    table {
+      margin: 1em 0;
+      border-collapse: collapse;
+      width: 100%;
+      overflow-x: auto;
+      display: block;
+      font-variant-numeric: lining-nums tabular-nums;
+    }
+    table caption {
+      margin-bottom: 0.75em;
+    }
+    tbody {
+      margin-top: 0.5em;
+      border-top: 1px solid #1a1a1a;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    th {
+      border-top: 1px solid #1a1a1a;
+      padding: 0.25em 0.5em 0.25em 0.5em;
+    }
+    td {
+      padding: 0.125em 0.5em 0.25em 0.5em;
+    }
+    header {
+      margin-bottom: 4em;
+      text-align: center;
+    }
+    #TOC li {
+      list-style: none;
+    }
+    #TOC ul {
+      padding-left: 1.3em;
+    }
+    #TOC > ul {
+      padding-left: 0;
+    }
+    #TOC a:not(:hover) {
+      text-decoration: none;
+    }
+    code{white-space: pre-wrap;}
+    span.smallcaps{font-variant: small-caps;}
+    div.columns{display: flex; gap: min(4vw, 1.5em);}
+    div.column{flex: auto; overflow-x: auto;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    /* The extra [class] is a hack that increases specificity enough to
+       override a similar rule in reveal.js */
+    ul.task-list[class]{list-style: none;}
+    ul.task-list li input[type="checkbox"] {
+      font-size: inherit;
+      width: 0.8em;
+      margin: 0 0.8em 0.2em -1.6em;
+      vertical-align: middle;
+    }
+    .display.math{display: block; text-align: center; margin: 0.5rem auto;}
+  </style>
+</head>
+<body>
+<header id="title-block-header">
+<h1 class="title">Classification catalogues and coverage presets</h1>
+</header>
+<h1 id="classification-catalogues-and-coverage-presets">Classification
+catalogues and coverage presets</h1>
+<p>This optional project configuration adds pure unordered CST
+annotations and fixed-reference coverage filters to sample layouts.
+Projects without the configuration keep the ordered dCST controls and
+their existing behavior.</p>
+<p>The catalogue is an RDS asset declared in
+<code>manifest$metadata$classification_catalogue$file</code>. Relative
+paths resolve from <code>project_root</code>. It contains:</p>
+<ul>
+<li><code>samples</code>: unique <code>sample_id</code>,
+<code>udcst_level1</code>, <code>udcst_level2</code> columns.</li>
+<li><code>levels</code>: named definitions with display labels.</li>
+<li><code>subsets</code>: named definitions, including <code>All</code>,
+each with immutable sample <code>ids</code>, a display
+<code>label</code>, retained-state count and classification
+<code>policy</code>.</li>
+<li><code>pairs</code>: unique group labels with original feature names
+<code>a</code> and <code>b</code>. Unordered pairs use canonical
+feature-dictionary order, never current dominance. The two directions of
+dominance share one chart.</li>
+<li><code>palettes</code>: named colors per classification level;
+project overrides live in
+<code>metadata$classification_catalogue$palettes</code>.</li>
+<li>Dictionary, orientation and source checksum for
+reproducibility.</li>
+</ul>
+<p>Ordered <code>dcst_level1:3</code> annotations remain in the existing
+graph assets. The catalogue adds <code>udcst_level1:2</code> by sample
+ID, including in local views. Missing IDs receive missing annotations;
+All preserves them, while a named core contains only its explicitly
+saved IDs.</p>
+<p><code>defaults$classification_state</code> saves the selected subset,
+classification type, last level for each type, checkbox groups per level
+and color source. This is independent of layout identity. Dropdown
+label-menu defaults remain separate and retain their normal precedence
+when applied by the browser. Palette edits are saved immediately;
+control changes are saved after a short debounce.</p>
+<p>Color by and CST type share one classification choice. Type changes
+preserve source-dataset/numeric coloring; selecting dCST or udCST
+coloring changes type. Switching from ordered level 3 to unordered
+restores the last unordered level.</p>
+<p>The renderer’s existing <code>keep_idx</code> mask now intersects the
+coverage preset, CST groups, source datasets, component selection, local
+preview and linked selection. Both 3D renderers, endpoints, arms,
+subject edges, the linked 2D plot and the configured project’s source
+cross-table consume that mask. Coverage does not recompute paths,
+layouts, or connected components. Source summary/table counts explicitly
+describe the current region before filters; the cross-table describes
+currently visible compositions. A valid empty mask remains empty in both
+renderers, endpoint visibility and export. Arm paths preserve gaps, and
+subject displays filter original temporal edges without bridging hidden
+visits.</p>
+<p>Above 40 categories, configured projects use one per-vertex-colored
+3D trace; the full CST table is the legend. Smaller selections retain
+normal legends. This avoids thousands of traces for the 1,192 observed
+unordered pair states.</p>
+<h2 id="copy-validation-and-deployment">Copy, validation and
+deployment</h2>
+<p><code>prepare-copy.R</code> takes the research proposal directory and
+a new registry folder. It copies mutable project assets, rebases
+registry-owned paths, and shares numerical graph/layout inputs
+read-only. Run the copied app with
+<code>options(gflowui.projects_data_dir = copy_folder)</code> on a
+separate port.</p>
+<p><code>validate-data.R</code> checks the full saved memberships under
+two metrics and two embedding routes, all saved atlas regions, and a
+canonical unordered pair containing both dominance directions.
+<code>browser-check.mjs</code> checks rendered membership, controls,
+linked views and persistence in the isolated instance. Run
+<code>prepare-browser-fixtures.R copy_folder</code> before the browser
+checks. Its local expected-ID JSON is made from the saved catalogue, not
+inferred from rendered counts. The browser scripts target the isolated
+app on port 3875.</p>
+<p><code>deploy.R</code> takes the checked copy and a fresh backup
+directory. It backs up the live manifest, registry and mutable project
+assets, then adds only the catalogue configuration and initial
+classification controls to the <strong>latest live manifest</strong>. It
+never deploys the test copy’s endpoints, palettes, selections or atlas
+state. An equality check verifies that all other manifest fields survive
+unchanged. Restart the existing app from its original launch script;
+reload the viewer.</p>
+<p>For immediate rollback before subsequent user edits, restore the
+backed-up manifest and restart. After new user edits, remove only
+<code>metadata$classification_catalogue</code> and
+<code>defaults$classification_state</code> from the current manifest
+instead of replacing it wholesale. The additive asset can remain on
+disk. Existing ordered annotations and saved layouts need no
+rollback.</p>
+<p>This implements sample-view Phase 2. State graphs, witness
+inspection, robust geometric filtering and registration of recomputed
+core regions are later phases.</p>
+</body>
+</html>
