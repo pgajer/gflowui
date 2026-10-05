@@ -1,11 +1,12 @@
 # Offer only the dCST levels actually supplied by the current view.
-gflowui_dcst_levels <- function(sources) {
-  keys <- intersect(paste0("dcst_level", 1:3), names(sources))
+gflowui_dcst_levels <- function(sources, type = "dcst") {
+  keys <- intersect(paste0(type, "_level", if(type == "udcst")1:2 else 1:3), names(sources))
   if (!length(keys)) return(character())
-  stats::setNames(keys, paste("Level", sub("dcst_level", "", keys)))
+  stats::setNames(keys, paste("Level", sub("^.*_level", "", keys)))
 }
 gflowui_dcst_options <- function(sources, level = "dcst_level1", group = "") {
-  keys <- unname(gflowui_dcst_levels(sources))
+  type <- if(length(level)==1L && !is.na(level) && startsWith(level,"udcst_"))"udcst" else "dcst"
+  keys <- unname(gflowui_dcst_levels(sources,type))
   if (!length(keys)) return(NULL)
   if (length(level) != 1L || !level %in% keys) level <- keys[[1L]]
   values <- as.character(sources[[level]]$values)
@@ -19,7 +20,7 @@ gflowui_dcst_options <- function(sources, level = "dcst_level1", group = "") {
   choices <- c("All dCSTs" = "__all__", stats::setNames(ids,
     sprintf("%s (%s vertices)", groups, format(counts, big.mark = ",", trim = TRUE))))
   if (length(group) != 1L || !group %in% ids) group <- "__all__"
-  list(level = level, levels = gflowui_dcst_levels(sources), group = group, choices = choices, groups = groups, counts = counts,
+  list(level = level, type = type, levels = gflowui_dcst_levels(sources,type), group = group, choices = choices, groups = groups, counts = counts,
        selected_label = if (group %in% ids) groups[match(group, ids)] else NULL)
 }
 
@@ -94,18 +95,19 @@ gflowui_dcst_table_ui <- function(options, palettes, project, selection = NULL) 
     "{project:t.dataset.project,level:t.dataset.level,group:this.dataset.group,color:this.value},",
     "{priority:'event'});")
   shiny::div(class = "gf-dcst-table", `data-level` = level, `data-project` = project,
-    shiny::p("Check one or more dCSTs to show only those groups. No checks shows all. Sizes count vertices in this layout. Colors are saved across this project's layouts.",
+    if(length(setdiff(selected,groups)))shiny::p(class="gf-hint",sprintf("%d selected CSTs are absent from this view. Clear the selection to show the available groups.",length(setdiff(selected,groups)))),
+    shiny::p("Check one or more CSTs to show only those groups. No checks shows all. Sizes count vertices in this layout before filters. Colors are saved across this project's layouts.",
       style = "font-size:12px; margin:8px 0;"),
     shiny::tags$button(type = "button", class = "btn btn-sm btn-outline-secondary",
       onclick = paste0("this.closest('.gf-dcst-table').querySelectorAll('input[type=checkbox]').forEach(x=>x.checked=false);", selection_js),
       "Show all / clear selection"),
     shiny::div(style = "max-height:420px;overflow:auto;margin-top:8px;",
       shiny::tags$table(class = "table table-sm", style = "width:100%;font-size:12px;",
-        shiny::tags$thead(shiny::tags$tr(lapply(c("Show", "dCST name", "Size", "Color"), shiny::tags$th))),
+        shiny::tags$thead(shiny::tags$tr(lapply(c("Show", paste(if(identical(options$type,"udcst"))"udCST" else "dCST", "name"), "Size", "Color"), shiny::tags$th))),
         shiny::tags$tbody(lapply(seq_along(groups), function(i) shiny::tags$tr(
           shiny::tags$td(shiny::tags$input(type = "checkbox", value = groups[i],
             checked = if(groups[i] %in% selected) "checked" else NULL,
-            `aria-label` = paste("Show dCST", groups[i]), onchange = selection_js)),
+            `aria-label` = paste("Show", if(identical(options$type,"udcst"))"udCST" else "dCST", groups[i]), onchange = selection_js)),
           shiny::tags$td(style = "overflow-wrap:anywhere;", groups[i]),
           shiny::tags$td(style = "white-space:nowrap;", format(options$counts[i], big.mark = ",")),
           shiny::tags$td(shiny::tags$input(type = "color", value = colors[i],
@@ -139,10 +141,12 @@ gflowui_vertex_color_options <- function(st, requested = NULL, fallback = NULL) 
   choices <- st$choices %||% c("Vertex Degree"="vertex_degree")
   has_dcst <- !is.null(gflowui_dcst_options(st$sources))
   if (has_dcst) choices <- c("dCST"="dcst", choices[!unname(choices) %in% unname(gflowui_dcst_levels(st$sources))])
+  has_udcst <- length(gflowui_dcst_levels(st$sources,"udcst")) > 0L
+  if (has_udcst) choices <- c("udCST"="udcst",choices[!unname(choices) %in% unname(gflowui_dcst_levels(st$sources,"udcst"))])
   choices <- c("Solid color..."="solid_color", choices)
   if (has_dcst && (is.null(requested) || requested %in% unname(gflowui_dcst_levels(st$sources)))) requested <- "dcst"
   if (length(requested) != 1L || is.na(requested) || !requested %in% unname(choices))
-    requested <- if (has_dcst) "dcst" else fallback %||% st$default_key %||% "vertex_degree"
+    requested <- if (has_udcst) "udcst" else if (has_dcst) "dcst" else fallback %||% st$default_key %||% "vertex_degree"
   if (!requested %in% unname(choices)) requested <- unname(choices)[1]
   list(choices=choices, selected=requested)
 }

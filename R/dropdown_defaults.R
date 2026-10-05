@@ -25,6 +25,7 @@ gflowui_dropdown_defaults_config <- function(fields = list(), extra = list()) {
     id<-f$input_id
     if(length(id)&&nzchar(id)) {deps[[id]]<-previous;previous<-c(previous,id)}
   }
+  deps[["graph_dcst_level"]]<-"graph_cst_type"
   deps[["graph_k"]]<-unique(c(previous,"graph_data_type"))
   deps[["graph_optimal_method"]]<-previous
   previous_nav<-character()

@@ -27,7 +27,7 @@ app_server <- function(input, output, session) {
   local_atlas <- gflowui_local_views_server("local_atlas", atlas_base_manifest,
     view_state = shiny::reactive(reference_view_state()),
     selected_vertex = shiny::reactive(selected_endpoint_vertex()),
-    dcst_selection = shiny::reactive(input$graph_dcst_table_selection),
+    dcst_selection = shiny::reactive(classifications$selection()),
     endpoint_state = shiny::reactive(shared_endpoint_sets$state()))
   active_manifest <- local_atlas$manifest
   output$atlas_context <- shiny::renderText(local_atlas$context())
@@ -44,15 +44,27 @@ app_server <- function(input, output, session) {
       if(isTRUE(was_dirty)){rv$project.baseline.signature<-baseline;rv$project.dirty<-TRUE}
     })
 
+  classifications <- gflowui_classification_server(input,session,atlas_base_manifest,
+    save=function(state){
+      payload<-load_or_init_active_manifest(active_project_context())
+      payload$manifest$defaults$classification_state<-state
+      was_dirty<-shiny::isolate(rv$project.dirty)
+      baseline<-shiny::isolate(rv$project.baseline.signature)
+      save_active_manifest(payload)
+      if(isTRUE(was_dirty)){rv$project.baseline.signature<-baseline;rv$project.dirty<-TRUE}
+    })
+  classified_view_state <- shiny::reactive(gflowui_classification_augment(
+    reference_view_state_raw(),atlas_base_manifest(),classifications$asset()))
+
   source_datasets <- gflowui_source_datasets_server("source_datasets",
-    manifest=atlas_base_manifest, view=function()reference_view_state_raw(),
+    manifest=atlas_base_manifest, view=function()classified_view_state(),
     visible=function()reference_renderer_state()$keep_idx,
     click3d=shiny::reactive({
       raw<-input[["plotly_click-reference_plot_source"]]
       d<-tryCatch(if(is.character(raw))jsonlite::fromJSON(raw) else raw,error=function(e)NULL)
       extract_plotly_clicked_vertex_id(d)
     }),
-    level=function()input$graph_dcst_level %||% "dcst_level1",
+    level=function()classifications$level(),
     save_palette=function(palette){
       payload<-load_or_init_active_manifest(active_project_context())
       payload$manifest$metadata$source_datasets$palette<-palette
@@ -5109,8 +5121,8 @@ app_server <- function(input, output, session) {
       shiny::updateSelectInput(session,"endpoint_marker_color",selected=x$marker_color)
     },
     view = function() reference_view_state(),
-    visible_vertices = function() reference_renderer_state()$keep_idx %||%
-      seq_along(reference_view_state()$vertex_ids),
+    visible_vertices = function() gflowui_visible_indices(reference_renderer_state()$keep_idx,
+      length(reference_view_state()$vertex_ids)),
     state_dir = project_state_dir, legacy_dir = endpoint_state_graph_dir,
     read_ids = function(gs, k) {
       file <- as.character(gs$graph_file %||% "")
@@ -8258,7 +8270,7 @@ app_server <- function(input, output, session) {
     )
   })
 
-  reference_view_state <- shiny::reactive(source_datasets$augment(reference_view_state_raw()))
+  reference_view_state <- shiny::reactive(source_datasets$augment(classified_view_state()))
 
   basin_panel_state <- shiny::reactive({
     st <- reference_view_state()
@@ -10361,12 +10373,12 @@ app_server <- function(input, output, session) {
 
     layout_presets <- if (is.list(spec$graph_set$layout_assets$presets)) spec$graph_set$layout_assets$presets else list()
     color_options <- gflowui_vertex_color_options(st,
-      input$graph_layout_color_by %||% graph_layout_state$color_by,
+      classifications$color(input$graph_layout_color_by %||% graph_layout_state$color_by),
       layout_presets$color_by)
     src_key_raw <- color_options$selected
     dcst <- gflowui_dcst_options(st$sources,
-      input$graph_dcst_level %||% "dcst_level1", input$graph_dcst_group %||% "")
-    if (!is.null(dcst) && identical(src_key_raw, "dcst")) src_key_raw <- dcst$level
+      classifications$level(), input$graph_dcst_group %||% "")
+    if (!is.null(dcst) && src_key_raw %in% c("dcst","udcst")) src_key_raw <- dcst$level
     use_solid_color <- identical(src_key_raw, graph_solid_color_key)
     src_key <- src_key_raw
     if (!isTRUE(use_solid_color) && !(src_key %in% names(st$sources %||% list()))) {
@@ -10464,7 +10476,7 @@ app_server <- function(input, output, session) {
 
     if (!is.null(dcst)) {
       focused <- gflowui_dcst_table_focus(st, keep_idx, dcst$level,
-        gflowui_dcst_table_groups(input$graph_dcst_table_selection,
+        gflowui_dcst_table_groups(classifications$selection(),
           manifest$project_id, dcst$level))
       st <- focused$st
       keep_idx <- focused$keep_idx
@@ -10475,6 +10487,7 @@ app_server <- function(input, output, session) {
     if (!is.null(atlas_preview) && local_atlas$only_members())
       keep_idx <- intersect(keep_idx, which(st$vertex_ids %in% atlas_preview$vertex_ids))
 
+    keep_idx <- classifications$filter(st, keep_idx)
     keep_idx <- source_datasets$filter(st, keep_idx)
     if (source_datasets$only() && length(source_datasets$selected()))
       keep_idx <- intersect(keep_idx, which(st$vertex_ids %in% source_datasets$selected()))
@@ -10875,7 +10888,7 @@ app_server <- function(input, output, session) {
       coords <- st$coords
       nn <- nrow(coords)
       idx_all <- seq_len(nn)
-      keep_idx <- suppressWarnings(as.integer(rr$keep_idx %||% idx_all))
+      keep_idx <- suppressWarnings(as.integer(gflowui_visible_indices(rr$keep_idx,nn)))
       keep_idx <- keep_idx[is.finite(keep_idx) & keep_idx >= 1L & keep_idx <= nn]
 
       size_mult <- suppressWarnings(as.numeric(rr$size_mult %||% 1))
@@ -10925,9 +10938,10 @@ app_server <- function(input, output, session) {
       }
       idx <- keep_idx
       if (length(idx) < 1L) {
-        p_empty <- plotly::plot_ly(source = reference_plotly_source) %>%
+        p_empty <- plotly::plot_ly(source = reference_plotly_source,
+            type="scatter3d",mode="markers",x=numeric(),y=numeric(),z=numeric(),showlegend=FALSE) %>%
             plotly::layout(
-              title = list(text = "No points to display for selected color source."),
+              title = list(text = "No points pass the current display filters."),
               scene = list(
                 uirevision = "reference-scene",
                 xaxis = list(visible = FALSE),
@@ -11001,7 +11015,17 @@ app_server <- function(input, output, session) {
         nlev <- nlevels(fac)
         pal <- pal_info$colors
 
-        for (ii in seq_len(nlev)) {
+        # Hundreds of pure states otherwise create thousands of WebGL traces.
+        # The complete, selectable legend remains in the CST table.
+        if (classifications$enabled() && nlev > 40L) {
+          p <- plotly::add_trace(p,type="scatter3d",mode="markers",
+            x=plot_data$x,y=plot_data$y,z=plot_data$z,
+            key=plot_data$vertex,customdata=plot_data$vertex,
+            meta=list(gflowui_vertices=TRUE),name=src$label,
+            text=sprintf("vertex=%d<br>%s=%s",plot_data$vertex,src$label,as.character(fac)),
+            hoverinfo="text",marker=list(size=point_size,color=unname(pal[as.character(fac)]),opacity=base_marker_opacity),
+            showlegend=FALSE)
+        } else for (ii in seq_len(nlev)) {
           lvl <- levels(fac)[ii]
           legend_name <- lvl
           if (identical(st$graph_set$layout_assets$presets$legend_position, "bottom")) {
@@ -11374,6 +11398,7 @@ app_server <- function(input, output, session) {
           arm_vertices <- arm_vertices[arm_vertices %in% idx]
           path_vertices <- suppressWarnings(as.integer(aa$path_vertices %||% integer(0)))
           path_vertices <- path_vertices[is.finite(path_vertices) & path_vertices >= 1L & path_vertices <= nn]
+          path_segments <- gflowui_visible_path(path_vertices,idx)
           path_vertices <- path_vertices[path_vertices %in% idx]
           if (length(arm_vertices) < 1L && length(path_vertices) < 1L) {
             next
@@ -11452,14 +11477,14 @@ app_server <- function(input, output, session) {
               )
           }
 
-          if (length(path_vertices) > 1L) {
+          if (length(path_segments) > 1L) {
             p <- p %>%
               plotly::add_trace(
                 type = "scatter3d",
                 mode = "lines",
-                x = coords[path_vertices, 1],
-                y = coords[path_vertices, 2],
-                z = coords[path_vertices, 3],
+                x = coords[path_segments, 1],
+                y = coords[path_segments, 2],
+                z = coords[path_segments, 3],
                 text = sprintf("arm path=%s", as.character(aa$label %||% aa$family_label %||% "arm")),
                 hoverinfo = "text",
                 line = list(
@@ -11727,7 +11752,7 @@ app_server <- function(input, output, session) {
         vertex_mode <- "sphere"
       }
 
-      keep_idx <- suppressWarnings(as.integer(rr$keep_idx %||% seq_len(nn)))
+      keep_idx <- suppressWarnings(as.integer(gflowui_visible_indices(rr$keep_idx,nn)))
       keep_idx <- keep_idx[is.finite(keep_idx) & keep_idx >= 1L & keep_idx <= nn]
 
       keep_idx <- unique(keep_idx)
@@ -12137,6 +12162,7 @@ app_server <- function(input, output, session) {
           arm_view <- match(arm_vertices, keep_idx)
           arm_view <- arm_view[is.finite(arm_view) & arm_view >= 1L & arm_view <= nn_view]
           path_view <- match(path_vertices, keep_idx)
+          path_segments <- gflowui_visible_path(path_view,seq_len(nn_view))
           path_view <- path_view[is.finite(path_view) & path_view >= 1L & path_view <= nn_view]
           if (length(arm_view) < 1L && length(path_view) < 1L) {
             next
@@ -12178,7 +12204,7 @@ app_server <- function(input, output, session) {
             body_color_use
           }
           arm_layers[[length(arm_layers) + 1L]] <- list(
-            fun = function(ctx, arm_idx, path_idx, arm_label, path_color_use, body_cols_use, arm_vertex_size, arm_path_width, arm_label_size, show_arm_labels) {
+            fun = function(ctx, arm_idx, path_idx, path_segments, arm_label, path_color_use, body_cols_use, arm_vertex_size, arm_path_width, arm_label_size, show_arm_labels) {
               idx <- suppressWarnings(as.integer(arm_idx))
               idx <- idx[is.finite(idx) & idx >= 1L & idx <= nrow(ctx$X)]
               pidx <- suppressWarnings(as.integer(path_idx))
@@ -12190,9 +12216,9 @@ app_server <- function(input, output, session) {
                   size = max(3.5, 4.5 * arm_vertex_size)
                 )
               }
-              if (length(pidx) > 1L) {
+              if (length(path_segments) > 1L) {
                 rgl::lines3d(
-                  ctx$X[pidx, , drop = FALSE],
+                  ctx$X[path_segments, , drop = FALSE],
                   col = path_color_use,
                   lwd = max(2, arm_path_width)
                 )
@@ -12217,6 +12243,7 @@ app_server <- function(input, output, session) {
             args = list(
               arm_idx = body_view,
               path_idx = path_view,
+              path_segments = path_segments,
               arm_label = as.character(aa$label %||% aa$family_label %||% "arm"),
               path_color_use = path_color_use,
               body_cols_use = body_cols_use,
@@ -12577,7 +12604,7 @@ app_server <- function(input, output, session) {
 
     solid_vertex_color_choices <- graph_vertex_color_choices()
     color_options <- gflowui_vertex_color_options(st_use,
-      input$graph_layout_color_by %||% graph_layout_state$color_by,
+      classifications$color(input$graph_layout_color_by %||% graph_layout_state$color_by),
       layout_presets$color_by)
     color_choices <- color_options$choices
     color_selected <- color_options$selected
@@ -12730,7 +12757,7 @@ app_server <- function(input, output, session) {
       component_hint = component_hint,
       metadata_tbl = graph_metadata_tbl,
       dcst = gflowui_dcst_options(st_use$sources,
-        input$graph_dcst_level %||% "dcst_level1", input$graph_dcst_group %||% ""),
+        classifications$level(), input$graph_dcst_group %||% ""),
       dcst_palettes = st_use$graph_set$color_assets$categorical_palettes,
       color_choices = color_choices,
       color_selected = color_selected,
@@ -14534,6 +14561,7 @@ app_server <- function(input, output, session) {
             class = "gf-graph-metadata",
             build_html_table(graph_ui$metadata_tbl, empty_text = "No graph metadata available.", show_header = FALSE)
           ),
+          classifications$controls(reference_view_state()),
           selector_rows,
           gflowui_graph_neighbor_controls(graph_ui, show_reference = is.null(local_atlas$region()) || !is.null(local_atlas$preview())),
           if (!identical(graph_ui$manifest$metadata$project_controls$graph_update, FALSE)) shiny::actionButton(
@@ -14615,12 +14643,14 @@ app_server <- function(input, output, session) {
               class = "gf-graph-row gf-graph-layout-row",
               shiny::span(class = "gf-graph-row-label", label), control)
             shiny::tagList(
-              dcst_row("dCST level:", shiny::selectInput("graph_dcst_level", NULL,
+              if(classifications$enabled())dcst_row("CST type:",shiny::selectInput("graph_cst_type",NULL,
+                choices=c("udCST"="udcst","dCST"="dcst"),selected=classifications$state()$type,width="205px")),
+              dcst_row(if(classifications$enabled())"CST level:" else "dCST level:", shiny::selectInput("graph_dcst_level", NULL,
                 choices = graph_ui$dcst$levels,
                 selected = graph_ui$dcst$level, width = "205px")),
               gflowui_dcst_table_ui(graph_ui$dcst, graph_ui$dcst_palettes,
                 graph_ui$manifest$project_id,
-                shiny::isolate(input$graph_dcst_table_selection))
+                classifications$selection())
             )
           },
           if (identical(
@@ -15055,7 +15085,7 @@ app_server <- function(input, output, session) {
             )
           ),
           if (isTRUE(atlas_base_manifest()$metadata$local_views$enabled))
-            bslib::accordion_panel("Local views", value = "workflow_local_views", gflowui_local_views_ui("local_atlas", shiny::isolate(local_atlas$form()), levels=graph_ui$dcst$levels)),
+            bslib::accordion_panel("Local views", value = "workflow_local_views", gflowui_local_views_ui("local_atlas", shiny::isolate(local_atlas$form()), levels=gflowui_dcst_levels(reference_view_state()$sources))),
           bslib::accordion_panel("Analysis", value = "workflow_analysis", shiny::div(
             class = "gf-analysis-placeholder",
             shiny::p("Analysis tools section placeholder."),
@@ -15475,7 +15505,9 @@ app_server <- function(input, output, session) {
     if (length(event$group) != 1L || !event$group %in% valid) return()
     tryCatch({
       payload <- load_or_init_active_manifest(active_project_context())
-      for (key in seq_along(payload$manifest$graph_sets)) {
+      if(startsWith(event$level,"udcst_")) {
+        payload$manifest$metadata$classification_catalogue$palettes[[event$level]][event$group] <- event$color
+      } else for (key in seq_along(payload$manifest$graph_sets)) {
         palette <- payload$manifest$graph_sets[[key]]$color_assets$categorical_palettes[[event$level]]
         if (is.null(palette) || !event$group %in% names(palette)) next
         palette[event$group] <- event$color
@@ -15774,7 +15806,7 @@ app_server <- function(input, output, session) {
       }
       src <- st_state$sources[[src_key]]
       nn <- suppressWarnings(as.integer(st_state$n_vertices %||% length(src$values)))
-      keep_idx <- suppressWarnings(as.integer(rr_state$keep_idx %||% seq_len(max(0L, nn))))
+      keep_idx <- suppressWarnings(as.integer(gflowui_visible_indices(rr_state$keep_idx,max(0L,nn))))
       keep_idx <- keep_idx[is.finite(keep_idx) & keep_idx >= 1L & keep_idx <= nn]
 
       values_view <- src$values[keep_idx]

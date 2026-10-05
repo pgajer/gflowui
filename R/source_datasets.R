@@ -40,10 +40,13 @@ gflowui_source_summary <- function(records, ids) {
 
 gflowui_source_categories <- function(records, ids) {
   memberships <- split(records$dataset, records$vertex_id)
-  vapply(ids, function(id) {
-    x <- unique(memberships[[id]])
+  categories <- vapply(memberships, function(x) {
+    x <- unique(x)
     if (!length(x)) "Unknown source" else if (length(x)>1L) "Multiple source datasets" else x
-  }, character(1), USE.NAMES=FALSE)
+  }, character(1))
+  result <- unname(categories[match(ids,names(categories))])
+  result[is.na(result)] <- "Unknown source"
+  result
 }
 
 gflowui_source_palette <- function(records, saved=NULL) {
@@ -69,6 +72,7 @@ gflowui_source_cross <- function(records, ids, labels, unit="records", display="
   x$group <- labels[match(x$vertex_id, ids)]
   x$group[is.na(x$group) | !nzchar(x$group)] <- "Unclassified"
   if (identical(unit,"vertices")) x <- unique(x[,c("vertex_id","dataset","group")])
+  if (!nrow(x)) return(matrix(numeric(),0L,0L,dimnames=list(character(),character())))
   m <- as.matrix(table(x$dataset,x$group))
   m <- m[order(-rowSums(m),rownames(m)),order(-colSums(m),colnames(m)),drop=FALSE]
   if (identical(display,"row")) m <- 100*sweep(m,1,pmax(1,rowSums(m)),"/")

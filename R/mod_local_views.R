@@ -17,7 +17,7 @@ gflowui_local_views_ui <- function(id, values = list(), levels = c("Level 1"="dc
       shiny::textInput(ns("sizes"), "Neighborhood sizes (including anchor)", values$sizes %||% "500"),
       shiny::selectInput(ns("metric"), "Neighborhood metric", c("Hellinger"="hellinger", "Euclidean abundance"="euclidean", "Jensen–Shannon"="jensen_shannon"), selected=values$metric %||% "hellinger")),
     shiny::conditionalPanel(sprintf("input['%s'] === 'dcst'", ns("selection")),
-      shiny::selectInput(ns("level"), "dCST level", levels, selected=values$level %||% "dcst_level1"),
+      shiny::selectInput(ns("level"), "CST level", levels, selected=values$level %||% "dcst_level1"),
       shiny::uiOutput(ns("groups_ui")),
       shiny::actionButton(ns("table_groups"), "Use checked dCSTs from Graphs"),
       shiny::checkboxInput(ns("separate"), "Create one region per dCST", values$separate %||% FALSE)),
@@ -208,10 +208,12 @@ gflowui_local_views_server <- function(id, manifest, view_state, selected_vertex
     output$groups_ui <- shiny::renderUI({
       st <- view_state(); x <- as.character(st$sources[[input$level %||% "dcst_level1"]]$values)
       counts <- sort(table(x), decreasing=TRUE)
-      shiny::selectInput(session$ns("groups"), "dCSTs in current graph", stats::setNames(names(counts), paste0(names(counts), " (", counts, ")")), multiple=TRUE, selected=shiny::isolate(input$groups))
+      shiny::selectInput(session$ns("groups"), "CSTs in current graph", stats::setNames(names(counts), paste0(names(counts), " (", counts, ")")), multiple=TRUE, selected=shiny::isolate(input$groups))
     })
     shiny::observeEvent(input$table_groups, {
-      s <- dcst_selection(); shiny::updateSelectInput(session,"level",selected=s$level)
+      s <- dcst_selection()
+      if(startsWith(s$level %||% "","udcst")) {status("This region builder uses ordered dCSTs. Select dCST under CST type before importing its checked groups.");return()}
+      shiny::updateSelectInput(session,"level",selected=s$level)
       session$onFlushed(function() shiny::updateSelectInput(session,"groups",selected=as.character(s$groups)), once=TRUE)
     })
     shiny::observeEvent(input$preview, {
