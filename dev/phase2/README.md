@@ -40,7 +40,8 @@ selection. Both 3D renderers, endpoints, arms, subject edges, the linked 2D
 plot and the configured project's source cross-table consume that mask.
 Coverage does not recompute paths, layouts, or connected components. Source
 summary/table counts explicitly describe the current region before filters;
-the cross-table describes currently visible compositions. Arm paths preserve
+the cross-table describes currently visible compositions. A valid empty mask
+remains empty in both renderers, endpoint visibility and export. Arm paths preserve
 gaps, and subject displays filter original temporal edges without bridging
 hidden visits.
 
@@ -59,8 +60,9 @@ shares numerical graph/layout inputs read-only. Run the copied app with
 embedding routes, all saved atlas regions, and a canonical unordered pair
 containing both dominance directions. `browser-check.mjs` checks rendered
 membership, controls, linked views and persistence in the isolated instance.
-Its local expected-ID JSON is made from the saved catalogue, not inferred from
-rendered counts.
+Run `prepare-browser-fixtures.R copy_folder` before the browser checks. Its
+local expected-ID JSON is made from the saved catalogue, not inferred from
+rendered counts. The browser scripts target the isolated app on port 3875.
 
 `deploy.R` takes the checked copy and a fresh backup directory. It backs up the
 live manifest, registry and mutable project assets, then adds only the catalogue
