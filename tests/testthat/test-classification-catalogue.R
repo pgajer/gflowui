@@ -67,3 +67,23 @@ test_that("empty masks never expand to all vertices",{
  expect_identical(gflowui_visible_indices(integer(),3L),integer())
  expect_identical(gflowui_visible_indices(c(2L,3L),3L),2:3)
 })
+
+test_that("saved core membership pauses global coverage without overwriting it",{
+ f<-classification_fixture();f$m$defaults$classification_state<-list(subset="core")
+ saved<-list()
+ server<-function(input,output,session){
+   override<-shiny::reactiveVal(NULL);m<-shiny::reactiveVal(f$m)
+   cc<-gflowui_classification_server(input,session,m,function(s){saved[[length(saved)+1L]]<<-s},subset_override=override)
+ }
+ shiny::testServer(server,{
+   session$flushReact();st<-list(vertex_ids=c("a","b","c"))
+   expect_identical(cc$filter(st,1:3),1:2)
+   override(list(subset="All",label="90% core"));session$flushReact()
+   expect_identical(cc$filter(st,1:3),1:3)
+   expect_identical(cc$filter(st,3L),3L)
+   expect_match(as.character(cc$controls(st)),"global coverage preset is paused")
+   session$setInputs(graph_sample_subset="All");session$elapse(600);session$flushReact()
+   expect_identical(cc$state()$subset,"core");expect_length(saved,0L)
+   override(NULL);session$flushReact();expect_identical(cc$filter(st,1:3),1:2)
+ })
+})

@@ -77,3 +77,54 @@ test_that("navigation preserves the view during narrowing, recalls families and 
     expect_identical(readRDS(p)$regions,rs)
   })
 })
+
+test_that("precomputed cores expose coverage and retention without project-specific branches", {
+  rs<-list()
+  for(c in c(90L,80L,70L,60L))for(q in c(100L,95L,90L,80L)){
+    id<-paste(c,q,sep="_")
+    rs[[id]]<-list(id=id,label=id,definition=list(type="coverage_core",coverage=c,retention=q),vertex_ids=letters[1:5],views=list())
+  }
+  catalog<-gflowui_atlas_catalog(c(nav_fixture(),rs))
+  pending<-gflowui_atlas_navigation_resolve(catalog,list(family="core"))
+  expect_null(pending$target)
+  expect_identical(unname(pending$controls$coverage$choices),c("90","80","70","60"))
+  expect_null(pending$controls$retention)
+  for(r in rs){
+    state<-gflowui_atlas_navigation_state(catalog,r$id)
+    resolved<-gflowui_atlas_navigation_resolve(catalog,state)
+    expect_identical(resolved$target,r$id)
+    expect_true(resolved$controls$coverage$visible)
+    expect_true(resolved$controls$retention$visible)
+    expect_identical(unname(resolved$controls$retention$choices),c("100","95","90","80"))
+    expect_false(resolved$controls$region$visible)
+  }
+  changed<-gflowui_atlas_navigation_change(state,"coverage","90")
+  expect_null(changed$retention)
+  expect_null(gflowui_atlas_navigation_resolve(catalog,changed)$target)
+  expect_false("Custom"%in%names(pending$controls$family$choices))
+})
+
+test_that("core browsing keeps a selected embedding route and waits for complete membership choices", {
+  base<-tempfile();dir.create(base);on.exit(unlink(base,recursive=TRUE))
+  withr::local_options(gflowui.projects_data_dir=base)
+  rs<-list()
+  for(c in c(90L,80L))for(q in c(100L,95L)){
+    id<-paste(c,q,sep="_")
+    rs[[id]]<-list(id=id,label=id,definition=list(type="coverage_core",coverage=c,retention=q,cells=2L,base_n=5L,actual_coverage=.5,unfiltered_n=0L),vertex_ids=letters[1:5],
+      views=list(list(id=paste0(id,"_direct"),label="Direct 3D",embedding_route="Direct 3D"),list(id=paste0(id,"_refined"),label="Refined 3D",embedding_route="Refined 3D")))
+  }
+  p<-file.path(base,"projects","test","local_views","atlas.rds");gflowui_atlas_save(rs,p)
+  m<-list(project_id="test",graph_sets=list(list(id="parent")),metadata=list(local_views=list(enabled=TRUE)))
+  st<-list(vertex_ids=letters,set_id="parent")
+  shiny::testServer(gflowui_local_views_server,args=list(manifest=shiny::reactive(m),view_state=shiny::reactive(st),selected_vertex=function()NULL,dcst_selection=function()NULL),{
+    session$flushReact()
+    choose<-function(key,value)session$setInputs(nav_choice=list(project="test",token=nav_sent()$token,key=key,value=value))
+    choose("family","core");choose("coverage","90");expect_null(region())
+    choose("retention","95");expect_identical(region_id(),"90_95")
+    session$setInputs(region="90_95",view="90_95_refined");expect_identical(view_id(),"90_95_refined")
+    choose("coverage","80");expect_identical(region_id(),"90_95");expect_identical(view_id(),"90_95_refined")
+    choose("retention","100");expect_identical(region_id(),"80_100");expect_identical(view_id(),"80_100_refined")
+    expect_match(output$context,"5 retained")
+    expect_identical(readRDS(p)$regions,rs)
+  })
+})

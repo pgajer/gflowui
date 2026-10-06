@@ -95,7 +95,19 @@ gflowui_local_views_server <- function(id, manifest, view_state, selected_vertex
       if(identical(id,shiny::isolate(region_id())))return(invisible(NULL))
       if(remember)remember_navigation()
       views<-shiny::isolate(regions())[[id]]$views %||% list()
-      remembered<-view_memory[[if(nzchar(id))id else "__whole__"]] %||% "__preview__"
+      remembered<-view_memory[[if(nzchar(id))id else "__whole__"]]
+      # Compare core memberships in the same embedding route when available.
+      # Explicit per-region choices, including parent preview, take precedence.
+      next_region<-shiny::isolate(regions())[[id]]
+      current_region<-shiny::isolate(region())
+      if(is.null(remembered) && identical(next_region$definition$type,"coverage_core") &&
+         identical(current_region$definition$type,"coverage_core")) {
+        current_view<-Filter(function(v)identical(v$id,shiny::isolate(view_id())),current_region$views)
+        route<-if(length(current_view))current_view[[1]]$embedding_route else NULL
+        matches<-if(length(route))Filter(function(v)identical(v$embedding_route,route),views) else list()
+        if(length(matches)==1L)remembered<-matches[[1]]$id
+      }
+      remembered<-remembered %||% "__preview__"
       if(!remembered %in% c("__preview__",vapply(views,`[[`,"","id")))remembered<-"__preview__"
       if(remembered!="__preview__" && identical(shiny::isolate(view_id()),"__preview__"))parent_set(shiny::isolate(view_state())$set_id)
       region_id(id);view_id(remembered)
@@ -176,6 +188,12 @@ gflowui_local_views_server <- function(id, manifest, view_state, selected_vertex
     output$context <- shiny::renderText({
       r <- region(); if (is.null(r)) return("Context: whole dataset.")
       st <- view_state(); present <- sum(r$vertex_ids %in% st$vertex_ids)
+      if(identical(r$definition$type,"coverage_core")) {
+        d<-r$definition
+        return(sprintf("%s cells; %s samples before residual filtering; %s retained (%.2f%% of the full reference). %s samples belong to cells left unfiltered. %s",
+          d$cells,d$base_n,length(r$vertex_ids),100*d$actual_coverage,d$unfiltered_n,
+          if(identical(view_id(),"__preview__")) "Parent embedding preview; existing display filters still apply. Check 'Show only region members' to isolate this core." else "Recomputed Euclidean MDS coordinates. Graph edges are a landmark connection scaffold, not the fitted distance model. Existing display filters still apply."))
+      }
       sprintf("%s — %s members; %s present in this graph. %s", r$label, length(r$vertex_ids), present,
         if (identical(view_id(), "__preview__")) "Parent embedding preview: coordinates and distances unchanged. Existing display filters still apply." else if(length(st$graph_set$atlas$excluded_ids)) sprintf("Local chart fit: %d of %d members retained; %d excluded by the explicit chart policy. Saved region membership is unchanged.",present,length(r$vertex_ids),length(st$graph_set$atlas$excluded_ids)) else "Saved local fit: paths and coordinates belong to this region.")
     })

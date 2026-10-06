@@ -58,7 +58,7 @@ gflowui_classification_state <- function(saved=list(), asset) {
 
 # Root-input controller: independent of active graph/region, with a single
 # authoritative type/level/color and per-level selections. Old projects opt out.
-gflowui_classification_server <- function(input, session, manifest, save) {
+gflowui_classification_server <- function(input, session, manifest, save, subset_override=function()NULL) {
   asset <- shiny::reactive(gflowui_classification_asset(manifest()))
   state <- shiny::reactiveVal(NULL); loaded <- shiny::reactiveVal(NULL)
   project <- gflowui_distinct_reactive(function()manifest()$project_id)
@@ -79,7 +79,7 @@ gflowui_classification_server <- function(input, session, manifest, save) {
     if(x %in% valid)s$levels[[s$type]]<-x;s
   }),ignoreInit=TRUE)
   shiny::observeEvent(input$graph_sample_subset,change(function(s){
-    if(input$graph_sample_subset %in% names(asset()$subsets))s$subset<-input$graph_sample_subset;s
+    if(is.null(subset_override()) && input$graph_sample_subset %in% names(asset()$subsets))s$subset<-input$graph_sample_subset;s
   }),ignoreInit=TRUE)
   shiny::observeEvent(input$graph_layout_color_by,change(function(s){
     x<-input$graph_layout_color_by
@@ -99,11 +99,16 @@ gflowui_classification_server <- function(input, session, manifest, save) {
   },ignoreInit=FALSE)
   level <- shiny::reactive(if(enabled())state()$levels[[state()$type]] else input$graph_dcst_level %||% "dcst_level1")
   selection <- shiny::reactive(if(enabled())list(project=project(),level=level(),groups=state()$groups[[level()]] %||% character()) else input$graph_dcst_table_selection)
+  effective_subset<-shiny::reactive(subset_override()$subset %||% state()$subset)
   list(asset=asset,state=state,enabled=enabled,level=level,selection=selection,
     color=function(fallback)if(enabled())state()$color else fallback,
-    filter=function(st,idx)if(enabled())intersect(idx,gflowui_classification_subset(asset(),state()$subset,st$vertex_ids)) else idx,
+    filter=function(st,idx)if(enabled())intersect(idx,gflowui_classification_subset(asset(),effective_subset(),st$vertex_ids)) else idx,
     controls=function(st){
       if(!enabled())return(NULL)
+      override<-subset_override()
+      if(!is.null(override))return(shiny::tagList(
+        shiny::p(class="gf-hint",paste("Sample subset:",override$label)),
+        shiny::p(class="gf-hint","The global coverage preset is paused while this saved core is active and is restored on return. CST and source-dataset filters still apply.")))
       a<-asset();s<-a$subsets[[state()$subset]]
       retained<-length(gflowui_classification_subset(a,state()$subset,st$vertex_ids))
       shiny::tagList(shiny::selectInput("graph_sample_subset","Sample subset",

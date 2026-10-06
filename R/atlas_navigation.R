@@ -9,10 +9,10 @@ gflowui_atlas_catalog <- function(regions, show_retired = FALSE) {
     visible<-Filter(function(r)show_retired || !isTRUE(r$retired),versions)
     if(!length(visible))return(NULL)
     latest<-visible[[length(visible)]]
-    family<-if((d$type %||% "") %in% c("anchor","import") && length(d$anchor))"anchor" else if(identical(d$type,"dcst") && length(d$groups)==1L)"dcst" else "custom"
+    family<-if((d$type %||% "") %in% c("anchor","import") && length(d$anchor))"anchor" else if(identical(d$type,"dcst") && length(d$groups)==1L)"dcst" else if(identical(d$type,"coverage_core"))"core" else "custom"
     definition<-if(identical(d$type,"import"))d$selection %||% "Imported membership" else d$metric %||% "Saved membership"
     group<-as.character(d$groups %||% "")
-    list(id=id,family=family,anchor=as.character(d$anchor %||% ""),
+    list(id=id,family=family,coverage=as.character(d$coverage %||% ""),retention=as.character(d$retention %||% ""),anchor=as.character(d$anchor %||% ""),
       anchor_label=as.character(d$anchor_label %||% d$anchor %||% ""),
       size=as.character(d$size %||% length(origin$vertex_ids)),definition=definition,
       level=as.character(d$level %||% ""),group=group,
@@ -23,7 +23,7 @@ gflowui_atlas_catalog <- function(regions, show_retired = FALSE) {
   stats::setNames(out,vapply(out,`[[`,"","id"))
 }
 
-gflowui_atlas_navigation_fields <- function() c(family="Region family",anchor="Anchor",size="Neighborhood size",
+gflowui_atlas_navigation_fields <- function() c(family="Region family",coverage="Cell coverage",retention="Within-cell retention",anchor="Anchor",size="Neighborhood size",
  definition="Membership definition",level="dCST level",first="First phylotype",region="Region",revision="Revision")
 
 # Resolve only unambiguous single choices. Missing multi-choice fields stay empty;
@@ -39,7 +39,7 @@ gflowui_atlas_navigation_resolve <- function(catalog, state=list(family="whole")
     value
   }
   available<-unique(vapply(catalog,`[[`,"","family"))
-  families<-c("Whole dataset"="whole","Anchor neighborhoods"="anchor","dCST regions"="dcst","Combined / custom regions"="custom")
+  families<-c("Whole dataset"="whole","Anchor neighborhoods"="anchor","dCST regions"="dcst","Precomputed cores"="core","Combined / custom regions"="custom")
   families<-families[unname(families)%in%c("whole",available)]
   if(draft)families<-c(families,"Unsaved membership preview"="draft")
   family<-add("family",families,always=TRUE,default="whole")
@@ -48,14 +48,21 @@ gflowui_atlas_navigation_resolve <- function(catalog, state=list(family="whole")
     rows<-Filter(function(r)r$family==family,catalog)
     facet<-function(key,label=NULL,always=FALSE,default=NULL){
       vals<-unique(vapply(rows,function(r)r[[key]],""))
-      vals<-if(key=="size")vals[order(as.numeric(vals))] else sort(vals)
+      vals<-if(key=="size")vals[order(as.numeric(vals))] else if(key%in%c("coverage","retention"))vals[order(-as.numeric(vals))] else sort(vals)
       labels<-vals
+      if(key=="coverage")labels<-paste0(vals,"%")
+      if(key=="retention")labels<-ifelse(vals=="100","All — no residual filter",paste0(vals,"% closest to subspace"))
       if(key=="anchor")labels<-vapply(vals,function(a)rows[[which(vapply(rows,function(r)r$anchor==a,FALSE))[1]]]$anchor_label,"")
       if(key=="level")labels<-paste("Level",sub("^dcst_level","",vals))
       if(key=="definition")labels<-vapply(vals,function(x)switch(x,euclidean="Euclidean neighbors",hellinger="Hellinger neighbors",jensen_shannon="Jensen–Shannon neighbors",x),"")
       add(key,stats::setNames(vals,labels),label,always,default)
     }
-    if(family=="anchor"){
+    if(family=="core"){
+      for(key in c("coverage","retention")){
+        v<-facet(key,always=TRUE);rows<-Filter(function(r)identical(r[[key]],v),rows)
+        if(!length(rows))break
+      }
+    } else if(family=="anchor"){
       for(key in c("anchor","size","definition")){
         v<-facet(key);rows<-Filter(function(r)identical(r[[key]],v),rows)
         if(!length(rows))break
@@ -89,7 +96,7 @@ gflowui_atlas_navigation_state <- function(catalog,id) {
   if(!nzchar(id))return(list(family="whole"))
   if(id=="__draft__")return(list(family="draft"))
   for(r in catalog)if(id %in% vapply(r$versions,`[[`,"","id"))
-    return(list(family=r$family,anchor=r$anchor,size=r$size,definition=r$definition,
+    return(list(family=r$family,coverage=r$coverage,retention=r$retention,anchor=r$anchor,size=r$size,definition=r$definition,
       level=r$level,first="__all__",region=r$id,revision=id))
   list(family="whole")
 }

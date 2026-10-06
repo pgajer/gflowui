@@ -45,6 +45,10 @@ app_server <- function(input, output, session) {
     })
 
   classifications <- gflowui_classification_server(input,session,atlas_base_manifest,
+    subset_override=function(){
+      r<-local_atlas$region()
+      if(identical(r$definition$type,"coverage_core"))list(subset="All",label=r$label) else NULL
+    },
     save=function(state){
       payload<-load_or_init_active_manifest(active_project_context())
       payload$manifest$defaults$classification_state<-state
