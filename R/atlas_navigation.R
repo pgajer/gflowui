@@ -23,7 +23,7 @@ gflowui_atlas_catalog <- function(regions, show_retired = FALSE) {
   stats::setNames(out,vapply(out,`[[`,"","id"))
 }
 
-gflowui_atlas_navigation_fields <- function() c(family="Region family",coverage="Cell coverage",retention="Within-cell retention",anchor="Anchor",size="Neighborhood size",
+gflowui_atlas_navigation_fields <- function() c(family="Region family",coverage="Coverage",retention="Within-cell retention",anchor="Anchor",size="Neighborhood size",
  definition="Membership definition",level="dCST level",first="First phylotype",region="Region",revision="Revision")
 
 # Resolve only unambiguous single choices. Missing multi-choice fields stay empty;
@@ -51,17 +51,18 @@ gflowui_atlas_navigation_resolve <- function(catalog, state=list(family="whole")
       vals<-if(key=="size")vals[order(as.numeric(vals))] else if(key%in%c("coverage","retention"))vals[order(-as.numeric(vals))] else sort(vals)
       labels<-vals
       if(key=="coverage")labels<-paste0(vals,"%")
-      if(key=="retention")labels<-ifelse(vals=="100","All — no residual filter",paste0(vals,"% closest to subspace"))
+      if(key=="retention")labels<-ifelse(vals=="100","All",paste0("Closest ",vals,"%"))
       if(key=="anchor")labels<-vapply(vals,function(a)rows[[which(vapply(rows,function(r)r$anchor==a,FALSE))[1]]]$anchor_label,"")
       if(key=="level")labels<-paste("Level",sub("^dcst_level","",vals))
       if(key=="definition")labels<-vapply(vals,function(x)switch(x,euclidean="Euclidean neighbors",hellinger="Hellinger neighbors",jensen_shannon="Jensen–Shannon neighbors",x),"")
       add(key,stats::setNames(vals,labels),label,always,default)
     }
     if(family=="core"){
-      for(key in c("coverage","retention")){
-        v<-facet(key,always=TRUE);rows<-Filter(function(r)identical(r[[key]],v),rows)
-        if(!length(rows))break
-      }
+      # Show both choices from the outset without selecting a region early.
+      coverage<-facet("coverage",always=TRUE)
+      if(nzchar(coverage))rows<-Filter(function(r)identical(r$coverage,coverage),rows)
+      retention<-facet("retention",always=TRUE)
+      if(nzchar(coverage) && nzchar(retention))rows<-Filter(function(r)identical(r$retention,retention),rows) else rows<-list()
     } else if(family=="anchor"){
       for(key in c("anchor","size","definition")){
         v<-facet(key);rows<-Filter(function(r)identical(r[[key]],v),rows)
@@ -107,6 +108,8 @@ gflowui_atlas_navigation_state <- function(catalog,id) {
 gflowui_atlas_navigation_change <- function(state,key,value) {
   fields<-names(gflowui_atlas_navigation_fields());i<-match(key,fields)
   if(is.na(i))return(state)
+  retention<-if(identical(state$family,"core") && identical(key,"coverage"))state$retention else NULL
   if(i<length(fields))state[fields[seq.int(i+1L,length(fields))]]<-NULL
+  if(!is.null(retention))state$retention<-retention
   state[[key]]<-value;state
 }

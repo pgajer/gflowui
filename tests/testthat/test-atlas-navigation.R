@@ -88,7 +88,9 @@ test_that("precomputed cores expose coverage and retention without project-speci
   pending<-gflowui_atlas_navigation_resolve(catalog,list(family="core"))
   expect_null(pending$target)
   expect_identical(unname(pending$controls$coverage$choices),c("90","80","70","60"))
-  expect_null(pending$controls$retention)
+  expect_true(pending$controls$retention$visible)
+  expect_identical(unname(pending$controls$retention$choices),c("100","95","90","80"))
+  expect_null(gflowui_atlas_navigation_resolve(catalog,list(family="core",retention="95"))$target)
   for(r in rs){
     state<-gflowui_atlas_navigation_state(catalog,r$id)
     resolved<-gflowui_atlas_navigation_resolve(catalog,state)
@@ -99,8 +101,10 @@ test_that("precomputed cores expose coverage and retention without project-speci
     expect_false(resolved$controls$region$visible)
   }
   changed<-gflowui_atlas_navigation_change(state,"coverage","90")
-  expect_null(changed$retention)
-  expect_null(gflowui_atlas_navigation_resolve(catalog,changed)$target)
+  expect_identical(changed$retention,state$retention)
+  expect_identical(gflowui_atlas_navigation_resolve(catalog,changed)$target,paste("90",state$retention,sep="_"))
+  first_retention<-gflowui_atlas_navigation_change(list(family="core",retention="95"),"coverage","90")
+  expect_identical(gflowui_atlas_navigation_resolve(catalog,first_retention)$target,"90_95")
   expect_false("Custom"%in%names(pending$controls$family$choices))
 })
 
@@ -122,7 +126,7 @@ test_that("core browsing keeps a selected embedding route and waits for complete
     choose("family","core");choose("coverage","90");expect_null(region())
     choose("retention","95");expect_identical(region_id(),"90_95")
     session$setInputs(region="90_95",view="90_95_refined");expect_identical(view_id(),"90_95_refined")
-    choose("coverage","80");expect_identical(region_id(),"90_95");expect_identical(view_id(),"90_95_refined")
+    choose("coverage","80");expect_identical(region_id(),"80_95");expect_identical(view_id(),"80_95_refined")
     choose("retention","100");expect_identical(region_id(),"80_100");expect_identical(view_id(),"80_100_refined")
     expect_match(output$context,"5 retained")
     expect_identical(readRDS(p)$regions,rs)

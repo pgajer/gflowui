@@ -27,9 +27,7 @@ for(cov in c(60,70,80,90,100)) {
   if(rule=="m1")a$references[[as.character(cov)]]<-list(ids=x$graph$nodes$ID,coords=x$fit$coords,label="observed triple m=1; grip::metric.mds SGD",source_graph=g$identity)
  }
 }
-# Preserve the established manuscript reference at 60%; fits remain separately available.
-v<-jsonlite::read_json(file.path(base,"viewer.json"),simplifyVector=TRUE)$reference
-a$references[['60']]<-list(ids=v$ids,coords=as.matrix(v$coords),label=v$engine,source=v$source)
+# All baseline references use the matching support-1 SGD fit.
 d<-a$template$dictionary;keys<-a$template$nodes$ID
 a$palette_keys<-setNames(vapply(strsplit(keys,",",fixed=TRUE),function(z)paste(d$id[match(as.integer(z),d$index)],collapse=" + "),""),keys)
 p<-file.path(out,"projects",id,"state_graphs");dir.create(p)

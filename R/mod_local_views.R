@@ -133,7 +133,9 @@ gflowui_local_views_server <- function(id, manifest, view_state, selected_vertex
           shiny::selectInput(session$ns("view"), "Region view", view_choices(), selected=view_id()))))
     })
     output$navigation_hint<-shiny::renderText({
-      if(is.null(nav_model()$target))"Choose a region above. The current display stays unchanged until the selection is complete."
+      model<-nav_model()
+      if(identical(model$state$family,"core"))return("Precomputed sample cores: choose Coverage and Within-cell retention, then an Embedding. Retention uses distance from each cell's fitted subspace; cells without a usable model remain unfiltered. These are sample layouts, separate from the pair-state graph.")
+      if(is.null(model$target))"Choose a region above. The current display stays unchanged until the selection is complete."
     })
     shiny::observe({
       model<-nav_model(); input$nav_mounted
@@ -166,7 +168,7 @@ gflowui_local_views_server <- function(id, manifest, view_state, selected_vertex
     shiny::observe({
       choices <- view_choices(); selected <- view_id()
       shiny::freezeReactiveValue(input, "view")
-      shiny::updateSelectInput(session, "view", choices=choices, selected=selected)
+      shiny::updateSelectInput(session, "view", label=if(identical(region()$definition$type,"coverage_core"))"Embedding" else "Region view", choices=choices, selected=selected)
     })
     shiny::observeEvent(input$region, {
       if (!input$region %in% unname(region_choices())) return()

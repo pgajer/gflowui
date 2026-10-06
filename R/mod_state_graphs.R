@@ -88,7 +88,7 @@ gflowui_state_graphs_server <- function(id, manifest, view, visible, sample_sele
       key<-if(!is.null(reference_ids()))"100" else if(s$coverage %in% names(asset()$references))s$coverage else "100"
       r<-asset()$references[[key]]
       list(coords=r$coords[match(g$graph$nodes$ID,r$ids),,drop=FALSE],
-        id=paste0("reference-",key),label=paste("Fixed",key,"% reference:",r$label),error=NA_real_)
+        id=paste0("reference-",key),label=paste("Baseline",key,"% reference:",r$label),error=NA_real_)
     })
     shiny::observeEvent(input$fit,{
       if(!is.null(job)&&job$is_alive()){message("A state layout is already being fitted.");return()}
@@ -185,8 +185,9 @@ gflowui_state_graphs_server <- function(id, manifest, view, visible, sample_sele
           shiny::conditionalPanel(sprintf("input['%s'] === 'minimum'",ns("coverage")),shiny::numericInput(ns("minimum"),"Minimum compositions per state",s$minimum,min=1,step=1)),
           shiny::selectInput(ns("adjacency"),"Adjacency",c("Observed triple support"="observed_triple","Shared feature"="shared_feature"),s$adjacency),
           shiny::conditionalPanel(sprintf("input['%s'] === 'observed_triple'",ns("adjacency")),shiny::numericInput(ns("support"),"Minimum per-side support (1, 5, 10, or another integer)",s$support,min=1,step=1)),
-          shiny::selectInput(ns("layout"),"State layout",c("Fixed reference positions"="reference","Fit the current graph"="fit"),s$layout),
+          shiny::selectInput(ns("layout"),"State layout",c("Keep baseline SGD positions"="reference","Fit the current graph"="fit"),s$layout),
           shiny::actionButton(ns("fit"),"Fit / reuse current graph",class="btn-sm"),
+          shiny::p(class="gf-hint","Baseline positions come from the saved support-1 SGD reference graph (the all-state reference for custom subsets). Changing edges keeps those positions until you choose Fit / reuse current graph. For the 16 sample cores and their three embedding routes, use Local views → Region family → Precomputed cores."),
           shiny::uiOutput(ns("metadata")),
           shiny::selectInput(ns("color"),"State color",c("State palette"="state","Frequency"="frequency"),s$color),
           shiny::checkboxInput(ns("size"),"Size nodes by frequency",s$size),
