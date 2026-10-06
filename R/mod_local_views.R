@@ -96,12 +96,12 @@ gflowui_local_views_server <- function(id, manifest, view_state, selected_vertex
       if(remember)remember_navigation()
       views<-shiny::isolate(regions())[[id]]$views %||% list()
       remembered<-view_memory[[if(nzchar(id))id else "__whole__"]]
-      # Compare core memberships in the same embedding route when available.
+      # Compare saved core or cell memberships in the same embedding route when available.
       # Explicit per-region choices, including parent preview, take precedence.
       next_region<-shiny::isolate(regions())[[id]]
       current_region<-shiny::isolate(region())
-      if(is.null(remembered) && identical(next_region$definition$type,"coverage_core") &&
-         identical(current_region$definition$type,"coverage_core")) {
+      if(is.null(remembered) && (next_region$definition$type %||% "") %in% c("coverage_core","udcst") &&
+         identical(current_region$definition$type,next_region$definition$type)) {
         current_view<-Filter(function(v)identical(v$id,shiny::isolate(view_id())),current_region$views)
         route<-if(length(current_view))current_view[[1]]$embedding_route else NULL
         matches<-if(length(route))Filter(function(v)identical(v$embedding_route,route),views) else list()

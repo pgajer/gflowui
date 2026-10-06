@@ -128,3 +128,47 @@ test_that("core browsing keeps a selected embedding route and waits for complete
     expect_identical(readRDS(p)$regions,rs)
   })
 })
+
+
+test_that("unordered cells have a separate size-sorted family without dominance-order filters", {
+  rs<-nav_fixture()
+  for(j in 1:3){
+    id<-paste0("u",j)
+    rs[[id]]<-list(id=id,label=id,definition=list(type="udcst",level="2",groups=paste0("A + ",LETTERS[j+1]),group_label=paste0("Feature A + Feature ",LETTERS[j+1])),vertex_ids=letters[seq_len(j+2L)],views=list())
+  }
+  c<-gflowui_atlas_catalog(rs)
+  expect_identical(c$u1$family,"udcst")
+  x<-gflowui_atlas_navigation_resolve(c,list(family="udcst"))
+  expect_null(x$target)
+  expect_identical(unname(x$controls$region$choices),c("u3","u2","u1"))
+  expect_identical(x$controls$region$label,"udCST")
+  expect_null(x$controls$first)
+  expect_match(names(x$controls$region$choices)[1],"Feature A")
+  for(id in c("u1","u2","u3"))expect_identical(gflowui_atlas_navigation_resolve(c,gflowui_atlas_navigation_state(c,id))$target,id)
+  rs$u1$retired<-TRUE
+  expect_false("u1"%in%names(gflowui_atlas_catalog(rs)))
+  expect_true("u1"%in%names(gflowui_atlas_catalog(rs,TRUE)))
+  # A combined selection remains a custom region rather than a single-cell view.
+  rs$u2$definition$groups<-c("A + B","A + C")
+  expect_identical(gflowui_atlas_catalog(rs)$u2$family,"custom")
+})
+
+test_that("unordered cell browsing carries routes but honors a remembered parent preview", {
+  base<-tempfile();dir.create(base);on.exit(unlink(base,recursive=TRUE))
+  withr::local_options(gflowui.projects_data_dir=base)
+  rs<-setNames(lapply(c('AB','AC','AD'),function(id)list(id=id,label=id,definition=list(type='udcst',level='2',groups=id),vertex_ids=letters[1:5],views=list(list(id=paste0(id,'_direct'),label='Direct',embedding_route='Direct'),list(id=paste0(id,'_refined'),label='Refined',embedding_route='Refined')))),c('AB','AC','AD'))
+  p<-file.path(base,'projects','test','local_views','atlas.rds');gflowui_atlas_save(rs,p)
+  m<-list(project_id='test',graph_sets=list(list(id='parent')),metadata=list(local_views=list(enabled=TRUE)))
+  st<-list(vertex_ids=letters,set_id='parent')
+  shiny::testServer(gflowui_local_views_server,args=list(manifest=shiny::reactive(m),view_state=shiny::reactive(st),selected_vertex=function()NULL,dcst_selection=function()NULL),{
+    session$flushReact()
+    choose<-function(key,value)session$setInputs(nav_choice=list(project='test',token=nav_sent()$token,key=key,value=value))
+    choose('family','udcst');expect_null(region())
+    choose('region','AB');session$setInputs(region='AB',view='AB_refined');expect_identical(view_id(),'AB_refined')
+    choose('region','AC');expect_identical(view_id(),'AC_refined')
+    session$setInputs(region='AC',view='__preview__');expect_identical(view_id(),'__preview__')
+    choose('region','AB');expect_identical(view_id(),'AB_refined')
+    choose('region','AC');expect_identical(view_id(),'__preview__')
+    expect_identical(readRDS(p)$regions,rs)
+  })
+})

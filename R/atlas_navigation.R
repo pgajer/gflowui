@@ -9,13 +9,13 @@ gflowui_atlas_catalog <- function(regions, show_retired = FALSE) {
     visible<-Filter(function(r)show_retired || !isTRUE(r$retired),versions)
     if(!length(visible))return(NULL)
     latest<-visible[[length(visible)]]
-    family<-if((d$type %||% "") %in% c("anchor","import") && length(d$anchor))"anchor" else if(identical(d$type,"dcst") && length(d$groups)==1L)"dcst" else if(identical(d$type,"coverage_core"))"core" else "custom"
+    family<-if((d$type %||% "") %in% c("anchor","import") && length(d$anchor))"anchor" else if(identical(d$type,"dcst") && length(d$groups)==1L)"dcst" else if(identical(d$type,"udcst") && length(d$groups)==1L)"udcst" else if(identical(d$type,"coverage_core"))"core" else "custom"
     definition<-if(identical(d$type,"import"))d$selection %||% "Imported membership" else d$metric %||% "Saved membership"
     group<-as.character(d$groups %||% "")
     list(id=id,family=family,coverage=as.character(d$coverage %||% ""),retention=as.character(d$retention %||% ""),anchor=as.character(d$anchor %||% ""),
       anchor_label=as.character(d$anchor_label %||% d$anchor %||% ""),
       size=as.character(d$size %||% length(origin$vertex_ids)),definition=definition,
-      level=as.character(d$level %||% ""),group=group,
+      level=as.character(d$level %||% ""),group=group,group_label=as.character(d$group_label %||% group),
       first=if(length(group)==1L)trimws(strsplit(group,"\\s*(?:→|->)\\s*",perl=TRUE)[[1]][1]) else "",
       label=latest$label,n=length(latest$vertex_ids),versions=visible)
   })
@@ -39,7 +39,7 @@ gflowui_atlas_navigation_resolve <- function(catalog, state=list(family="whole")
     value
   }
   available<-unique(vapply(catalog,`[[`,"","family"))
-  families<-c("Whole dataset"="whole","Anchor neighborhoods"="anchor","dCST regions"="dcst","Precomputed cores"="core","Combined / custom regions"="custom")
+  families<-c("Whole dataset"="whole","Anchor neighborhoods"="anchor","dCST regions"="dcst","udCST regions"="udcst","Precomputed cores"="core","Combined / custom regions"="custom")
   families<-families[unname(families)%in%c("whole",available)]
   if(draft)families<-c(families,"Unsaved membership preview"="draft")
   family<-add("family",families,always=TRUE,default="whole")
@@ -67,6 +67,8 @@ gflowui_atlas_navigation_resolve <- function(catalog, state=list(family="whole")
         v<-facet(key);rows<-Filter(function(r)identical(r[[key]],v),rows)
         if(!length(rows))break
       }
+    } else if(family=="udcst"){
+      v<-facet("level",label="udCST level");rows<-Filter(function(r)r$level==v,rows)
     } else if(family=="dcst"){
       v<-facet("level");rows<-Filter(function(r)r$level==v,rows)
       if(length(rows) && !v%in%c("1","dcst_level1")){
@@ -77,8 +79,8 @@ gflowui_atlas_navigation_resolve <- function(catalog, state=list(family="whole")
     }
     if(length(rows)){
       rows<-rows[order(-vapply(rows,`[[`,1L,"n"),vapply(rows,`[[`,"","label"),names(rows))]
-      label<-if(family=="dcst")"dCST" else "Saved region"
-      captions<-vapply(rows,function(r)paste0(if(family=="dcst")gsub("_"," ",r$group) else r$label," (",format(r$n,big.mark=",",trim=TRUE),")"),"")
+      label<-if(family=="dcst")"dCST" else if(family=="udcst")"udCST" else "Saved region"
+      captions<-vapply(rows,function(r)paste0(if(family%in%c("dcst","udcst"))gsub("_"," ",r$group_label) else r$label," (",format(r$n,big.mark=",",trim=TRUE),")"),"")
       if(anyDuplicated(captions))captions<-paste0(captions," · ",seq_along(captions))
       chosen<-add("region",stats::setNames(names(rows),captions),label)
       if(nzchar(chosen)){
