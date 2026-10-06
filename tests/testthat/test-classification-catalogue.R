@@ -87,3 +87,37 @@ test_that("saved core membership pauses global coverage without overwriting it",
    override(NULL);session$flushReact();expect_identical(cc$filter(st,1:3),1:2)
  })
 })
+
+retention_fixture <- function() {
+ f<-classification_fixture()
+ f$a$within_cell_retention<-list(presets=list(`100`=list(ids=c("a","b","c"),label="All"),
+   `95`=list(ids=c("a","c"),label="Closest 95%")),unmodeled_ids="c",policy="Fixed residuals; unmodeled cells retained.")
+ saveRDS(f$a,f$m$metadata$classification_catalogue$file);f
+}
+test_that("retention intersects coverage by ID and preserves unmodeled cells",{
+ f<-retention_fixture();ids<-c("c","b","a")
+ expect_identical(gflowui_classification_subset(f$a,"All",ids,"100"),1:3)
+ expect_identical(gflowui_classification_subset(f$a,"All",ids,"95"),c(1L,3L))
+ expect_identical(gflowui_classification_subset(f$a,"core",ids,"95"),3L)
+ expect_identical(gflowui_classification_subset(f$a,"core",ids[1],"95"),integer())
+ expect_error(gflowui_classification_subset(f$a,"All",ids,"80"),"Unknown within-cell")
+ expect_identical(gflowui_classification_state(list(retention="95"),classification_fixture()$a)$retention,"100")
+ expect_equal(gflowui_classification_asset(f$m)$within_cell_retention,f$a$within_cell_retention)
+})
+test_that("retention persists and saved cores pause both filters",{
+ f<-retention_fixture();saved<-NULL
+ server<-function(input,output,session){
+   override<-shiny::reactiveVal(NULL)
+   cc<-gflowui_classification_server(input,session,shiny::reactive(f$m),function(s)saved<<-s,subset_override=override)
+ }
+ shiny::testServer(server,{
+   session$flushReact();st<-list(vertex_ids=c("c","b","a"))
+   session$setInputs(graph_within_cell_retention="95");expect_identical(cc$filter(st,1:3),c(1L,3L))
+   session$setInputs(graph_sample_subset="core");expect_identical(cc$filter(st,1:3),3L)
+   session$elapse(600);session$flushReact();expect_identical(saved$retention,"95")
+   override(list(subset="All",label="saved core"));session$flushReact();expect_identical(cc$filter(st,1:3),1:3)
+   session$setInputs(graph_within_cell_retention="100");expect_identical(cc$state()$retention,"95")
+   override(NULL);session$flushReact();expect_identical(cc$filter(st,1:3),3L)
+   session$setInputs(graph_within_cell_retention="100");expect_identical(cc$filter(st,1:3),2:3)
+ })
+})

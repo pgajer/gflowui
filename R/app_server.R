@@ -14598,7 +14598,8 @@ app_server <- function(input, output, session) {
           state_graphs$controls(),
           shiny::div(class="gf-sample-controls",
           classifications$controls(reference_view_state()),
-          selector_rows,
+          if(!identical(local_atlas$region()$definition$type,"coverage_core"))selector_rows,
+          local_atlas$core_controls(),
           gflowui_graph_neighbor_controls(graph_ui, show_reference = is.null(local_atlas$region()) || !is.null(local_atlas$preview())),
           if (!identical(graph_ui$manifest$metadata$project_controls$graph_update, FALSE)) shiny::actionButton(
             "graph_update_placeholder",

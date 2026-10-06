@@ -39,7 +39,7 @@ gflowui_local_views_server <- function(id, manifest, view_state, selected_vertex
     region_id <- shiny::reactiveVal(""); view_id <- shiny::reactiveVal("__preview__")
     parent_set <- shiny::reactiveVal(NULL)
     nav_state <- shiny::reactiveVal(list(family="whole"))
-    nav_memory <- list(); view_memory <- list(); nav_token <- 0L; nav_sent <- shiny::reactiveVal(NULL)
+    core_pick <- list(); nav_memory <- list(); view_memory <- list(); nav_token <- 0L; nav_sent <- shiny::reactiveVal(NULL)
     status <- shiny::reactiveVal("")
     loaded_project <- NULL
     config <- shiny::reactive(manifest()$metadata$local_views)
@@ -49,7 +49,7 @@ gflowui_local_views_server <- function(id, manifest, view_state, selected_vertex
       loaded_project <<- manifest()$project_id
       p <- path(); regions(if (file.exists(p)) readRDS(p)$regions else list())
       drafts(list()); region_id(""); view_id("__preview__"); parent_set(NULL); status("")
-      nav_state(list(family="whole")); nav_memory <<- list(); view_memory <<- list(); nav_sent(NULL)
+      nav_state(list(family="whole")); core_pick <<- list(); nav_memory <<- list(); view_memory <<- list(); nav_sent(NULL)
     })
     calculation <- gflowui_atlas_calculation_server("compute",manifest,shiny::reactive(region()),path,
       publish=function(folder,spec) {
@@ -83,7 +83,51 @@ gflowui_local_views_server <- function(id, manifest, view_state, selected_vertex
       c("Locate in parent embedding (preview)"="__preview__", stats::setNames(
         vapply(views, `[[`, "", "id"), vapply(views, function(gs) gs$label %||% gs$id, "")))
     })
-    nav_catalog <- shiny::reactive(gflowui_atlas_catalog(regions(),isTRUE(input$show_retired)))
+    core_regions <- shiny::reactive(Filter(function(r) identical(r$definition$type,"coverage_core") && !isTRUE(r$retired),regions()))
+    nav_catalog <- shiny::reactive(gflowui_atlas_catalog(Filter(function(r) !identical(r$definition$type,"coverage_core"),regions()),isTRUE(input$show_retired)))
+    shiny::observeEvent(list(input$core_coverage,input$core_retention,input$core_route),{
+      for(k in c("coverage","retention","route"))if(length(input[[paste0("core_",k)]])==1L)
+        core_pick[[k]] <<- input[[paste0("core_",k)]]
+    },ignoreNULL=FALSE)
+    output$core_controls <- shiny::renderUI({
+      manifest()$project_id
+      rs<-core_regions();if(!length(rs))return(NULL)
+      coverage<-sort(unique(vapply(rs,function(r)as.numeric(r$definition$coverage),0)),decreasing=TRUE)
+      retention<-sort(unique(vapply(rs,function(r)as.numeric(r$definition$retention),0)),decreasing=TRUE)
+      routes<-unique(unlist(lapply(rs,function(r)vapply(r$views,function(v)v$embedding_route %||% v$label,""))))
+      current<-region();current_view<-view_id()
+      pick<-core_pick
+      if(identical(current$definition$type,"coverage_core")){
+        pick$coverage<-as.character(current$definition$coverage);pick$retention<-as.character(current$definition$retention)
+        v<-Filter(function(v)identical(v$id,current_view),current$views)
+        if(length(v))pick$route<-v[[1]]$embedding_route %||% v[[1]]$label
+      }
+      shiny::isolate(shiny::tagList(shiny::hr(),shiny::h6("Saved core embeddings"),
+        shiny::p(class="gf-hint","Open coordinates fitted to a whole-dataset core. These saved fits are separate from the display filters above."),
+        shiny::selectInput(session$ns("core_coverage"),"Coverage:",stats::setNames(as.character(coverage),paste0(coverage,"%")),selected=pick$coverage,width="100%"),
+        shiny::selectInput(session$ns("core_retention"),"Saved core retention:",stats::setNames(as.character(retention),ifelse(retention==100,"All",paste0("Closest ",retention,"%"))),selected=pick$retention,width="100%"),
+        shiny::selectInput(session$ns("core_route"),"Saved embedding:",routes,selected=pick$route,width="100%"),
+        shiny::actionButton(session$ns("core_open"),"Open saved core embedding"),
+        shiny::actionButton(session$ns("core_whole"),"Return to global embedding"),
+        shiny::textOutput(session$ns("core_context"))))
+    })
+    output$core_context<-shiny::renderText({
+      r<-region();if(!identical(r$definition$type,"coverage_core"))return("No saved core embedding is active.")
+      v<-Filter(function(v)identical(v$id,view_id()),r$views)
+      paste("Active:",r$label,"—",if(length(v))v[[1]]$label else "parent preview")
+    })
+    shiny::observeEvent(input$core_open,{
+      rs<-Filter(function(r) identical(as.character(r$definition$coverage),input$core_coverage) &&
+        identical(as.character(r$definition$retention),input$core_retention),core_regions())
+      if(length(rs)!=1L)return()
+      r<-rs[[1]];vs<-Filter(function(v)identical(v$embedding_route %||% v$label,input$core_route),r$views)
+      if(length(vs)!=1L)return()
+      if(identical(view_id(),"__preview__"))parent_set(view_state()$set_id)
+      navigate_region(r$id);view_id(vs[[1]]$id)
+    },ignoreInit=TRUE)
+    shiny::observeEvent(input$core_whole,{remember_navigation();nav_state(list(family="whole"));region_id("");view_id("__preview__")})
+    output$is_core<-shiny::reactive(identical(region()$definition$type,"coverage_core"))
+    shiny::outputOptions(output,"is_core",suspendWhenHidden=FALSE)
     nav_model <- shiny::reactive(gflowui_atlas_navigation_resolve(nav_catalog(),nav_state(),length(drafts())>0L))
     remember_navigation <- function() {
       id<-shiny::isolate(region_id()); model<-shiny::isolate(nav_model())
@@ -129,7 +173,7 @@ gflowui_local_views_server <- function(id, manifest, view_state, selected_vertex
         shiny::textOutput(session$ns("navigation_hint")),
         shiny::div(style="display:none",`aria-hidden`="true",
           shiny::selectInput(session$ns("region"), "Data region", region_choices(), selected=region_id())),
-        shiny::conditionalPanel(sprintf("input['%s'] !== ''", session$ns("region")),
+        shiny::conditionalPanel(sprintf("input['%s'] !== '' && !output['%s']", session$ns("region"),session$ns("is_core")),
           shiny::selectInput(session$ns("view"), "Region view", view_choices(), selected=view_id()))))
     })
     output$navigation_hint<-shiny::renderText({
@@ -191,10 +235,7 @@ gflowui_local_views_server <- function(id, manifest, view_state, selected_vertex
       r <- region(); if (is.null(r)) return("Context: whole dataset.")
       st <- view_state(); present <- sum(r$vertex_ids %in% st$vertex_ids)
       if(identical(r$definition$type,"coverage_core")) {
-        d<-r$definition
-        return(sprintf("%s cells; %s samples before residual filtering; %s retained (%.2f%% of the full reference). %s samples belong to cells left unfiltered. %s",
-          d$cells,d$base_n,length(r$vertex_ids),100*d$actual_coverage,d$unfiltered_n,
-          if(identical(view_id(),"__preview__")) "Parent embedding preview; existing display filters still apply. Check 'Show only region members' to isolate this core." else "Recomputed Euclidean MDS coordinates. Graph edges are a landmark connection scaffold, not the fitted distance model. Existing display filters still apply."))
+        return("A saved whole-dataset core is active. Its controls are in Graphs → Saved core embeddings. Choose a local region here to switch to a localized view.")
       }
       sprintf("%s — %s members; %s present in this graph. %s", r$label, length(r$vertex_ids), present,
         if (identical(view_id(), "__preview__")) "Parent embedding preview: coordinates and distances unchanged. Existing display filters still apply." else if(length(st$graph_set$atlas$excluded_ids)) sprintf("Local chart fit: %d of %d members retained; %d excluded by the explicit chart policy. Saved region membership is unchanged.",present,length(r$vertex_ids),length(st$graph_set$atlas$excluded_ids)) else "Saved local fit: paths and coordinates belong to this region.")
@@ -274,7 +315,7 @@ gflowui_local_views_server <- function(id, manifest, view_state, selected_vertex
       },error=function(e)status(conditionMessage(e)))
     })
     output$lifecycle<-shiny::renderUI({
-      rs<-regions();if(!length(rs))return(NULL)
+      rs<-Filter(function(r)!identical(r$definition$type,"coverage_core"),regions());if(!length(rs) || identical(region()$definition$type,"coverage_core"))return(NULL)
       shiny::tagList(shiny::hr(),shiny::h6("Region history"),
         shiny::selectInput(session$ns("revision_parent"),"Revise saved region",stats::setNames(names(rs),vapply(rs,gflowui_atlas_region_label,"")),
           selected=if(region_id()%in%names(rs))region_id() else shiny::isolate(input$revision_parent)),
@@ -352,10 +393,10 @@ gflowui_local_views_server <- function(id, manifest, view_state, selected_vertex
       status("Saved state-witness region; membership is fixed to the reference sample IDs.")
       invisible(r$id)
     }
-    list(open_membership=open_membership,form=shiny::reactive({v<-shiny::reactiveValuesToList(input);v$calculation<-calculation$form();v}), manifest=shiny::reactive(gflowui_atlas_manifest(manifest(),region(),view_id(),parent_set())),
+    list(core_controls=function()if(length(core_regions()))shiny::uiOutput(session$ns("core_controls")),open_membership=open_membership,form=shiny::reactive({v<-shiny::reactiveValuesToList(input);v$calculation<-calculation$form();v}), manifest=shiny::reactive(gflowui_atlas_manifest(manifest(),region(),view_id(),parent_set())),
          region=region, regions=regions, preview=shiny::reactive(if(identical(view_id(),"__preview__")) region() else NULL),
          only_members=shiny::reactive(isTRUE(input$only_members)), context=shiny::reactive({
-           r<-region(); if(is.null(r)) "Whole dataset" else paste(r$label, if(identical(view_id(),"__preview__")) "— parent preview" else "— local fitted view")
+           r<-region(); if(is.null(r)) "Whole dataset" else paste(r$label, if(identical(view_id(),"__preview__")) "— parent preview" else if(identical(r$definition$type,"coverage_core"))"— saved core embedding" else "— local fitted view")
          }))
   })
 }

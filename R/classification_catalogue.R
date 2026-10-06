@@ -16,6 +16,14 @@ gflowui_classification_asset <- local({
         stop("Classification catalogue levels or All subset are missing.")
       for (s in a$subsets) if (anyNA(s$ids) || anyDuplicated(s$ids) ||
           !all(s$ids %in% a$samples$sample_id)) stop("Invalid subset sample IDs.")
+      retention <- a$within_cell_retention
+      if (!is.null(retention)) {
+        if (!"100" %in% names(retention$presets)) stop("Retention catalogue needs an All preset.")
+        for (r in retention$presets) if (anyNA(r$ids) || anyDuplicated(r$ids) ||
+            !all(r$ids %in% a$samples$sample_id)) stop("Invalid retention sample IDs.")
+        if (!setequal(retention$presets[["100"]]$ids,a$samples$sample_id))
+          stop("All retention must include the complete reference.")
+      }
       cache$key <- key; cache$asset <- a
     }
     cache$asset
@@ -37,22 +45,32 @@ gflowui_classification_augment <- function(st, manifest, asset=gflowui_classific
   st
 }
 
-gflowui_classification_subset <- function(asset, subset, ids) {
-  if (is.null(asset) || identical(subset,"All")) return(seq_along(ids))
-  s <- asset$subsets[[subset]]
-  if (is.null(s)) stop("Unknown sample subset.")
-  which(ids %in% s$ids)
+gflowui_classification_subset <- function(asset, subset, ids, retention="100") {
+  if (is.null(asset)) return(seq_along(ids))
+  keep <- seq_along(ids)
+  if (!identical(subset,"All")) {
+    s <- asset$subsets[[subset]]
+    if (is.null(s)) stop("Unknown sample subset.")
+    keep <- which(ids %in% s$ids)
+  }
+  if (!identical(retention,"100")) {
+    r <- asset$within_cell_retention$presets[[retention]]
+    if (is.null(r)) stop("Unknown within-cell retention preset.")
+    keep <- intersect(keep,which(ids %in% r$ids))
+  }
+  keep
 }
 
 gflowui_classification_state <- function(saved=list(), asset) {
   state <- utils::modifyList(list(type="udcst",levels=list(udcst="udcst_level2",dcst="dcst_level1"),
-    subset="All",groups=list(),color="udcst"),saved %||% list())
+    subset="All",retention="100",groups=list(),color="udcst"),saved %||% list())
   if (!state$type %in% c("udcst","dcst")) state$type <- "udcst"
   for (type in c("udcst","dcst")) {
     valid <- paste0(type,"_level",seq_len(if(type=="udcst")2L else 3L))
     if (!state$levels[[type]] %in% valid) state$levels[[type]] <- valid[1]
   }
   if (!state$subset %in% names(asset$subsets)) state$subset <- "All"
+  if (!state$retention %in% c("100",names(asset$within_cell_retention$presets))) state$retention <- "100"
   state
 }
 
@@ -81,6 +99,10 @@ gflowui_classification_server <- function(input, session, manifest, save, subset
   shiny::observeEvent(input$graph_sample_subset,change(function(s){
     if(is.null(subset_override()) && input$graph_sample_subset %in% names(asset()$subsets))s$subset<-input$graph_sample_subset;s
   }),ignoreInit=TRUE)
+  shiny::observeEvent(input$graph_within_cell_retention,change(function(s){
+    x<-input$graph_within_cell_retention
+    if(is.null(subset_override()) && x %in% names(asset()$within_cell_retention$presets))s$retention<-x;s
+  }),ignoreInit=TRUE)
   shiny::observeEvent(input$graph_layout_color_by,change(function(s){
     x<-input$graph_layout_color_by
     if(length(x)==1L && nzchar(x)){s$color<-x;if(x %in% c("udcst","dcst"))s$type<-x};s
@@ -100,22 +122,32 @@ gflowui_classification_server <- function(input, session, manifest, save, subset
   level <- shiny::reactive(if(enabled())state()$levels[[state()$type]] else input$graph_dcst_level %||% "dcst_level1")
   selection <- shiny::reactive(if(enabled())list(project=project(),level=level(),groups=state()$groups[[level()]] %||% character()) else input$graph_dcst_table_selection)
   effective_subset<-shiny::reactive(subset_override()$subset %||% state()$subset)
+  effective_retention<-shiny::reactive(if(!is.null(subset_override()))"100" else state()$retention)
   list(asset=asset,state=state,enabled=enabled,level=level,selection=selection,
     color=function(fallback)if(enabled())state()$color else fallback,
-    filter=function(st,idx)if(enabled())intersect(idx,gflowui_classification_subset(asset(),effective_subset(),st$vertex_ids)) else idx,
+    filter=function(st,idx)if(enabled())intersect(idx,gflowui_classification_subset(asset(),effective_subset(),st$vertex_ids,effective_retention())) else idx,
     controls=function(st){
       if(!enabled())return(NULL)
       override<-subset_override()
       if(!is.null(override))return(shiny::tagList(
         shiny::p(class="gf-hint",paste("Sample subset:",override$label)),
-        shiny::p(class="gf-hint","The global coverage preset is paused while this saved core is active and is restored on return. CST and source-dataset filters still apply.")))
+        shiny::p(class="gf-hint","The global coverage preset is paused while this saved core is active and is restored on return. Within-cell retention is also paused because this core already has fixed membership. CST and source-dataset filters still apply.")))
       a<-asset();s<-a$subsets[[state()$subset]]
-      retained<-length(gflowui_classification_subset(a,state()$subset,st$vertex_ids))
+      retained<-length(gflowui_classification_subset(a,state()$subset,st$vertex_ids,state()$retention))
+      retention<-a$within_cell_retention
+      kept_reference<-gflowui_classification_subset(a,state()$subset,a$samples$sample_id,state()$retention)
+      unmodeled<-sum(a$samples$sample_id[kept_reference] %in% retention$unmodeled_ids)
       shiny::tagList(shiny::selectInput("graph_sample_subset","Sample subset",
         choices=stats::setNames(names(a$subsets),vapply(a$subsets,`[[`,"","label")),selected=state()$subset,width="100%"),
+        if(!is.null(retention))shiny::selectInput("graph_within_cell_retention","Within-cell retention:",
+          choices=stats::setNames(names(retention$presets),vapply(retention$presets,`[[`,"","label")),
+          selected=state()$retention,width="100%"),
         shiny::p(class="gf-hint",sprintf("%s / %s reference compositions (%.2f%%); %s retained states. %s / %s members of this view pass this preset. %s",
           format(length(s$ids),big.mark=","),format(nrow(a$samples),big.mark=","),100*length(s$ids)/nrow(a$samples),
           s$states %||% "all",format(retained,big.mark=","),format(length(st$vertex_ids),big.mark=","),s$policy)),
+        if(!is.null(retention) && !identical(state()$retention,"100"))shiny::p(class="gf-hint",sprintf(
+          "After within-cell retention: %s reference compositions (%.2f%% of the full dataset); %s in cells without a usable model remain unfiltered. %s",
+          format(length(kept_reference),big.mark=","),100*length(kept_reference)/nrow(a$samples),format(unmodeled,big.mark=","),retention$policy)),
         shiny::p(class="gf-hint","Display filter only: saved coordinates and graph paths are unchanged. Graph counts above describe the complete current graph, before display filters."))
     })
 }
